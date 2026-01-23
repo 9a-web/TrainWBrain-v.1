@@ -61,9 +61,6 @@
   position: relative;
   width: 50px;
   height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* Progress Ring SVG */
@@ -71,6 +68,8 @@
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .progress-ring-bg {
@@ -95,6 +94,7 @@
   font-size: 18px;
   color: #FFFFFF;
   line-height: 1;
+  text-align: center;
 }
 
 /* ===== RESPONSIVE STYLES ===== */
