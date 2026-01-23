@@ -33,8 +33,60 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  width: 100%;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.header-logo img {
+  height: 48px;
+  width: auto;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.menu-button {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: #FFFFFF;
+  display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.menu-button:hover {
+  opacity: 0.8;
+}
+
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid #FF6B00;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.profile-avatar:hover {
+  opacity: 0.9;
 }
 
 /* Typography */
