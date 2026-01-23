@@ -24,9 +24,8 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 3, isSelected = false
   return (
     <svg 
       className="progress-ring" 
-      width={size} 
-      height={size}
       viewBox={`0 0 ${size} ${size}`}
+      preserveAspectRatio="xMidYMid meet"
     >
       {/* Фоновый круг - скрываем при выборе */}
       <circle
