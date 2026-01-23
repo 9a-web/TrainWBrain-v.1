@@ -42,6 +42,20 @@ const Home = () => {
     return `https://ui-avatars.com/api/?name=${telegramUser?.first_name || 'U'}&background=FF6B00&color=fff&size=80`;
   };
 
+  // Get greeting based on current time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) {
+      return 'Доброе утро';
+    } else if (hour >= 12 && hour < 18) {
+      return 'Добрый день';
+    } else if (hour >= 18 && hour < 23) {
+      return 'Добрый вечер';
+    } else {
+      return 'Доброй ночи';
+    }
+  };
+
   return (
     <div className="app-container" data-testid="main-container">
       {/* Gradient Background with Blur Effect */}
@@ -80,6 +94,13 @@ const Home = () => {
             />
           </div>
         </header>
+        
+        {/* Main Content Area - Greeting */}
+        <main className="main-content" data-testid="main-content">
+          <h1 className="greeting-text" data-testid="greeting-text">
+            {getGreeting()}, {telegramUser?.first_name || 'Гость'}!
+          </h1>
+        </main>
       </div>
     </div>
   );
