@@ -91,6 +91,21 @@
   opacity: 0.9;
 }
 
+/* Main Content */
+.main-content {
+  padding: 32px 30px;
+}
+
+/* Greeting Text */
+.greeting-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  line-height: 1.3;
+  color: #FFFFFF;
+  margin: 0;
+}
+
 /* Typography */
 .text-jakarta-bold {
   font-family: 'Plus Jakarta Sans', sans-serif;
