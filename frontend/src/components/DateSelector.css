@@ -1,0 +1,194 @@
+/* Date Selector Container */
+.date-selector {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.date-selector-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.date-selector-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Day Card */
+.day-card {
+  flex-shrink: 0;
+  width: 62px;
+  height: 85px;
+  background-color: #333333;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.day-card:hover {
+  transform: scale(1.02);
+}
+
+.day-card:active {
+  transform: scale(0.98);
+}
+
+/* Selected Day Card - Gradient */
+.day-card-selected {
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+}
+
+/* Day Name */
+.day-card-name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #FFFFFF;
+  line-height: 1;
+}
+
+/* Circle Wrapper */
+.day-card-circle-wrapper {
+  position: relative;
+  width: 43px;
+  height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Progress Ring SVG */
+.progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.progress-ring-bg {
+  stroke: #FFEBD9;
+}
+
+.progress-ring-progress {
+  stroke: #FF8A24;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+/* Day Number */
+.day-card-number {
+  position: relative;
+  z-index: 1;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: #FFFFFF;
+  line-height: 1;
+}
+
+/* ===== RESPONSIVE STYLES ===== */
+
+/* Large screens (Desktop) */
+@media (min-width: 1024px) {
+  .date-selector {
+    margin-top: 32px;
+  }
+  
+  .date-selector-scroll {
+    gap: 12px;
+    justify-content: flex-start;
+  }
+  
+  .day-card {
+    width: 72px;
+    height: 100px;
+    border-radius: 14px;
+    padding-top: 12px;
+    gap: 8px;
+  }
+  
+  .day-card-name {
+    font-size: 16px;
+  }
+  
+  .day-card-circle-wrapper {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .day-card-number {
+    font-size: 20px;
+  }
+}
+
+/* Medium screens (Tablets) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .date-selector {
+    margin-top: 28px;
+  }
+  
+  .date-selector-scroll {
+    gap: 10px;
+  }
+  
+  .day-card {
+    width: 68px;
+    height: 92px;
+    border-radius: 13px;
+    padding-top: 11px;
+    gap: 7px;
+  }
+  
+  .day-card-name {
+    font-size: 15px;
+  }
+  
+  .day-card-circle-wrapper {
+    width: 46px;
+    height: 46px;
+  }
+  
+  .day-card-number {
+    font-size: 18px;
+  }
+}
+
+/* Extra small screens (Small phones) */
+@media (max-width: 374px) {
+  .date-selector {
+    margin-top: 20px;
+  }
+  
+  .date-selector-scroll {
+    gap: 6px;
+  }
+  
+  .day-card {
+    width: 52px;
+    height: 72px;
+    border-radius: 10px;
+    padding-top: 8px;
+    gap: 4px;
+  }
+  
+  .day-card-name {
+    font-size: 12px;
+  }
+  
+  .day-card-circle-wrapper {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .day-card-number {
+    font-size: 14px;
+  }
+}
