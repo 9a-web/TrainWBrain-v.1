@@ -17,6 +17,16 @@
   display: none; /* Chrome, Safari, Opera */
 }
 
+/* Selected Date Title */
+.selected-date-title {
+  font-family: 'GG Zaglav', sans-serif;
+  font-weight: 400;
+  font-size: 46px;
+  color: #FFFFFF;
+  margin: 0;
+  margin-top: 24px;
+}
+
 /* Day Card */
 .day-card {
   flex-shrink: 0;
