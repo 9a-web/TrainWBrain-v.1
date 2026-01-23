@@ -76,7 +76,10 @@ async def get_status_checks():
 async def get_telegram_avatar(user_id: int):
     """
     Получить аватарку пользователя Telegram через Bot API
+    Проксируем изображение чтобы избежать CORS
     """
+    from fastapi.responses import Response
+    
     if not TELEGRAM_BOT_TOKEN:
         return RedirectResponse(
             url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
@@ -97,7 +100,7 @@ async def get_telegram_avatar(user_id: int):
                     url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
                 )
             
-            # Берём самое маленькое фото (первое в массиве)
+            # Берём самое большое фото (последнее в массиве)
             file_id = photos_data["result"]["photos"][0][-1]["file_id"]
             
             # Получаем путь к файлу
@@ -114,10 +117,22 @@ async def get_telegram_avatar(user_id: int):
             
             file_path = file_data["result"]["file_path"]
             
-            # Редирект на файл в Telegram
-            return RedirectResponse(
-                url=f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
-            )
+            # Скачиваем изображение и возвращаем его напрямую
+            image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+            image_response = await http_client.get(image_url)
+            
+            if image_response.status_code == 200:
+                return Response(
+                    content=image_response.content,
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "public, max-age=3600"
+                    }
+                )
+            else:
+                return RedirectResponse(
+                    url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
+                )
             
     except Exception as e:
         logger.error(f"Error fetching Telegram avatar: {e}")
