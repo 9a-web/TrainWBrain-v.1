@@ -29,24 +29,20 @@ const Home = () => {
       tg.expand();
       
       const user = tg.initDataUnsafe?.user;
-      console.log('Telegram user data:', user);
-      
       if (user) {
         setTelegramUser(user);
       }
-    } else {
-      console.log('Telegram WebApp not available');
     }
   }, []);
 
-  // Get user avatar URL - через бэкенд для Telegram
+  // Get user avatar URL - напрямую из Telegram или fallback
   const getAvatarUrl = () => {
-    console.log('Getting avatar for user:', telegramUser);
+    if (telegramUser?.photo_url) {
+      return telegramUser.photo_url;
+    }
     if (telegramUser?.id) {
-      // Получаем аватарку через наш API
-      const url = `${API}/telegram/avatar/${telegramUser.id}`;
-      console.log('Avatar URL:', url);
-      return url;
+      // Fallback через наш API
+      return `${API}/telegram/avatar/${telegramUser.id}`;
     }
     // Default avatar placeholder
     return `https://ui-avatars.com/api/?name=${telegramUser?.first_name || 'U'}&background=FF6B00&color=fff&size=80`;
