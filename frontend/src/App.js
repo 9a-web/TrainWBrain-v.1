@@ -110,6 +110,19 @@ const Home = () => {
               data-testid="greeting-icon"
             />
           </div>
+          
+          {/* Training Streak */}
+          <div className="streak-row" data-testid="streak-row">
+            <img 
+              src="/fire_strike.svg" 
+              alt="" 
+              className="streak-icon"
+              data-testid="streak-icon"
+            />
+            <span className="streak-text" data-testid="streak-text">
+              Тренировочная серия в течение 0 дней
+            </span>
+          </div>
         </main>
       </div>
     </div>
