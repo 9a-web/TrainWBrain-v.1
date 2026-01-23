@@ -10,9 +10,9 @@
 /* Gradient Background Effect */
 .gradient-background {
   position: fixed;
-  top: 50%;
+  top: 0;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   width: 454px;
   height: 86px;
   z-index: 0;
