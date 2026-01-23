@@ -108,24 +108,24 @@
   }
   
   .day-card {
-    width: 72px;
-    height: 100px;
-    border-radius: 14px;
-    padding-top: 12px;
-    gap: 8px;
+    width: 82px;
+    height: 115px;
+    border-radius: 28px;
+    padding-top: 14px;
+    gap: 10px;
   }
   
   .day-card-name {
-    font-size: 16px;
+    font-size: 17px;
   }
   
   .day-card-circle-wrapper {
-    width: 50px;
-    height: 50px;
+    width: 58px;
+    height: 58px;
   }
   
   .day-card-number {
-    font-size: 20px;
+    font-size: 22px;
   }
 }
 
@@ -140,24 +140,24 @@
   }
   
   .day-card {
-    width: 68px;
-    height: 92px;
-    border-radius: 13px;
-    padding-top: 11px;
-    gap: 7px;
+    width: 78px;
+    height: 108px;
+    border-radius: 26px;
+    padding-top: 13px;
+    gap: 9px;
   }
   
   .day-card-name {
-    font-size: 15px;
+    font-size: 16px;
   }
   
   .day-card-circle-wrapper {
-    width: 46px;
-    height: 46px;
+    width: 54px;
+    height: 54px;
   }
   
   .day-card-number {
-    font-size: 18px;
+    font-size: 20px;
   }
 }
 
@@ -172,23 +172,23 @@
   }
   
   .day-card {
-    width: 52px;
-    height: 72px;
-    border-radius: 10px;
-    padding-top: 8px;
-    gap: 4px;
+    width: 58px;
+    height: 82px;
+    border-radius: 18px;
+    padding-top: 10px;
+    gap: 6px;
   }
   
   .day-card-name {
-    font-size: 12px;
+    font-size: 13px;
   }
   
   .day-card-circle-wrapper {
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
   }
   
   .day-card-number {
-    font-size: 14px;
+    font-size: 15px;
   }
 }

@@ -16,7 +16,7 @@ const MOCK_PROGRESS = {
 };
 
 // Компонент кругового прогресс-бара
-const ProgressRing = ({ progress, size = 43, strokeWidth = 3 }) => {
+const ProgressRing = ({ progress, size = 50, strokeWidth = 3 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
