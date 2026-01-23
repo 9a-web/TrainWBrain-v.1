@@ -42,19 +42,21 @@ const Home = () => {
     return `https://ui-avatars.com/api/?name=${telegramUser?.first_name || 'U'}&background=FF6B00&color=fff&size=80`;
   };
 
-  // Get greeting based on current time
-  const getGreeting = () => {
+  // Get greeting and icon based on current time
+  const getGreetingData = () => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) {
-      return 'Доброе утро';
+      return { text: 'Доброе утро', icon: '/sunrise.svg' };
     } else if (hour >= 12 && hour < 18) {
-      return 'Добрый день';
+      return { text: 'Добрый день', icon: '/day.svg' };
     } else if (hour >= 18 && hour < 23) {
-      return 'Добрый вечер';
+      return { text: 'Добрый вечер', icon: '/sunset.svg' };
     } else {
-      return 'Доброй ночи';
+      return { text: 'Доброй ночи', icon: '/night.svg' };
     }
   };
+
+  const greetingData = getGreetingData();
 
   return (
     <div className="app-container" data-testid="main-container">
@@ -97,9 +99,17 @@ const Home = () => {
         
         {/* Main Content Area - Greeting */}
         <main className="main-content" data-testid="main-content">
-          <h1 className="greeting-text" data-testid="greeting-text">
-            {getGreeting()}, {telegramUser?.first_name || 'Гость'}!
-          </h1>
+          <div className="greeting-row" data-testid="greeting-row">
+            <h1 className="greeting-text" data-testid="greeting-text">
+              {greetingData.text}, {telegramUser?.first_name || 'Гость'}!
+            </h1>
+            <img 
+              src={greetingData.icon} 
+              alt="" 
+              className="greeting-icon"
+              data-testid="greeting-icon"
+            />
+          </div>
         </main>
       </div>
     </div>
