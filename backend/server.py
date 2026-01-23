@@ -71,6 +71,60 @@ async def get_status_checks():
     
     return status_checks
 
+
+@api_router.get("/telegram/avatar/{user_id}")
+async def get_telegram_avatar(user_id: int):
+    """
+    Получить аватарку пользователя Telegram через Bot API
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        return RedirectResponse(
+            url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
+        )
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            # Получаем фото профиля пользователя
+            photos_response = await http_client.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUserProfilePhotos",
+                params={"user_id": user_id, "limit": 1}
+            )
+            photos_data = photos_response.json()
+            
+            if not photos_data.get("ok") or not photos_data.get("result", {}).get("photos"):
+                # Нет фото - возвращаем placeholder
+                return RedirectResponse(
+                    url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
+                )
+            
+            # Берём самое маленькое фото (первое в массиве)
+            file_id = photos_data["result"]["photos"][0][-1]["file_id"]
+            
+            # Получаем путь к файлу
+            file_response = await http_client.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile",
+                params={"file_id": file_id}
+            )
+            file_data = file_response.json()
+            
+            if not file_data.get("ok"):
+                return RedirectResponse(
+                    url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
+                )
+            
+            file_path = file_data["result"]["file_path"]
+            
+            # Редирект на файл в Telegram
+            return RedirectResponse(
+                url=f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error fetching Telegram avatar: {e}")
+        return RedirectResponse(
+            url=f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80"
+        )
+
 # Include the router in the main app
 app.include_router(api_router)
 
