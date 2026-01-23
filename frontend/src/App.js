@@ -69,7 +69,7 @@ const Home = () => {
               data-testid="menu-button"
               aria-label="Open menu"
             >
-              <img src="/menu.svg" alt="Menu" width={24} height={24} />
+              <img src="/menu.svg" alt="Menu" width={40} height={40} />
             </button>
             
             <img 
