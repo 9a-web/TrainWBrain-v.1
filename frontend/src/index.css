@@ -1,5 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
+@font-face {
+  font-family: 'GG Zaglav';
+  src: url('https://customer-assets.emergentagent.com/job_ai-helper-docs/artifacts/32xndh82_GG%20Zaglav.woff2') format('woff2'),
+       url('https://customer-assets.emergentagent.com/job_ai-helper-docs/artifacts/uahl3b1n_GG%20Zaglav.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
