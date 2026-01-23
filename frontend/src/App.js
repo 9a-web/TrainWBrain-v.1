@@ -34,10 +34,11 @@ const Home = () => {
     }
   }, []);
 
-  // Get user avatar URL from Telegram
+  // Get user avatar URL - через бэкенд для Telegram
   const getAvatarUrl = () => {
-    if (telegramUser?.photo_url) {
-      return telegramUser.photo_url;
+    if (telegramUser?.id) {
+      // Получаем аватарку через наш API
+      return `${API}/telegram/avatar/${telegramUser.id}`;
     }
     // Default avatar placeholder
     return `https://ui-avatars.com/api/?name=${telegramUser?.first_name || 'U'}&background=FF6B00&color=fff&size=80`;
