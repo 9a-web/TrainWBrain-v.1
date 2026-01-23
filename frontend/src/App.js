@@ -124,6 +124,9 @@ const Home = () => {
               Тренировочная серия в течение 0 дней
             </span>
           </div>
+          
+          {/* Date Selector */}
+          <DateSelector />
         </main>
       </div>
     </div>
