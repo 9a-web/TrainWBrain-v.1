@@ -16,7 +16,7 @@ const MOCK_PROGRESS = {
 };
 
 // Компонент кругового прогресс-бара
-const ProgressRing = ({ progress, size = 50, strokeWidth = 3 }) => {
+const ProgressRing = ({ progress, size = 50, strokeWidth = 3, isSelected = false }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -28,14 +28,14 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 3 }) => {
       height={size}
       viewBox={`0 0 ${size} ${size}`}
     >
-      {/* Фоновый круг */}
+      {/* Фоновый круг - скрываем при выборе */}
       <circle
         className="progress-ring-bg"
         cx={size / 2}
         cy={size / 2}
         r={radius}
         strokeWidth={strokeWidth}
-        fill="#1C1C1C"
+        fill={isSelected ? "transparent" : "#1C1C1C"}
       />
       {/* Прогресс */}
       <circle
