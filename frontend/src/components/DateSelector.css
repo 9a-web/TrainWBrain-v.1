@@ -140,6 +140,11 @@
   .day-card-number {
     font-size: 22px;
   }
+  
+  .selected-date-title {
+    font-size: 72px;
+    margin-top: 36px;
+  }
 }
 
 /* Medium screens (Tablets) */
@@ -172,6 +177,11 @@
   .day-card-number {
     font-size: 20px;
   }
+  
+  .selected-date-title {
+    font-size: 64px;
+    margin-top: 32px;
+  }
 }
 
 /* Extra small screens (Small phones) */
@@ -203,5 +213,10 @@
   
   .day-card-number {
     font-size: 15px;
+  }
+  
+  .selected-date-title {
+    font-size: 38px;
+    margin-top: 20px;
   }
 }
