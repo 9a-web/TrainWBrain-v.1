@@ -64,7 +64,7 @@ const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick }) =>
     >
       <span className="day-card-name">{dayName}</span>
       <div className="day-card-circle-wrapper">
-        <ProgressRing progress={progress} />
+        <ProgressRing progress={progress} isSelected={isSelected} />
         <span className="day-card-number">{dayNumber}</span>
       </div>
     </button>
