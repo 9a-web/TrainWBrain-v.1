@@ -71,6 +71,12 @@ const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick }) =>
 };
 
 // Основной компонент выбора даты
+// Названия месяцев в родительном падеже
+const MONTH_NAMES = [
+  'Января', 'Февраля', 'Марта', 'Апреля', 'Мая', 'Июня',
+  'Июля', 'Августа', 'Сентября', 'Октября', 'Ноября', 'Декабря'
+];
+
 const DateSelector = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   
@@ -110,6 +116,9 @@ const DateSelector = () => {
            date1.getFullYear() === date2.getFullYear();
   };
   
+  // Форматирование выбранной даты
+  const formattedDate = `${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]}`;
+  
   return (
     <div className="date-selector" data-testid="date-selector">
       <div className="date-selector-scroll">
@@ -125,6 +134,7 @@ const DateSelector = () => {
           />
         ))}
       </div>
+      <h2 className="selected-date-title">{formattedDate}</h2>
     </div>
   );
 };
