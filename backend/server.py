@@ -1,5 +1,4 @@
 from fastapi import FastAPI, APIRouter
-from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
