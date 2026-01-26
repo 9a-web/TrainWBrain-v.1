@@ -203,6 +203,20 @@
     margin-top: 28px;
   }
   
+  .date-selector-row {
+    gap: 10px;
+  }
+  
+  .week-nav-button {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .week-nav-button img {
+    width: 26px;
+    height: 26px;
+  }
+  
   .date-selector-scroll {
     gap: 10px;
   }
