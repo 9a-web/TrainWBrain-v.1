@@ -55,26 +55,30 @@ const Home = () => {
 
   useEffect(() => {
     // Инициализация Telegram WebApp
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      
-      const user = tg.initDataUnsafe?.user;
-      if (user) {
-        setTelegramUser(user);
-        // Регистрируем пользователя в БД
-        await registerUser(user);
-        // Загружаем аватар через API
-        loadAvatar(user.id, user.first_name);
+    const initTelegram = async () => {
+      if (window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        const user = tg.initDataUnsafe?.user;
+        if (user) {
+          setTelegramUser(user);
+          // Регистрируем пользователя в БД
+          await registerUser(user);
+          // Загружаем аватар через API
+          loadAvatar(user.id, user.first_name);
+        } else {
+          // Нет данных пользователя - дефолтный аватар
+          setAvatarUrl(getDefaultAvatar('Гость'));
+        }
       } else {
-        // Нет данных пользователя - дефолтный аватар
+        // Не в Telegram - дефолтный аватар
         setAvatarUrl(getDefaultAvatar('Гость'));
       }
-    } else {
-      // Не в Telegram - дефолтный аватар
-      setAvatarUrl(getDefaultAvatar('Гость'));
-    }
+    };
+    
+    initTelegram();
   }, []);
 
   // Получить URL аватара
