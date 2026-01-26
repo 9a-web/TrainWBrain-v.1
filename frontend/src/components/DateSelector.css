@@ -41,6 +41,7 @@
 
 .date-selector-scroll {
   display: flex;
+  flex: 1;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 8px;
