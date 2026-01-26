@@ -151,6 +151,20 @@
     margin-top: 32px;
   }
   
+  .date-selector-row {
+    gap: 12px;
+  }
+  
+  .week-nav-button {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .week-nav-button img {
+    width: 28px;
+    height: 28px;
+  }
+  
   .date-selector-scroll {
     gap: 12px;
     justify-content: flex-start;
