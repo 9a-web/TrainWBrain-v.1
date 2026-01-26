@@ -156,13 +156,13 @@
   }
   
   .week-nav-button {
-    width: 48px;
-    height: 48px;
+    width: 64px;
+    height: 64px;
   }
   
   .week-nav-button img {
-    width: 28px;
-    height: 28px;
+    width: 100%;
+    height: 100%;
   }
   
   .date-selector-scroll {
