@@ -9,20 +9,32 @@ const API = `${BACKEND_URL}/api`;
 
 const Home = () => {
   const [telegramUser, setTelegramUser] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
-  const helloWorldApi = async () => {
+  // Загрузка аватара через Backend API (Telegram Bot API)
+  const loadAvatar = async (userId, firstName) => {
     try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+      const response = await axios.get(`${API}/telegram/avatar/${userId}`);
+      if (response.data?.avatar_url) {
+        setAvatarUrl(response.data.avatar_url);
+      } else {
+        // Fallback на UI Avatars
+        setAvatarUrl(getDefaultAvatar(firstName));
+      }
+    } catch (error) {
+      console.error('Failed to load avatar:', error);
+      setAvatarUrl(getDefaultAvatar(firstName));
     }
   };
 
+  // Генерация дефолтного аватара
+  const getDefaultAvatar = (name) => {
+    const displayName = name || 'User';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=FF6B00&color=fff&size=80&bold=true`;
+  };
+
   useEffect(() => {
-    helloWorldApi();
-    
-    // Get Telegram WebApp user data
+    // Инициализация Telegram WebApp
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
@@ -31,21 +43,21 @@ const Home = () => {
       const user = tg.initDataUnsafe?.user;
       if (user) {
         setTelegramUser(user);
+        // Загружаем аватар через API
+        loadAvatar(user.id, user.first_name);
+      } else {
+        // Нет данных пользователя - дефолтный аватар
+        setAvatarUrl(getDefaultAvatar('Гость'));
       }
+    } else {
+      // Не в Telegram - дефолтный аватар
+      setAvatarUrl(getDefaultAvatar('Гость'));
     }
   }, []);
 
-  // Get user avatar URL - напрямую из Telegram или fallback
+  // Получить URL аватара
   const getAvatarUrl = () => {
-    if (telegramUser?.photo_url) {
-      return telegramUser.photo_url;
-    }
-    if (telegramUser?.id) {
-      // Fallback через наш API
-      return `${API}/telegram/avatar/${telegramUser.id}`;
-    }
-    // Default avatar placeholder
-    return `https://ui-avatars.com/api/?name=${telegramUser?.first_name || 'U'}&background=FF6B00&color=fff&size=80`;
+    return avatarUrl || getDefaultAvatar(telegramUser?.first_name);
   };
 
   // Get greeting and icon based on current time
