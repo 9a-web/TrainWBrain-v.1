@@ -63,6 +63,8 @@ const Home = () => {
       const user = tg.initDataUnsafe?.user;
       if (user) {
         setTelegramUser(user);
+        // Регистрируем пользователя в БД
+        await registerUser(user);
         // Загружаем аватар через API
         loadAvatar(user.id, user.first_name);
       } else {
