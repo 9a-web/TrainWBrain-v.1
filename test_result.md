@@ -163,6 +163,18 @@ frontend:
         agent: "main"
         comment: "Added registerUser function that calls POST /api/users on app init"
 
+  - task: "Display user avatar in header"
+    implemented: true
+    working: "NA"
+    file: "App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Testing avatar display functionality - should show either Telegram API avatar URL or UI Avatars fallback"
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
