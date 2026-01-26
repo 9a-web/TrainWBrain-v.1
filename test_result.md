@@ -183,9 +183,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "User registration/update on app load"
-    - "Get user by telegram_id"
-    - "Get Telegram avatar"
+    - "Register user on Telegram WebApp init"
+    - "Display user avatar in header"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
