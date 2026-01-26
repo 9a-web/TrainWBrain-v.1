@@ -101,3 +101,74 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "TrainWithBrain Telegram WebApp - при открытии приложения в Telegram аватарка не подгружается. Нужно проверить создание пользователя в БД и работу с UID"
+
+backend:
+  - task: "User registration/update on app load"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/users endpoint with upsert logic. Creates new user or updates existing by telegram_id"
+
+  - task: "Get user by telegram_id"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/users/{telegram_id} endpoint"
+
+  - task: "Get Telegram avatar"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Existing endpoint GET /api/telegram/avatar/{user_id} - fetches avatar via Telegram Bot API"
+
+frontend:
+  - task: "Register user on Telegram WebApp init"
+    implemented: true
+    working: "NA"
+    file: "App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added registerUser function that calls POST /api/users on app init"
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "User registration/update on app load"
+    - "Get user by telegram_id"
+    - "Get Telegram avatar"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented user registration in MongoDB. Please test: 1) POST /api/users creates new user, 2) POST /api/users with same telegram_id updates user, 3) GET /api/users/{telegram_id} returns user, 4) GET /api/telegram/avatar/{user_id} works with valid telegram_id"
