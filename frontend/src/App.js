@@ -10,6 +10,26 @@ const API = `${BACKEND_URL}/api`;
 const Home = () => {
   const [telegramUser, setTelegramUser] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [dbUser, setDbUser] = useState(null);
+
+  // Регистрация/обновление пользователя в БД
+  const registerUser = async (tgUser) => {
+    try {
+      const response = await axios.post(`${API}/users`, {
+        telegram_id: tgUser.id,
+        first_name: tgUser.first_name,
+        last_name: tgUser.last_name || null,
+        username: tgUser.username || null,
+        language_code: tgUser.language_code || null
+      });
+      setDbUser(response.data);
+      console.log('User registered/updated:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to register user:', error);
+      return null;
+    }
+  };
 
   // Загрузка аватара через Backend API (Telegram Bot API)
   const loadAvatar = async (userId, firstName) => {
