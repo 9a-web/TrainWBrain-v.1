@@ -107,39 +107,48 @@ user_problem_statement: "TrainWithBrain Telegram WebApp - при открыти�
 backend:
   - task: "User registration/update on app load"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented POST /api/users endpoint with upsert logic. Creates new user or updates existing by telegram_id"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/users working correctly. Created user with telegram_id=111222333, verified upsert logic - same user updated with same ID, created_at preserved, updated_at changed. All required fields present in response (id, telegram_id, first_name, created_at, updated_at)."
 
   - task: "Get user by telegram_id"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented GET /api/users/{telegram_id} endpoint"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/users/{telegram_id} working correctly. Successfully retrieved user by telegram_id=111222333, returned correct user data. Properly returns 404 for non-existent users (tested with telegram_id=999999999)."
 
   - task: "Get Telegram avatar"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Existing endpoint GET /api/telegram/avatar/{user_id} - fetches avatar via Telegram Bot API"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/telegram/avatar/{user_id} working correctly. Endpoint responds properly with avatar_url=null and appropriate error message 'Bad Request: user not found' for test user (telegram_id=111222333), which is expected behavior since it's not a real Telegram user. Bot API integration functioning correctly."
 
 frontend:
   - task: "Register user on Telegram WebApp init"
