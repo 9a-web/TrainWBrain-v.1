@@ -9,7 +9,6 @@ const API = `${BACKEND_URL}/api`;
 
 const Home = () => {
   const [telegramUser, setTelegramUser] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(null);
   const [dbUser, setDbUser] = useState(null);
 
   // Регистрация/обновление пользователя в БД
@@ -31,28 +30,6 @@ const Home = () => {
     }
   };
 
-  // Загрузка аватара через Backend API (Telegram Bot API)
-  const loadAvatar = async (userId, firstName) => {
-    try {
-      const response = await axios.get(`${API}/telegram/avatar/${userId}`);
-      if (response.data?.avatar_url) {
-        setAvatarUrl(response.data.avatar_url);
-      } else {
-        // Fallback на UI Avatars
-        setAvatarUrl(getDefaultAvatar(firstName));
-      }
-    } catch (error) {
-      console.error('Failed to load avatar:', error);
-      setAvatarUrl(getDefaultAvatar(firstName));
-    }
-  };
-
-  // Генерация дефолтного аватара
-  const getDefaultAvatar = (name) => {
-    const displayName = name || 'User';
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=FF6B00&color=fff&size=80&bold=true`;
-  };
-
   useEffect(() => {
     // Инициализация Telegram WebApp
     const initTelegram = async () => {
@@ -66,25 +43,12 @@ const Home = () => {
           setTelegramUser(user);
           // Регистрируем пользователя в БД
           await registerUser(user);
-          // Загружаем аватар через API
-          loadAvatar(user.id, user.first_name);
-        } else {
-          // Нет данных пользователя - дефолтный аватар
-          setAvatarUrl(getDefaultAvatar('Гость'));
         }
-      } else {
-        // Не в Telegram - дефолтный аватар
-        setAvatarUrl(getDefaultAvatar('Гость'));
       }
     };
     
     initTelegram();
   }, []);
-
-  // Получить URL аватара
-  const getAvatarUrl = () => {
-    return avatarUrl || getDefaultAvatar(telegramUser?.first_name);
-  };
 
   // Get greeting and icon based on current time
   const getGreetingData = () => {
@@ -122,7 +86,7 @@ const Home = () => {
             <img src="/TWBlogo.png" alt="TrainWithBrain" />
           </div>
           
-          {/* Right side: Menu & Profile */}
+          {/* Right side: Menu */}
           <div className="header-right" data-testid="header-right">
             <button 
               className="menu-button" 
@@ -131,13 +95,6 @@ const Home = () => {
             >
               <img src="/menu.svg" alt="Menu" width={40} height={40} />
             </button>
-            
-            <img 
-              src={getAvatarUrl()} 
-              alt="Profile" 
-              className="profile-avatar"
-              data-testid="profile-avatar"
-            />
           </div>
         </header>
         
