@@ -79,15 +79,16 @@ const MONTH_NAMES = [
 
 const DateSelector = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weekOffset, setWeekOffset] = useState(0); // Смещение недели (0 = текущая)
   
-  // Генерируем дни текущей недели
+  // Генерируем дни недели с учётом смещения
   const weekDays = useMemo(() => {
     const today = new Date();
     const currentDay = today.getDay(); // 0 = Воскресенье
     
-    // Начало недели (Понедельник)
+    // Начало недели (Понедельник) с учётом смещения
     const monday = new Date(today);
-    monday.setDate(today.getDate() - ((currentDay + 6) % 7));
+    monday.setDate(today.getDate() - ((currentDay + 6) % 7) + (weekOffset * 7));
     
     const days = [];
     for (let i = 0; i < 7; i++) {
@@ -104,10 +105,18 @@ const DateSelector = () => {
     }
     
     return days;
-  }, []);
+  }, [weekOffset]);
   
   const handleDayClick = (date) => {
     setSelectedDate(date);
+  };
+  
+  const handlePrevWeek = () => {
+    setWeekOffset(prev => prev - 1);
+  };
+  
+  const handleNextWeek = () => {
+    setWeekOffset(prev => prev + 1);
   };
   
   const isSameDay = (date1, date2) => {
@@ -121,19 +130,43 @@ const DateSelector = () => {
   
   return (
     <div className="date-selector" data-testid="date-selector">
-      <div className="date-selector-scroll">
-        {weekDays.map((day, index) => (
-          <DayCard
-            key={index}
-            date={day.date}
-            dayName={day.dayName}
-            dayNumber={day.dayNumber}
-            progress={day.progress}
-            isSelected={isSameDay(day.date, selectedDate)}
-            onClick={() => handleDayClick(day.date)}
-          />
-        ))}
+      <div className="date-selector-row">
+        {/* Кнопка предыдущей недели */}
+        <button 
+          className="week-nav-button"
+          onClick={handlePrevWeek}
+          aria-label="Предыдущая неделя"
+          data-testid="prev-week-button"
+        >
+          <img src="/arrow-left.svg" alt="Назад" />
+        </button>
+        
+        {/* Дни недели */}
+        <div className="date-selector-scroll">
+          {weekDays.map((day, index) => (
+            <DayCard
+              key={`${weekOffset}-${index}`}
+              date={day.date}
+              dayName={day.dayName}
+              dayNumber={day.dayNumber}
+              progress={day.progress}
+              isSelected={isSameDay(day.date, selectedDate)}
+              onClick={() => handleDayClick(day.date)}
+            />
+          ))}
+        </div>
+        
+        {/* Кнопка следующей недели */}
+        <button 
+          className="week-nav-button"
+          onClick={handleNextWeek}
+          aria-label="Следующая неделя"
+          data-testid="next-week-button"
+        >
+          <img src="/arrow-right.svg" alt="Вперёд" />
+        </button>
       </div>
+      
       <h2 className="selected-date-title">{formattedDate}</h2>
     </div>
   );
