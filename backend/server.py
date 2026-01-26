@@ -95,6 +95,78 @@ async def get_status_checks():
     return status_checks
 
 
+# User endpoints
+@api_router.post("/users", response_model=User)
+async def create_or_update_user(user_data: UserCreate):
+    """
+    Создать или обновить пользователя (upsert).
+    Вызывается при каждом входе в Telegram WebApp.
+    """
+    existing_user = await db.users.find_one(
+        {"telegram_id": user_data.telegram_id},
+        {"_id": 0}
+    )
+    
+    if existing_user:
+        # Обновляем существующего пользователя
+        update_data = {
+            "first_name": user_data.first_name,
+            "last_name": user_data.last_name,
+            "username": user_data.username,
+            "language_code": user_data.language_code,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.update_one(
+            {"telegram_id": user_data.telegram_id},
+            {"$set": update_data}
+        )
+        # Получаем обновлённого пользователя
+        updated_user = await db.users.find_one(
+            {"telegram_id": user_data.telegram_id},
+            {"_id": 0}
+        )
+        # Конвертируем даты
+        for field in ['created_at', 'updated_at']:
+            if isinstance(updated_user.get(field), str):
+                updated_user[field] = datetime.fromisoformat(updated_user[field])
+        logger.info(f"User updated: telegram_id={user_data.telegram_id}")
+        return updated_user
+    else:
+        # Создаём нового пользователя
+        new_user = User(
+            telegram_id=user_data.telegram_id,
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
+            username=user_data.username,
+            language_code=user_data.language_code
+        )
+        doc = new_user.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        doc['updated_at'] = doc['updated_at'].isoformat()
+        
+        await db.users.insert_one(doc)
+        logger.info(f"New user created: telegram_id={user_data.telegram_id}, id={new_user.id}")
+        return new_user
+
+
+@api_router.get("/users/{telegram_id}", response_model=User)
+async def get_user(telegram_id: int):
+    """Получить пользователя по Telegram ID"""
+    user = await db.users.find_one(
+        {"telegram_id": telegram_id},
+        {"_id": 0}
+    )
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Конвертируем даты
+    for field in ['created_at', 'updated_at']:
+        if isinstance(user.get(field), str):
+            user[field] = datetime.fromisoformat(user[field])
+    return user
+
+
 @api_router.get("/telegram/avatar/{user_id}")
 async def get_telegram_avatar(user_id: int):
     """
