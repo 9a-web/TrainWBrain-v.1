@@ -14,8 +14,8 @@
 /* Week navigation buttons */
 .week-nav-button {
   flex-shrink: 0;
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   background: transparent;
   border: none;
   cursor: pointer;
