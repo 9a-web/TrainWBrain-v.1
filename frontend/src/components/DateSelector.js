@@ -228,7 +228,7 @@ const DateSelector = () => {
           data-testid="launch-button"
         >
           <Zap className="launch-button-icon" size={16} strokeWidth={2.5} />
-          <span>Запустить</span>
+          <span>Начать</span>
         </button>
       </div>
 

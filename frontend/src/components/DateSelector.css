@@ -93,8 +93,8 @@
 .date-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 12px;
   margin: 28px 24px 0;
 }
 
@@ -106,6 +106,9 @@
   line-height: 1;
   color: #FFFFFF;
   margin: 0;
+  /* Оптическая коррекция: глифы GG Zaglav сидят выше центра строки,
+     сдвигаем вниз, чтобы текст совпал по центру с кнопкой */
+  transform: translateY(0.167em);
 }
 
 /* Launch (dark pill) button */
