@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './DateSelector.css';
 
 // Сокращённые названия дней недели
@@ -16,11 +16,20 @@ const MOCK_PROGRESS = {
 };
 
 // Компонент кругового прогресс-бара
-const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false }) => {
+const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false, index = 0 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
-  
+
+  // Анимация заполнения при загрузке: стартуем с 0% и плавно заполняем до целевого значения
+  const [animatedProgress, setAnimatedProgress] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimatedProgress(progress), 60);
+    return () => clearTimeout(timer);
+  }, [progress]);
+
+  const strokeDashoffset = circumference - (animatedProgress / 100) * circumference;
+
   return (
     <svg 
       className="progress-ring" 
@@ -48,13 +57,17 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
         strokeDasharray={circumference}
         strokeDashoffset={strokeDashoffset}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{
+          transition: 'stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
+          transitionDelay: `${index * 90}ms`,
+        }}
       />
     </svg>
   );
 };
 
 // Компонент карточки дня
-const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick }) => {
+const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick, index = 0 }) => {
   return (
     <button 
       className={`day-card ${isSelected ? 'day-card-selected' : ''}`}
@@ -64,7 +77,7 @@ const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick }) =>
     >
       <span className="day-card-name">{dayName}</span>
       <div className="day-card-circle-wrapper">
-        <ProgressRing progress={progress} isSelected={isSelected} />
+        <ProgressRing progress={progress} isSelected={isSelected} index={index} />
         <span className="day-card-number">{dayNumber}</span>
       </div>
     </button>
@@ -180,6 +193,7 @@ const DateSelector = () => {
               progress={day.progress}
               isSelected={isSameDay(day.date, selectedDate)}
               onClick={(e) => handleDayClick(day.date, e)}
+              index={index}
             />
           ))}
         </div>
