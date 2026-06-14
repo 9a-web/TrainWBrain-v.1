@@ -100,6 +100,40 @@
   margin-left: 24px;
 }
 
+/* Workout stats row (значение сверху + подпись снизу) */
+.workout-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 24px 0;
+  max-width: 380px;
+}
+
+.workout-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workout-stat-value {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #FFFFFF;
+  white-space: nowrap;
+}
+
+.workout-stat-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #CACACA;
+  white-space: nowrap;
+}
+
 /* Day Card */
 .day-card {
   flex-shrink: 0;

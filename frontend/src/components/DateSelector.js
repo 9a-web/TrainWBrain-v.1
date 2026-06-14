@@ -15,6 +15,14 @@ const MOCK_PROGRESS = {
   6: 0,   // Суббота
 };
 
+// Тестовые данные статистики тренировки (пока мок, не из БД)
+const WORKOUT_STATS = [
+  { value: '4600кг', label: 'Тоннаж' },
+  { value: 'Н+Г+С', label: 'Группа' },
+  { value: 'Тяжело', label: 'Сложность' },
+  { value: '2ч. 16м.', label: 'Время' },
+];
+
 // Компонент кругового прогресс-бара
 const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false, index = 0 }) => {
   const radius = (size - strokeWidth) / 2;
@@ -212,6 +220,16 @@ const DateSelector = () => {
       </div>
 
       <h2 className="selected-date-title">{formattedDate}</h2>
+
+      {/* Статистика тренировки (мок-данные) */}
+      <div className="workout-stats" data-testid="workout-stats">
+        {WORKOUT_STATS.map((stat) => (
+          <div className="workout-stat" key={stat.label}>
+            <span className="workout-stat-value">{stat.value}</span>
+            <span className="workout-stat-label">{stat.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
