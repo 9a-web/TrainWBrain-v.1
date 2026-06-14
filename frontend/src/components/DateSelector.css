@@ -75,7 +75,11 @@
   gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 6px 24px 10px 2px;
+  /* Вертикальный padding даёт место для анимации листания по вертикали,
+     отрицательные margin компенсируют его, сохраняя позицию карточек и отступы */
+  padding: 28px 24px 28px 2px;
+  margin-top: -22px;
+  margin-bottom: -18px;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
   -webkit-overflow-scrolling: touch;
@@ -126,26 +130,26 @@
   background: linear-gradient(-34deg, #FF8A24, #FFDA24);
 }
 
-/* ===== Анимация смены недели (карточки выезжают, сменяя друг друга) ===== */
+/* ===== Анимация смены недели (карточки листаются по вертикали) ===== */
 @keyframes dayCardInNext {
   from {
     opacity: 0;
-    transform: translateX(34px) scale(0.94);
+    transform: translateY(26px) scale(0.94);
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes dayCardInPrev {
   from {
     opacity: 0;
-    transform: translateX(-34px) scale(0.94);
+    transform: translateY(-26px) scale(0.94);
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
