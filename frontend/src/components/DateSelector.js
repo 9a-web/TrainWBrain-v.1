@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Zap } from 'lucide-react';
 import './DateSelector.css';
 
 // Сокращённые названия дней недели
@@ -226,7 +227,8 @@ const DateSelector = () => {
           type="button"
           data-testid="launch-button"
         >
-          Запустить
+          <Zap className="launch-button-icon" size={16} strokeWidth={2.5} />
+          <span>Запустить</span>
         </button>
       </div>
 

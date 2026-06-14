@@ -108,26 +108,32 @@
   margin: 0;
 }
 
-/* Launch (green pill) button */
+/* Launch (dark pill) button */
 .launch-button {
   flex-shrink: 0;
-  padding: 12px 26px;
-  background-color: #34C759;
-  color: #FFFFFF;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background-color: #333333;
+  color: #24FF7F;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1;
   border: none;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 6px 18px rgba(52, 199, 89, 0.32);
-  transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, background-color 0.2s ease;
+}
+
+.launch-button-icon {
+  flex-shrink: 0;
 }
 
 .launch-button:hover {
-  background-color: #2FB350;
-  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.4);
+  background-color: #3C3C3C;
 }
 
 .launch-button:active {
