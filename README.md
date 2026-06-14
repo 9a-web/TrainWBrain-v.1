@@ -1,6 +1,6 @@
 # 🏋️ TrainWithBrain — Telegram Web App
 
-> Приложение для отслеживания тренировочного прогресса пауэрлифтеров и силовых спортсменов
+> Telegram Mini App для отслеживания тренировочного прогресса пауэрлифтеров и силовых спортсменов.
 
 ![React](https://img.shields.io/badge/React-19.0.0-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110.1-green)
@@ -11,34 +11,27 @@
 
 ## 📖 Описание
 
-**TrainWithBrain** — это Telegram Web App, которое помогает спортсменам планировать и отслеживать свои тренировки. Приложение интегрировано с Telegram и предоставляет удобный интерфейс для:
+**TrainWithBrain (TWB)** открывается прямо внутри Telegram и помогает спортсменам планировать и отслеживать тренировки. Сейчас реализован UI‑скелет MVP:
 
-- 📅 Просмотра расписания тренировок по дням недели
-- 📊 Визуализации прогресса выполнения
-- ⏱️ Учёта подходов, повторений и весов
-- 🔥 Отслеживания тренировочных серий (streak)
+- 👋 Персональное приветствие по времени суток (имя берётся из Telegram)
+- 🔥 Тренировочная серия — streak (пока статично «0 дней»)
+- 📅 Недельный селектор дней с круговым прогрессом (данные прогресса — **временно mock**)
+- 👤 Регистрация/обновление пользователя в MongoDB при каждом входе
+- 🖼️ Получение аватара пользователя через Telegram Bot API (с fallback)
+
+> 📚 Для AI‑агентов и разработчиков есть подробная документация:
+> **[AI_CONTEXT.md](./AI_CONTEXT.md)** — рабочий контекст и правила · **[PROJECT_DETAILS.md](./PROJECT_DETAILS.md)** — глубокий технический разбор.
 
 ---
 
 ## 🛠️ Технологии
 
-### Frontend
-- **React 19** — UI фреймворк
-- **Tailwind CSS 3.4** — стилизация
-- **Shadcn/UI** — готовые UI компоненты
-- **React Router 7** — маршрутизация
-- **Axios** — HTTP запросы
-
-### Backend
-- **FastAPI** — Python веб-фреймворк
-- **Motor** — асинхронный драйвер MongoDB
-- **Pydantic** — валидация данных
-
-### База данных
-- **MongoDB** — NoSQL база данных
-
-### Интеграции
-- **Telegram WebApp API** — интеграция с Telegram
+| Слой | Стек |
+|------|------|
+| Frontend | React 19, CRACO, Tailwind CSS 3.4, shadcn/ui (Radix), React Router 7, Axios |
+| Backend | FastAPI, Motor (async MongoDB), Pydantic v2, httpx |
+| База данных | MongoDB |
+| Интеграции | Telegram WebApp API, Telegram Bot API, PostHog (аналитика) |
 
 ---
 
@@ -46,73 +39,59 @@
 
 ```
 /app/
-├── backend/                 # FastAPI сервер
-│   ├── server.py           # API endpoints
-│   ├── requirements.txt    # Python зависимости
-│   └── .env                # Переменные окружения
-│
-├── frontend/               # React приложение
-│   ├── public/             # Статические файлы, иконки
+├── backend/
+│   ├── server.py           # Весь backend: модели + эндпоинты
+│   ├── requirements.txt
+│   └── .env                # MONGO_URL, DB_NAME, CORS_ORIGINS, TELEGRAM_BOT_TOKEN
+├── frontend/
+│   ├── public/             # index.html, логотип, иконки (svg/png)
 │   ├── src/
-│   │   ├── App.js          # Главный компонент
-│   │   ├── components/     # React компоненты
-│   │   │   ├── DateSelector.js  # Выбор дня недели
-│   │   │   └── ui/              # Shadcn компоненты
-│   │   ├── hooks/          # React hooks
-│   │   └── lib/            # Утилиты
-│   ├── package.json        # Node зависимости
-│   └── .env                # Frontend переменные
-│
-├── tests/                  # Тесты
-├── AI_CONTEXT.md           # Контекст для AI агентов
-├── README.md               # Документация (этот файл)
-└── test_result.md          # Результаты тестирования
+│   │   ├── App.js          # Главный экран (Home)
+│   │   ├── components/
+│   │   │   ├── DateSelector.js  # Недельный селектор + ProgressRing
+│   │   │   └── ui/              # 46 компонентов shadcn/ui
+│   │   ├── hooks/ · lib/ · fonts/
+│   │   └── index.css       # шрифты, CSS‑переменные, Tailwind
+│   ├── package.json · craco.config.js · tailwind.config.js · .env
+├── backend_test.py         # Интеграционные тесты backend
+├── AI_CONTEXT.md · PROJECT_DETAILS.md · README.md · test_result.md
 ```
 
 ---
 
 ## 🚀 Быстрый старт
 
-### Предварительные требования
-- Node.js 18+
-- Python 3.11+
-- MongoDB
-- Yarn (не npm!)
+Приложение запускается через **supervisor** (uvicorn/craco вручную не запускать).
 
-### Установка
-
-#### 1. Backend
 ```bash
-cd /app/backend
-pip install -r requirements.txt
-```
+# Зависимости
+cd /app/backend  && pip install -r requirements.txt
+cd /app/frontend && yarn install      # ТОЛЬКО yarn, не npm
 
-#### 2. Frontend
-```bash
-cd /app/frontend
-yarn install
+# Запуск / перезапуск
+sudo supervisorctl restart all
+sudo supervisorctl status
+
+# Логи
+tail -n 100 /var/log/supervisor/backend.err.log
+tail -n 100 /var/log/supervisor/frontend.err.log
 ```
 
 ### Переменные окружения
-
-#### Backend (.env)
+**backend/.env**
 ```env
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=test_database
 CORS_ORIGINS=*
-TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_BOT_TOKEN=<токен вашего Telegram‑бота>
 ```
-
-#### Frontend (.env)
+**frontend/.env**
 ```env
-REACT_APP_BACKEND_URL=http://localhost:8001
+REACT_APP_BACKEND_URL=<внешний URL backend>
 WDS_SOCKET_PORT=443
+ENABLE_HEALTH_CHECK=false
 ```
-
-### Запуск (через supervisor)
-```bash
-sudo supervisorctl start all
-```
+> ⚠️ Значения URL/портов в `.env` не менять. Frontend всегда обращается к backend по `REACT_APP_BACKEND_URL` + `/api`.
 
 ---
 
@@ -121,156 +100,68 @@ sudo supervisorctl start all
 | Метод | Endpoint | Описание |
 |-------|----------|----------|
 | GET | `/api/` | Health check |
-| POST | `/api/status` | Создать статус |
-| GET | `/api/status` | Получить все статусы |
+| POST | `/api/users` | Создать/обновить пользователя (upsert по `telegram_id`) |
+| GET | `/api/users/{telegram_id}` | Получить пользователя (404 если нет) |
+| GET | `/api/telegram/avatar/{user_id}` | URL аватара через Telegram Bot API |
+| POST | `/api/status` | (демо) Создать запись статуса |
+| GET | `/api/status` | (демо) Список статусов |
 
-### Пример запроса
+### Примеры
 ```bash
-# Health check
 curl http://localhost:8001/api/
 
-# Создать статус
-curl -X POST http://localhost:8001/api/status \
+curl -X POST http://localhost:8001/api/users \
   -H "Content-Type: application/json" \
-  -d '{"client_name": "Test User"}'
+  -d '{"telegram_id": 12345, "first_name": "Иван", "username": "ivan"}'
 ```
 
 ---
 
-## 🎨 UI Компоненты
+## 📱 Telegram‑интеграция
 
-### Текущие компоненты
+Приложение использует [Telegram WebApp API](https://core.telegram.org/bots/webapps):
 
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| Home | App.js | Главная страница |
-| DateSelector | components/DateSelector.js | Выбор дня недели с прогрессом |
-| ProgressRing | components/DateSelector.js | Круговой progress bar |
-
-### Shadcn/UI компоненты (46 шт)
-Все компоненты находятся в `frontend/src/components/ui/`:
-- Button, Card, Dialog, Drawer
-- Form, Input, Label
-- Sheet, Tabs, Toast
-- Progress, Slider, Switch
-- И многие другие...
-
----
-
-## 📱 Telegram интеграция
-
-Приложение использует [Telegram WebApp API](https://core.telegram.org/bots/webapps) для:
-
-1. **Получения данных пользователя:**
-   - Имя, фото, username
-   - ID пользователя
-
-2. **Управления WebApp:**
-   - `tg.ready()` — сигнал готовности
-   - `tg.expand()` — развернуть на весь экран
-
-### Использование в коде
 ```javascript
 if (window.Telegram?.WebApp) {
   const tg = window.Telegram.WebApp;
-  const user = tg.initDataUnsafe?.user;
-  console.log(user.first_name, user.photo_url);
+  tg.ready();
+  tg.expand();
+  const user = tg.initDataUnsafe?.user; // id, first_name, username, language_code...
 }
 ```
+> Вне Telegram (обычный браузер) `window.Telegram` отсутствует — имя по умолчанию «Гость», регистрация не вызывается. Это ожидаемое поведение при локальной разработке.
 
 ---
 
-## 🔧 Разработка
+## 🗺️ Roadmap
 
-### Добавление зависимостей
-
-```bash
-# Frontend (ТОЛЬКО yarn!)
-cd /app/frontend && yarn add package-name
-
-# Backend
-cd /app/backend
-pip install package-name
-echo "package-name==version" >> requirements.txt
-```
-
-### Перезапуск сервисов
-
-```bash
-# Перезапуск всех
-sudo supervisorctl restart all
-
-# Отдельно frontend
-sudo supervisorctl restart frontend
-
-# Отдельно backend
-sudo supervisorctl restart backend
-```
-
-### Просмотр логов
-
-```bash
-# Backend
-tail -f /var/log/supervisor/backend.err.log
-
-# Frontend
-tail -f /var/log/supervisor/frontend.err.log
-```
-
----
-
-## 📋 Roadmap
-
-### ✅ Выполнено
-- [x] Базовая структура проекта
-- [x] Header с логотипом и аватаром
-- [x] Интеграция с Telegram WebApp API
+### ✅ Готово
+- [x] Базовая структура, шапка с логотипом и меню
+- [x] Telegram WebApp init + регистрация пользователя в MongoDB
+- [x] Backend‑эндпоинт аватара (Telegram Bot API)
 - [x] Приветствие по времени суток
-- [x] DateSelector с progress ring
-- [x] Shadcn/UI компоненты
+- [x] Недельный DateSelector с progress ring
 
-### 🔄 В разработке
-- [ ] Регистрация пользователя
-- [ ] Выбор тренировочного плана
-- [ ] API для упражнений
-
-### 📝 Планируется
-- [ ] Карточки упражнений
-- [ ] Отметка выполнения
-- [ ] Таймер отдыха
-- [ ] Профиль пользователя
-- [ ] Статистика прогресса
+### 🔄 В работе / Планируется
+- [ ] Вывод аватара в шапку (backend уже готов)
+- [ ] Реальный прогресс вместо `MOCK_PROGRESS` и подсчёт streak
+- [ ] Тренировочные планы и упражнения (API + экраны)
+- [ ] Отметка выполнения, таймер отдыха, профиль, статистика
 
 ---
 
-## 📚 Документация для AI агентов
+## ⚠️ Важные правила разработки
 
-Подробный контекст для работы AI агентов находится в файле **[AI_CONTEXT.md](./AI_CONTEXT.md)**:
+1. Пакеты фронта — только **yarn**.
+2. Все API‑роуты — с префиксом **`/api`**.
+3. Не хардкодить URL/порты — только из `.env`.
+4. ID в MongoDB — только **UUID**, не ObjectID.
+5. Сервисы — только через **supervisor** (hot reload включён; перезапуск нужен при изменении `.env`).
 
-- Дизайн-система и цвета
-- Структура компонентов
-- API спецификации
-- Правила разработки (DO/DON'T)
-- Команды и конфигурация
-
----
-
-## ⚠️ Важные замечания
-
-1. **Использовать yarn** вместо npm для установки пакетов
-2. **Все API роуты** начинаются с `/api`
-3. **Не хардкодить URLs** — использовать переменные окружения
-4. **MongoDB ObjectID** не использовать — только UUID
-5. **Hot reload** работает автоматически, кроме изменений в .env
+Полные правила — в [AI_CONTEXT.md](./AI_CONTEXT.md).
 
 ---
 
 ## 📄 Лицензия
 
-Этот проект создан с использованием [Emergent.sh](https://emergent.sh)
-
----
-
-## 🤝 Контакты
-
-Для вопросов и предложений используйте Telegram бота.
+Проект создан с использованием [Emergent.sh](https://emergent.sh).
