@@ -106,9 +106,6 @@
   line-height: 1;
   color: #FFFFFF;
   margin: 0;
-  /* Оптическая коррекция: глифы GG Zaglav сидят выше центра строки,
-     сдвигаем вниз, чтобы текст совпал по центру с кнопкой */
-  transform: translateY(0.167em);
 }
 
 /* Launch (dark pill) button */
