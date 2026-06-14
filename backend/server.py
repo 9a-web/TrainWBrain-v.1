@@ -1,22 +1,27 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Body
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 import httpx
 
 from models import (
     Exercise, ExerciseCreate,
     ProgramTemplate, ProgramTemplateCreate,
     Plan, PlanCreate,
+    WorkoutSession, SessionStartReq,
 )
-from seed import seed_builtins, ensure_indexes
+from seed import (
+    seed_builtins, ensure_indexes,
+    group_letters, muscle_letter, percent_of, scheme_tonnage,
+)
 
 
 ROOT_DIR = Path(__file__).parent
@@ -313,6 +318,7 @@ async def create_plan(payload: PlanCreate):
     weeks = payload.weeks
     name = payload.name
     source_template_id = payload.template_id
+    one_rep_max = payload.one_rep_max or {}
 
     if payload.template_id:
         tpl = await db.programs.find_one({"id": payload.template_id}, {"_id": 0})
@@ -321,6 +327,8 @@ async def create_plan(payload: PlanCreate):
         weeks = tpl["weeks"]  # снимок структуры
         if not name:
             name = tpl["name"]
+        if not one_rep_max:
+            one_rep_max = tpl.get("default_one_rep_max") or {}
 
     if weeks is None:
         raise HTTPException(status_code=400, detail="Either template_id or weeks must be provided")
@@ -338,6 +346,7 @@ async def create_plan(payload: PlanCreate):
         name=name or "Мой план",
         start_date=payload.start_date,
         weeks=weeks,
+        one_rep_max=one_rep_max,
     )
     doc = plan.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -364,6 +373,120 @@ async def get_plan(plan_id: str):
     return doc
 
 
+# ===========================================================================
+# Хелперы Фазы 2 (расчёт %1ПМ, схемы подходов, статистика сессии)
+# ===========================================================================
+_DIFF_RANK = {"Легко": 1, "Средне": 2, "Тяжело": 3}
+
+
+def _int_or_zero(v):
+    if isinstance(v, int):
+        return v
+    if v is None:
+        return 0
+    m = re.match(r"\s*(\d+)", str(v))
+    return int(m.group(1)) if m else 0
+
+
+def _resolve_sets(pe, orm):
+    """Список рабочих подходов с рассчитанным %1ПМ. pe — ProgramExercise dict."""
+    slug = pe.get("exercise_slug")
+    scheme = pe.get("sets_scheme") or []
+    if not scheme:
+        scheme = [{
+            "weight": pe.get("target_weight"),
+            "sets": pe.get("target_sets") or 1,
+            "reps": _int_or_zero(pe.get("target_reps")),
+        }]
+    out = []
+    for s in scheme:
+        w = s.get("weight")
+        out.append({
+            "weight": w,
+            "sets": s.get("sets") or 1,
+            "reps": s.get("reps") or 0,
+            "percent_1rm": percent_of(w, slug, orm),
+        })
+    return out
+
+
+def _view_exercise(pe, orm, order, status="pending"):
+    """Унифицированная карточка упражнения для экрана дня/сессии."""
+    sets = _resolve_sets(pe, orm)
+    return {
+        "order": order,
+        "exercise_id": pe.get("exercise_id"),
+        "exercise_slug": pe.get("exercise_slug"),
+        "exercise_name": pe.get("exercise_name"),
+        "muscle_group": pe.get("muscle_group"),
+        "muscle_letter": muscle_letter(pe.get("muscle_group")),
+        "difficulty": pe.get("difficulty"),
+        "sets_scheme": sets,
+        "tonnage": scheme_tonnage(sets),
+        "status": status,
+    }
+
+
+def _day_group_difficulty(exercises):
+    group = group_letters([e.get("muscle_group") for e in exercises])
+    diffs = [e.get("difficulty") for e in exercises if e.get("difficulty")]
+    difficulty = max(diffs, key=lambda d: _DIFF_RANK.get(d, 0)) if diffs else None
+    return group, difficulty
+
+
+def _build_session_exercises(day_obj, orm):
+    ordered = sorted(day_obj.get("exercises", []), key=lambda x: x.get("order", 0))
+    exs = [_view_exercise(pe, orm, i) for i, pe in enumerate(ordered)]
+    if exs:
+        exs[0]["status"] = "in_progress"
+    return exs
+
+
+def _session_stats(session):
+    exs = session.get("exercises", [])
+    total = len(exs)
+    done = [e for e in exs if e.get("status") == "done"]
+    skipped = [e for e in exs if e.get("status") == "skipped"]
+    tonnage = round(sum(e.get("tonnage", 0) or 0 for e in done))
+    group = group_letters([e.get("muscle_group") for e in exs])
+    diffs = [e.get("difficulty") for e in exs if e.get("difficulty")]
+    difficulty = max(diffs, key=lambda d: _DIFF_RANK.get(d, 0)) if diffs else None
+
+    started = session.get("started_at")
+    finished = session.get("finished_at")
+    duration_sec = 0
+    if started:
+        try:
+            start_dt = datetime.fromisoformat(started) if isinstance(started, str) else started
+            if finished:
+                end_dt = datetime.fromisoformat(finished) if isinstance(finished, str) else finished
+            else:
+                end_dt = datetime.now(timezone.utc)
+            duration_sec = max(0, int((end_dt - start_dt).total_seconds()))
+        except Exception:
+            duration_sec = 0
+
+    progress_pct = round(len(done) / total * 100) if total else 0
+    return {
+        "tonnage": tonnage,
+        "group": group,
+        "difficulty": difficulty,
+        "duration_sec": duration_sec,
+        "done_count": len(done),
+        "skipped_count": len(skipped),
+        "total_count": total,
+        "progress_pct": progress_pct,
+    }
+
+
+def _serialize_session(session):
+    out = dict(session)
+    out.pop("_id", None)
+    out["stats"] = _session_stats(session)
+    return out
+
+
+# ---- День плана (превью перед стартом) ----
 @api_router.get("/plans/{plan_id}/day")
 async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
     """День плана: упражнения + мета. day = 1..7 (Пн..Вс)."""
@@ -371,9 +494,11 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    orm = doc.get("one_rep_max") or {}
     rest_response = {
         "plan_id": plan_id, "week_index": week, "day_index": day,
         "is_rest": True, "title": "День отдыха", "exercises": [],
+        "group": "", "difficulty": None,
     }
     week_obj = next((w for w in doc["weeks"] if w["week_index"] == week), None)
     if not week_obj:
@@ -381,7 +506,16 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
     day_obj = next((d for d in week_obj["days"] if d["day_index"] == day), None)
     if not day_obj:
         return rest_response
-    return {"plan_id": plan_id, "week_index": week, **day_obj}
+
+    ordered = sorted(day_obj.get("exercises", []), key=lambda x: x.get("order", 0))
+    exercises = [_view_exercise(pe, orm, i) for i, pe in enumerate(ordered)]
+    group, difficulty = _day_group_difficulty(exercises)
+    return {
+        "plan_id": plan_id, "week_index": week, "day_index": day_obj["day_index"],
+        "title": day_obj.get("title", ""), "is_rest": False,
+        "group": group, "difficulty": difficulty,
+        "exercises": exercises,
+    }
 
 
 @api_router.get("/plans/{plan_id}/week-progress")
@@ -397,29 +531,240 @@ async def get_week_progress(plan_id: str, week: int = 1):
         for d in week_obj["days"]:
             if d.get("is_rest"):
                 continue
-            planned_sets = sum(int(e.get("target_sets", 0)) for e in d.get("exercises", []))
+            planned_sets = sum(int(e.get("target_sets", 0) or 0) for e in d.get("exercises", []))
             days_map[d["day_index"]] = {
                 "title": d.get("title", ""),
                 "exercise_count": len(d.get("exercises", [])),
                 "planned_sets": planned_sets,
             }
 
+    # Сессии этой недели — для реального прогресса колец
+    sessions = await db.workout_sessions.find(
+        {"plan_id": plan_id, "week_index": week}, {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+    sess_by_day = {s["day_index"]: s for s in sessions}
+
     days = []
     for di in range(1, 8):
         info = days_map.get(di)
+        s = sess_by_day.get(di)
         if info:
+            progress_pct = 0
+            is_done = False
+            if s:
+                st = _session_stats(s)
+                progress_pct = st["progress_pct"]
+                is_done = s.get("status") == "finished"
             days.append({
                 "day_index": di, "is_workout": True, "title": info["title"],
                 "exercise_count": info["exercise_count"], "planned_sets": info["planned_sets"],
-                "completed_sets": 0, "progress_pct": 0,  # Phase 2: реальные данные из сессий
+                "progress_pct": progress_pct, "is_done": is_done, "has_session": bool(s),
             })
         else:
             days.append({
                 "day_index": di, "is_workout": False, "title": "Отдых",
                 "exercise_count": 0, "planned_sets": 0,
-                "completed_sets": 0, "progress_pct": 0,
+                "progress_pct": 0, "is_done": False, "has_session": False,
             })
     return {"plan_id": plan_id, "week_index": week, "days": days}
+
+
+# ===========================================================================
+# Тренировочные сессии (Phase 2)
+# ===========================================================================
+@api_router.post("/sessions/start")
+async def start_session(req: SessionStartReq):
+    plan = await db.plans.find_one({"id": req.plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    existing = await db.workout_sessions.find_one(
+        {"plan_id": req.plan_id, "athlete_telegram_id": req.athlete_telegram_id,
+         "week_index": req.week, "day_index": req.day, "status": {"$ne": "finished"}},
+        {"_id": 0},
+    )
+    if existing:
+        return _serialize_session(existing)
+
+    week_obj = next((w for w in plan["weeks"] if w["week_index"] == req.week), None)
+    day_obj = next((d for d in week_obj["days"] if d["day_index"] == req.day), None) if week_obj else None
+    if not day_obj or day_obj.get("is_rest"):
+        raise HTTPException(status_code=400, detail="No workout scheduled for this day")
+
+    orm = plan.get("one_rep_max") or {}
+    now = datetime.now(timezone.utc).isoformat()
+    session = {
+        "id": str(uuid.uuid4()),
+        "plan_id": req.plan_id,
+        "athlete_telegram_id": req.athlete_telegram_id,
+        "coach_telegram_id": plan.get("coach_telegram_id"),
+        "week_index": req.week, "day_index": req.day, "date": None,
+        "title": day_obj.get("title", ""),
+        "status": "in_progress", "paused": False,
+        "started_at": now, "finished_at": None,
+        "exercises": _build_session_exercises(day_obj, orm),
+        "created_at": now, "updated_at": now,
+    }
+    await db.workout_sessions.insert_one(dict(session))
+    logger.info(f"Session started: {session['id']} plan={req.plan_id} day={req.day}")
+    return _serialize_session(session)
+
+
+@api_router.get("/sessions/active")
+async def get_active_session(plan_id: str, week: int, day: int, athlete: int):
+    s = await db.workout_sessions.find_one(
+        {"plan_id": plan_id, "athlete_telegram_id": athlete, "week_index": week, "day_index": day},
+        {"_id": 0}, sort=[("created_at", -1)],
+    )
+    if not s:
+        return None
+    return _serialize_session(s)
+
+
+@api_router.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _serialize_session(s)
+
+
+@api_router.patch("/sessions/{session_id}/exercise/{order}")
+async def update_session_exercise(session_id: str, order: int, action: str):
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    exs = s["exercises"]
+    target = next((e for e in exs if e["order"] == order), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    if action == "done":
+        target["status"] = "done"
+    elif action == "skip":
+        target["status"] = "skipped"
+    elif action == "reset":
+        target["status"] = "pending"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    # Следующее ожидающее упражнение делаем активным, если активного не осталось
+    if not any(e["status"] == "in_progress" for e in exs):
+        nxt = next((e for e in exs if e["status"] == "pending"), None)
+        if nxt:
+            nxt["status"] = "in_progress"
+
+    now = datetime.now(timezone.utc).isoformat()
+    status = s.get("status", "in_progress")
+    finished_at = s.get("finished_at")
+    if exs and all(e["status"] in ("done", "skipped") for e in exs):
+        status = "finished"
+        finished_at = finished_at or now
+
+    await db.workout_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"exercises": exs, "status": status, "finished_at": finished_at, "updated_at": now}},
+    )
+    s["exercises"] = exs
+    s["status"] = status
+    s["finished_at"] = finished_at
+    return _serialize_session(s)
+
+
+@api_router.patch("/sessions/{session_id}/exercise/{order}/edit")
+async def edit_session_exercise(session_id: str, order: int, payload: dict = Body(...)):
+    """Редактирование упражнения сессии (кнопка ✨): имя и/или схема подходов."""
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    plan = await db.plans.find_one({"id": s["plan_id"]}, {"_id": 0})
+    orm = (plan or {}).get("one_rep_max") or {}
+
+    exs = s["exercises"]
+    target = next((e for e in exs if e["order"] == order), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    if payload.get("exercise_name"):
+        target["exercise_name"] = payload["exercise_name"]
+    if isinstance(payload.get("sets_scheme"), list):
+        slug = target.get("exercise_slug")
+        new_sets = []
+        for st in payload["sets_scheme"]:
+            w = st.get("weight")
+            new_sets.append({
+                "weight": w,
+                "sets": st.get("sets") or 1,
+                "reps": st.get("reps") or 0,
+                "percent_1rm": percent_of(w, slug, orm),
+            })
+        target["sets_scheme"] = new_sets
+        target["tonnage"] = scheme_tonnage(new_sets)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.workout_sessions.update_one(
+        {"id": session_id}, {"$set": {"exercises": exs, "updated_at": now}}
+    )
+    s["exercises"] = exs
+    return _serialize_session(s)
+
+
+@api_router.post("/sessions/{session_id}/finish")
+async def finish_session(session_id: str):
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.now(timezone.utc).isoformat()
+    finished_at = s.get("finished_at") or now
+    await db.workout_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"status": "finished", "finished_at": finished_at, "updated_at": now}},
+    )
+    s["status"] = "finished"
+    s["finished_at"] = finished_at
+    return _serialize_session(s)
+
+
+@api_router.post("/sessions/{session_id}/pause")
+async def pause_session(session_id: str, resume: bool = False):
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.workout_sessions.update_one(
+        {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now}}
+    )
+    s["paused"] = (not resume)
+    return _serialize_session(s)
+
+
+# ---- Сводная статистика спортсмена (серия/streak) ----
+@api_router.get("/stats/{telegram_id}")
+async def get_athlete_stats(telegram_id: int):
+    sessions = await db.workout_sessions.find(
+        {"athlete_telegram_id": telegram_id, "status": "finished"},
+        {"_id": 0, "finished_at": 1},
+    ).to_list(2000)
+
+    dates = set()
+    for s in sessions:
+        fa = s.get("finished_at")
+        if fa:
+            try:
+                dates.add(datetime.fromisoformat(fa).date())
+            except Exception:
+                pass
+
+    streak = 0
+    if dates:
+        today = datetime.now(timezone.utc).date()
+        cur = today if today in dates else (today - timedelta(days=1))
+        while cur in dates:
+            streak += 1
+            cur = cur - timedelta(days=1)
+
+    return {"telegram_id": telegram_id, "streak_days": streak, "total_workouts": len(dates)}
 
 
 # Include the router in the main app

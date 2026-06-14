@@ -51,11 +51,23 @@ class Exercise(BaseModel):
 # ---------------------------------------------------------------------------
 # Встроенные структуры программы (embedded)
 # ---------------------------------------------------------------------------
+class SetScheme(BaseModel):
+    """Одна группа рабочих подходов: вес × подходы × повторы."""
+    model_config = ConfigDict(extra="ignore")
+
+    weight: Optional[float] = None
+    sets: int = 1
+    reps: int = 1
+
+
 class ProgramExercise(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     exercise_id: Optional[str] = None
+    exercise_slug: Optional[str] = None
     exercise_name: str
+    muscle_group: Optional[str] = None    # ключ мышечной группы каталога, напр. "legs"
+    difficulty: Optional[str] = None       # "Легко" | "Средне" | "Тяжело" (задаёт тренер)
     order: int = 0
     target_sets: int = 3
     target_reps: str = "10"           # строка: "5", "8-12", "AMRAP"
@@ -64,6 +76,7 @@ class ProgramExercise(BaseModel):
     target_rpe: Optional[float] = None
     rest_seconds: Optional[int] = None
     notes: Optional[str] = None
+    sets_scheme: List[SetScheme] = Field(default_factory=list)  # рабочие подходы (вес×подходы×повторы)
 
 
 class ProgramDay(BaseModel):
@@ -113,6 +126,7 @@ class ProgramTemplate(BaseModel):
     is_builtin: bool = False
     owner_telegram_id: Optional[int] = None
     tags: List[str] = Field(default_factory=list)
+    default_one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (референсные максимумы)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -127,6 +141,7 @@ class PlanCreate(BaseModel):
     name: Optional[str] = None
     coach_telegram_id: Optional[int] = None
     start_date: Optional[str] = None           # ISO date (YYYY-MM-DD)
+    one_rep_max: Optional[dict] = None
 
 
 class Plan(BaseModel):
@@ -141,5 +156,58 @@ class Plan(BaseModel):
     start_date: Optional[str] = None
     current_week: int = 1
     weeks: List[ProgramWeek] = Field(default_factory=list)
+    one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (для расчёта %1ПМ)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------------------------------------------------------------------------
+# Тренировочная сессия (Phase 2): запуск дня тренировки и отметка упражнений
+# ---------------------------------------------------------------------------
+class SessionSet(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    weight: Optional[float] = None
+    sets: int = 1
+    reps: int = 1
+    percent_1rm: Optional[float] = None
+
+
+class SessionExercise(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    order: int = 0
+    exercise_id: Optional[str] = None
+    exercise_slug: Optional[str] = None
+    exercise_name: str
+    muscle_group: Optional[str] = None
+    muscle_letter: Optional[str] = None
+    difficulty: Optional[str] = None
+    sets_scheme: List[SessionSet] = Field(default_factory=list)
+    tonnage: float = 0
+    status: str = "pending"          # pending | in_progress | done | skipped
+
+
+class WorkoutSession(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=_uuid)
+    plan_id: str
+    athlete_telegram_id: int
+    coach_telegram_id: Optional[int] = None
+    week_index: int = 1
+    day_index: int = 1
+    date: Optional[str] = None
+    title: str = ""
+    status: str = "in_progress"      # in_progress | finished | aborted
+    paused: bool = False
+    started_at: Optional[datetime] = Field(default_factory=_now)
+    finished_at: Optional[datetime] = None
+    exercises: List[SessionExercise] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class SessionStartReq(BaseModel):
+    plan_id: str
+    athlete_telegram_id: int
+    week: int = 1
+    day: int = 1

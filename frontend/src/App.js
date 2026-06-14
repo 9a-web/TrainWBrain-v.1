@@ -1,54 +1,12 @@
-import { useEffect, useState } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { Toaster } from "sonner";
+import { UserProvider, useUser } from "@/context/UserContext";
 import DateSelector from "@/components/DateSelector";
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Programs from "@/pages/Programs";
 
 const Home = () => {
-  const [telegramUser, setTelegramUser] = useState(null);
-  const [dbUser, setDbUser] = useState(null);
-
-  // Регистрация/обновление пользователя в БД
-  const registerUser = async (tgUser) => {
-    try {
-      const response = await axios.post(`${API}/users`, {
-        telegram_id: tgUser.id,
-        first_name: tgUser.first_name,
-        last_name: tgUser.last_name || null,
-        username: tgUser.username || null,
-        language_code: tgUser.language_code || null
-      });
-      setDbUser(response.data);
-      console.log('User registered/updated:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Failed to register user:', error);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    // Инициализация Telegram WebApp
-    const initTelegram = async () => {
-      if (window.Telegram?.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        const user = tg.initDataUnsafe?.user;
-        if (user) {
-          setTelegramUser(user);
-          // Регистрируем пользователя в БД
-          await registerUser(user);
-        }
-      }
-    };
-    
-    initTelegram();
-  }, []);
+  const { user } = useUser();
 
   // Get greeting and icon based on current time
   const getGreetingData = () => {
@@ -88,13 +46,14 @@ const Home = () => {
           
           {/* Right side: Menu */}
           <div className="header-right" data-testid="header-right">
-            <button 
-              className="menu-button" 
+            <Link
+              to="/programs"
+              className="menu-button"
               data-testid="menu-button"
-              aria-label="Open menu"
+              aria-label="Программы"
             >
-              <img src="/menu.svg" alt="Menu" width={40} height={40} />
-            </button>
+              <img src="/menu.svg" alt="Программы" width={40} height={40} />
+            </Link>
           </div>
         </header>
         
@@ -102,7 +61,7 @@ const Home = () => {
         <main className="main-content" data-testid="main-content">
           <div className="greeting-row" data-testid="greeting-row">
             <h1 className="greeting-text" data-testid="greeting-text">
-              {greetingData.text}, {telegramUser?.first_name || 'Гость'}!
+              {greetingData.text}, {user?.first_name || 'Гость'}!
             </h1>
             <img 
               src={greetingData.icon} 
@@ -136,11 +95,15 @@ const Home = () => {
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
+      <UserProvider>
+        <BrowserRouter>
+          <Toaster position="top-center" theme="dark" richColors />
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/programs" element={<Programs />} />
+          </Routes>
+        </BrowserRouter>
+      </UserProvider>
     </div>
   );
 }

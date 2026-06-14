@@ -195,6 +195,51 @@ backend:
         agent: "testing"
         comment: "✅ TESTED: All plans endpoints working perfectly. (1) POST /api/plans with template_id creates plan with status='active', name from template, 4-week SNAPSHOT from Full Body template. (2) GET /api/plans/active/770001 returns the created plan. (3) Creating SECOND plan from Upper/Lower template correctly deactivates first plan (single active plan rule verified). (4) GET /api/plans/active/770001 now returns second plan. (5) GET /api/plans/{id} returns plan detail; GET /api/plans/{bad_id} returns 404. (6) GET /api/plans/{id}/day?week=1&day=1 returns workout day with 3 exercises (exercise_name, target_sets, target_reps). (7) GET /api/plans/{id}/day?week=1&day=2 returns rest day (is_rest=true, exercises empty). (8) GET /api/plans/{id}/week-progress?week=1 returns 7 days (day_index 1..7) with correct Full Body schedule: days 1,3,5 are workouts (planned_sets=9,7,9), days 2,4,6,7 are rest. (9) POST /api/plans without template_id and weeks returns 400. All UUIDs, no ObjectId leaks. Tested with telegram_id=770001."
 
+  - task: "Phase 2 - Plan day enrichment + %1RM"
+    implemented: true
+    working: true
+    file: "server.py, models.py, seed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Plan now stores one_rep_max (copied from template default_one_rep_max). GET /api/plans/{id}/day returns enriched exercises: sets_scheme (each set with computed percent_1rm = round(weight/1RM*100)), muscle_letter (Н/Г/С/П/Р/К from muscle_group), difficulty, tonnage, plus day-level group (e.g. Н+Г+С) and difficulty. Powerlifting template has a 7-exercise heavy day. Verified via curl: bench 127.5kg->91%, 115kg->82%; squat 160->94%, 142.5->84% (matches design). Seed now 29 exercises / 3 templates."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Plan day enrichment and %1RM calculations working perfectly. (1) Created plan from powerlifting-peaking template for athlete 880099 - one_rep_max correctly populated with bench-press:140, back-squat:170, deadlift:200. (2) GET /api/plans/{id}/day?week=1&day=1 returns exactly 7 exercises with day-level group='Н+Г+С+Р+К' and difficulty='Тяжело'. (3) All exercises have muscle_letter, difficulty, tonnage, and sets_scheme with computed percent_1rm. (4) Verified specific calculations: 'Жим лёжа (без ног)' 127.5kg->91% and 115kg->82%; 'Присед (с паузой)' 160kg->94% and 142.5kg->84% - all match expected values. (5) GET /api/plans/{id}/day?week=1&day=3 correctly returns rest day (is_rest=true). All UUIDs, no ObjectId leaks, ISO datetime strings."
+
+  - task: "Phase 2 - Workout sessions lifecycle"
+    implemented: true
+    working: true
+    file: "server.py, models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/sessions/start {plan_id,athlete_telegram_id,week,day} creates session snapshot (first exercise in_progress); idempotent (returns existing non-finished session); 400 if day is rest/no workout. GET /api/sessions/{id} and GET /api/sessions/active?plan_id=&week=&day=&athlete= return serialized session with stats {tonnage(done only), group, difficulty, duration_sec, done_count, skipped_count, total_count, progress_pct}. PATCH /api/sessions/{id}/exercise/{order}?action=done|skip|reset advances next pending to in_progress and auto-finishes when all resolved. PATCH /api/sessions/{id}/exercise/{order}/edit (body {exercise_name?, sets_scheme?}) recomputes tonnage/%. POST /api/sessions/{id}/finish, POST /api/sessions/{id}/pause?resume=bool. Verified full flow via curl (done/skip advance, auto-finish 6/7=86%, tonnage 12150)."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Workout sessions lifecycle working perfectly. (1) POST /api/sessions/start creates session with status='in_progress', exercise[0] in_progress, others pending, stats.total_count=7, tonnage=0, group present. (2) Idempotency verified - calling start again returns same session ID. (3) Starting session for rest day (day=3) correctly returns 400. (4) PATCH exercise/0?action=done: exercise 0 status='done', exercise 1 becomes 'in_progress', stats.done_count=1, tonnage=2220, progress_pct=14. (5) PATCH exercise/1?action=skip: exercise 1 status='skipped', exercise 2 becomes 'in_progress', stats.skipped_count=1. (6) PATCH exercise/1?action=reset: exercise 1 back to 'pending'. (7) Marking all remaining exercises done: session auto-finishes (status='finished', finished_at set), progress_pct=100. (8) GET /api/sessions/{id} returns session with stats. (9) GET /api/sessions/active returns same session. (10) POST /api/sessions/{id}/finish idempotent. (11) POST /api/sessions/{id}/pause?resume=false sets paused=true; resume=true sets paused=false. (12) PATCH /api/sessions/{id}/exercise/0/edit with sets_scheme updates tonnage to 900 and computes percent_1rm=88%. All UUIDs, ISO datetimes."
+
+  - task: "Phase 2 - Stats/streak + week-progress from sessions"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/stats/{telegram_id} returns {streak_days, total_workouts} from finished sessions' distinct dates (consecutive days ending today/yesterday). GET /api/plans/{id}/week-progress now reflects real sessions (progress_pct, is_done, has_session per day). Verified via curl: streak=1 after one finished session; day1 progress 86 / done True."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Stats and week-progress working perfectly. (1) GET /api/stats/880099 returns streak_days=1 and total_workouts=1 after finished session (streak correctly calculated from finished sessions). (2) GET /api/plans/{id}/week-progress?week=1 returns 7 days with correct structure. (3) Day 1 (workout day with finished session) shows progress_pct=100, is_done=true, has_session=true. (4) Day 3 (rest day) correctly shows is_workout=false. Week progress accurately reflects real session data."
+
 frontend:
   - task: "Register user on Telegram WebApp init"
     implemented: true
@@ -229,7 +274,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 2
+  test_sequence: 3
   run_ui: false
 
 test_plan:
@@ -249,3 +294,7 @@ agent_communication:
     message: "PHASE 1 backend ready for testing (Programs & Plans). Please test ONLY the new Phase 1 endpoints (do not re-test old ones unless needed): (1) GET /api/exercises returns 24 built-in exercises; supports ?query=&muscle=&owner=. POST /api/exercises creates custom exercise. (2) GET /api/programs/templates returns 3 built-in templates; GET /api/programs/templates/{id} returns full structure; POST /api/programs/templates creates custom. (3) Plans flow: POST /api/plans with {athlete_telegram_id, template_id} must create a SNAPSHOT plan (status=active) and deactivate previous active plan for same athlete; GET /api/plans/active/{telegram_id} returns it (null if none); GET /api/plans/{id} (404 if missing); GET /api/plans/{id}/day?week=1&day=1 returns exercises; GET /api/plans/{id}/week-progress?week=1 returns 7 days with day_index 1..7 (Mon..Sun) and is_workout flags. Use a fresh test telegram_id (e.g., 770001). Verify idempotent seed (counts stay 24 exercises / 3 templates after restart). Verify UUIDs (no Mongo ObjectId leaks)."
   - agent: "testing"
     message: "✅ PHASE 1 BACKEND TESTS COMPLETE - ALL PASSED: Tested all Phase 1 endpoints with telegram_id=770001. (1) Exercises catalog: 24 built-in exercises returned, filters working (query, muscle), custom exercise creation working. (2) Program templates: 3 built-in templates returned with correct weeks_count, detail endpoint returns full structure, custom template creation working. (3) Plans: Plan creation from template creates SNAPSHOT with correct status, single active plan rule enforced (first plan deactivated when second created), active plan retrieval working, day endpoint returns workout/rest days correctly, week-progress returns 7-day schedule with correct Full Body schedule (Mon/Wed/Fri workouts). (4) Idempotency verified: counts stable at 24 exercises / 3 templates. All responses use UUID strings, no MongoDB ObjectId leaks, all datetime fields are ISO strings. ⚠️ NOTE: External URL (https://avatar-loader-1.preview.emergentagent.com/api/*) returns '404 page not found' for all endpoints - this is a Kubernetes ingress routing issue, NOT a backend code issue. Backend works perfectly on localhost:8001. Tests were run using localhost:8001."
+  - agent: "main"
+    message: "Note: the external URL 404 from previous run was a STALE .env (cloned repo pointed to avatar-loader-1). Fixed frontend/.env REACT_APP_BACKEND_URL to this container; external API now works. PHASE 2 backend ready for testing (seed is now 29 exercises / 3 templates). Please test ONLY Phase 2 (do not re-test Phase 1 unless needed). Use a fresh athlete telegram_id like 880099. (A) Day enrichment + %1RM: create a plan from the 'powerlifting-peaking' template -> plan.one_rep_max must be populated (e.g. bench-press:140, back-squat:170). GET /api/plans/{id}/day?week=1&day=1 -> 7 exercises; verify computed percent_1rm: 'Жим лёжа (без ног)' 127.5kg->91% & 115kg->82%; 'Присед (с паузой)' 160kg->94% & 142.5kg->84%; each exercise has muscle_letter, difficulty, tonnage; day-level group like 'Н+Г+С+Р+К' and difficulty 'Тяжело'. (B) Sessions: POST /api/sessions/start {plan_id,athlete_telegram_id,week:1,day:1} -> session in_progress, exercises[0].status='in_progress', stats.total_count=7, tonnage=0. Calling start again returns SAME session (idempotent). POST start for a REST day (e.g. day=3) -> 400. PATCH /api/sessions/{id}/exercise/0?action=done then exercise/1?action=skip -> statuses [done,skipped,in_progress,...], stats.done_count=1, progress_pct=14. Mark the rest done -> status auto 'finished', progress 100 or 86 depending. GET /api/sessions/{id} and GET /api/sessions/active?plan_id=&week=1&day=1&athlete= return same session with stats. POST /api/sessions/{id}/finish sets finished. POST /api/sessions/{id}/pause?resume=false sets paused true; resume=true sets false. PATCH /api/sessions/{id}/exercise/0/edit body {\"sets_scheme\":[{\"weight\":150,\"sets\":2,\"reps\":3}]} updates tonnage and percent_1rm. (C) Stats: GET /api/stats/{athlete} -> streak_days>=1 after a finished session. GET /api/plans/{id}/week-progress?week=1 -> day with finished session shows progress_pct>0 and is_done=true. Verify UUIDs only, ISO datetimes, no _id leaks."
+  - agent: "testing"
+    message: "✅ PHASE 2 BACKEND TESTS COMPLETE - ALL PASSED: Tested all Phase 2 endpoints with athlete telegram_id=880099 using powerlifting-peaking template. (A) Plan day enrichment + %1RM: Plan created with one_rep_max correctly populated (bench-press:140, back-squat:170, deadlift:200). GET /api/plans/{id}/day?week=1&day=1 returns exactly 7 exercises with day-level group='Н+Г+С+Р+К' and difficulty='Тяжело'. All exercises have muscle_letter, difficulty, tonnage, sets_scheme with computed percent_1rm. Verified specific calculations: 'Жим лёжа (без ног)' 127.5kg->91% & 115kg->82%; 'Присед (с паузой)' 160kg->94% & 142.5kg->84% - all match expected. Day 3 correctly returns rest day. (B) Workout sessions lifecycle: POST /api/sessions/start creates session (status='in_progress', ex[0] in_progress, stats.total_count=7, tonnage=0, group present). Idempotency verified (same session ID returned). REST day start returns 400. PATCH exercise/0?action=done: ex0='done', ex1='in_progress', stats.done_count=1, tonnage=2220, progress_pct=14. PATCH exercise/1?action=skip: ex1='skipped', ex2='in_progress', stats.skipped_count=1. PATCH exercise/1?action=reset: ex1='pending'. All remaining marked done: session auto-finishes (status='finished', progress_pct=100). GET /api/sessions/{id} and GET /api/sessions/active return session with stats. POST /api/sessions/{id}/finish idempotent. POST /api/sessions/{id}/pause works (paused=true/false). PATCH /api/sessions/{id}/exercise/0/edit updates tonnage to 900 and computes percent_1rm=88%. (C) Stats + week-progress: GET /api/stats/880099 returns streak_days=1, total_workouts=1. GET /api/plans/{id}/week-progress?week=1 returns 7 days; day 1 shows progress_pct=100, is_done=true, has_session=true; day 3 (rest) shows is_workout=false. All responses use UUID strings, ISO datetime strings, no MongoDB _id leaks. All 52 test assertions passed."

@@ -1,31 +1,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useUser } from '@/context/UserContext';
+import { getActivePlan, getWeekProgress, getPlanDay } from '@/api';
 import './DateSelector.css';
 
-// Сокращённые названия дней недели
+// Сокращённые названия дней недели (index = JS getDay(): 0=Вс..6=Сб)
 const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
-// Тестовые данные прогресса тренировок (0-100%)
-const MOCK_PROGRESS = {
-  0: 100, // Воскресенье
-  1: 75,  // Понедельник
-  2: 50,  // Вторник
-  3: 0,   // Среда
-  4: 25,  // Четверг
-  5: 0,   // Пятница
-  6: 0,   // Суббота
-};
-
-// Тестовые данные статистики тренировки (пока мок, не из БД)
-const WORKOUT_STATS = [
-  { value: '4600кг', label: 'Тоннаж' },
-  { value: 'Н+Г+С', label: 'Группа' },
-  { value: 'Тяжело', label: 'Сложность' },
-  { value: '2ч. 16м.', label: 'Время' },
-];
+// Преобразование JS getDay() (Вс=0..Сб=6) в day_index плана (Пн=1..Вс=7)
+const toDayIndex = (jsDay) => ((jsDay + 6) % 7) + 1;
 
 // Компонент кругового прогресс-бара
-const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false, index = 0 }) => {
+const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false, isWorkout = false, index = 0 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -53,7 +41,7 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
         r={radius}
         strokeWidth={strokeWidth}
         fill={isSelected ? "transparent" : "#1C1C1C"}
-        style={{ stroke: (progress > 0 || isSelected) ? "rgba(255, 235, 217, 0.6)" : "#1C1C1C" }}
+        style={{ stroke: (progress > 0 || isSelected || isWorkout) ? "rgba(255, 235, 217, 0.6)" : "#1C1C1C" }}
       />
       {/* Прогресс */}
       <circle
@@ -76,20 +64,21 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
 };
 
 // Компонент карточки дня
-const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick, index = 0, animClass = '' }) => {
+const DayCard = ({ date, dayName, dayNumber, progress, isSelected, isWorkout = false, onClick, index = 0, animClass = '' }) => {
   return (
     <button 
-      className={`day-card ${isSelected ? 'day-card-selected' : ''} ${animClass}`}
+      className={`day-card ${isSelected ? 'day-card-selected' : ''} ${isWorkout ? 'day-card-workout' : ''} ${animClass}`}
       onClick={onClick}
-      aria-label={`${dayName}, ${dayNumber} число`}
+      aria-label={`${dayName}, ${dayNumber} число${isWorkout ? ', тренировка' : ''}`}
       aria-pressed={isSelected}
       style={animClass ? { animationDelay: `${index * 55}ms` } : undefined}
     >
       <span className="day-card-name">{dayName}</span>
       <div className="day-card-circle-wrapper">
-        <ProgressRing progress={progress} isSelected={isSelected} index={index} />
+        <ProgressRing progress={progress} isSelected={isSelected} isWorkout={isWorkout} index={index} />
         <span className="day-card-number">{dayNumber}</span>
       </div>
+      {isWorkout ? <span className="day-card-dot" aria-hidden="true" /> : null}
     </button>
   );
 };
@@ -105,36 +94,103 @@ const MONTH_NAMES = [
 const WEEK_OFFSETS = [-1, 0, 1];
 
 const DateSelector = () => {
+  const { user } = useUser();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0); // Смещение недели (0 = текущая)
-  const [slideDir, setSlideDir] = useState(null); // Направление анимации смены недели: 'next' | 'prev' | null
-  
+  const [slideDir, setSlideDir] = useState(null); // Направление анимации смены недели
+
+  const [plan, setPlan] = useState(null);
+  const [planLoading, setPlanLoading] = useState(true);
+  const [progressByDay, setProgressByDay] = useState({}); // day_index -> info
+  const [dayDetail, setDayDetail] = useState(null);
+
+  // Какая неделя плана соответствует отображаемому смещению
+  const planWeek = useMemo(() => {
+    if (!plan) return 1;
+    const base = plan.current_week || 1;
+    const total = (plan.weeks && plan.weeks.length) || 1;
+    return Math.min(Math.max(1, base + weekOffset), total);
+  }, [plan, weekOffset]);
+
+  // Загрузка активного плана спортсмена
+  useEffect(() => {
+    if (!user?.telegram_id) return undefined;
+    let cancelled = false;
+    setPlanLoading(true);
+    (async () => {
+      try {
+        const p = await getActivePlan(user.telegram_id);
+        if (!cancelled) setPlan(p);
+      } catch (e) {
+        if (!cancelled) setPlan(null);
+      } finally {
+        if (!cancelled) setPlanLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.telegram_id]);
+
+  // Загрузка прогресса по дням выбранной недели
+  useEffect(() => {
+    if (!plan?.id) { setProgressByDay({}); return undefined; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getWeekProgress(plan.id, planWeek);
+        if (cancelled) return;
+        const map = {};
+        (data.days || []).forEach((d) => { map[d.day_index] = d; });
+        setProgressByDay(map);
+      } catch (e) {
+        if (!cancelled) setProgressByDay({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [plan?.id, planWeek]);
+
   // Генерируем дни недели с учётом смещения
   const weekDays = useMemo(() => {
     const today = new Date();
     const currentDay = today.getDay(); // 0 = Воскресенье
-    
-    // Начало недели (Понедельник) с учётом смещения
+
     const monday = new Date(today);
     monday.setDate(today.getDate() - ((currentDay + 6) % 7) + (weekOffset * 7));
-    
+
     const days = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(monday);
       date.setDate(monday.getDate() + i);
-      
-      const dayOfWeek = date.getDay();
+
+      const di = toDayIndex(date.getDay());
+      const info = progressByDay[di];
       days.push({
         date: date,
-        dayName: DAY_NAMES[dayOfWeek],
+        dayName: DAY_NAMES[date.getDay()],
         dayNumber: date.getDate(),
-        progress: MOCK_PROGRESS[dayOfWeek] || 0,
+        progress: info?.progress_pct || 0,
+        isWorkout: !!info?.is_workout,
       });
     }
-    
+
     return days;
-  }, [weekOffset]);
-  
+  }, [weekOffset, progressByDay]);
+
+  // Загрузка деталей выбранного дня
+  useEffect(() => {
+    if (!plan?.id) { setDayDetail(null); return undefined; }
+    const di = toDayIndex(selectedDate.getDay());
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await getPlanDay(plan.id, planWeek, di);
+        if (!cancelled) setDayDetail(d);
+      } catch (e) {
+        if (!cancelled) setDayDetail(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [plan?.id, planWeek, selectedDate]);
+
   const handleDayClick = (date, event) => {
     setSelectedDate(date);
     // Автоматический скролл к выбранной карточке дня
@@ -146,23 +202,49 @@ const DateSelector = () => {
       });
     }
   };
-  
+
   const handleWeekDotClick = (offset) => {
     if (offset === weekOffset) return;
-    // Направление: вперёд (следующая) — выезд справа, назад (прошлая) — слева
     setSlideDir(offset > weekOffset ? 'next' : 'prev');
     setWeekOffset(offset);
   };
-  
+
   const isSameDay = (date1, date2) => {
     return date1.getDate() === date2.getDate() &&
            date1.getMonth() === date2.getMonth() &&
            date1.getFullYear() === date2.getFullYear();
   };
-  
+
   // Форматирование выбранной даты
   const formattedDate = `${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]}`;
-  
+
+  const isRestSelected = !dayDetail || dayDetail.is_rest;
+
+  // Статистика выбранного дня (реальные данные из плана)
+  const dayStats = useMemo(() => {
+    const exs = (dayDetail && !dayDetail.is_rest && dayDetail.exercises) || [];
+    if (!exs.length) return [];
+    const totalSets = exs.reduce((s, e) => s + (Number(e.target_sets) || 0), 0);
+    const estSec = exs.reduce(
+      (s, e) => s + (Number(e.target_sets) || 0) * ((Number(e.rest_seconds) || 90) + 40),
+      0
+    );
+    const h = Math.floor(estSec / 3600);
+    const m = Math.round((estSec % 3600) / 60);
+    const timeStr = h > 0 ? `${h}ч ${m}м` : `${m}м`;
+    return [
+      { value: String(exs.length), label: 'Упражнений' },
+      { value: String(totalSets), label: 'Подходов' },
+      { value: `~${timeStr}`, label: 'Время' },
+    ];
+  }, [dayDetail]);
+
+  const handleStart = () => {
+    if (!plan) { toast.info('Сначала выберите программу'); return; }
+    if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
+    toast('Запуск тренировки появится в Фазе 2 🏋️', { description: dayDetail.title });
+  };
+
   return (
     <div className="date-selector" data-testid="date-selector">
       <div className="date-selector-row">
@@ -205,6 +287,7 @@ const DateSelector = () => {
               dayName={day.dayName}
               dayNumber={day.dayNumber}
               progress={day.progress}
+              isWorkout={day.isWorkout}
               isSelected={isSameDay(day.date, selectedDate)}
               onClick={(e) => handleDayClick(day.date, e)}
               index={index}
@@ -226,21 +309,65 @@ const DateSelector = () => {
           className="launch-button"
           type="button"
           data-testid="launch-button"
+          onClick={handleStart}
+          disabled={!plan || isRestSelected}
         >
           <Zap className="launch-button-icon" size={16} strokeWidth={2.5} />
           <span>Начать</span>
         </button>
       </div>
 
-      {/* Статистика тренировки (мок-данные) */}
-      <div className="workout-stats" data-testid="workout-stats">
-        {WORKOUT_STATS.map((stat) => (
-          <div className="workout-stat" key={stat.label}>
-            <span className="workout-stat-value">{stat.value}</span>
-            <span className="workout-stat-label">{stat.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* Нет активной программы */}
+      {!planLoading && !plan ? (
+        <div className="no-plan-card" data-testid="no-plan-card">
+          <p className="no-plan-text">У вас пока нет активной программы.</p>
+          <Link to="/programs" className="no-plan-button" data-testid="choose-program-button">
+            Выбрать программу
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Статистика выбранного дня (реальные данные) */}
+      {plan && dayStats.length > 0 ? (
+        <div className="workout-stats" data-testid="workout-stats">
+          {dayStats.map((stat) => (
+            <div className="workout-stat" key={stat.label}>
+              <span className="workout-stat-value">{stat.value}</span>
+              <span className="workout-stat-label">{stat.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* День отдыха */}
+      {plan && isRestSelected ? (
+        <div className="rest-day-note" data-testid="rest-day-note">
+          День отдыха — восстановление 💤
+        </div>
+      ) : null}
+
+      {/* Список упражнений дня */}
+      {plan && dayDetail && !dayDetail.is_rest && dayDetail.exercises?.length ? (
+        <div className="day-exercises" data-testid="day-exercises">
+          <div className="day-exercises-title">{dayDetail.title}</div>
+          {dayDetail.exercises.map((ex, i) => (
+            <div className="exercise-row" key={`${ex.exercise_id || ex.exercise_name}-${i}`}>
+              <div className="exercise-main">
+                <span className="exercise-name">{ex.exercise_name}</span>
+                <span className="exercise-scheme">
+                  {ex.target_sets} × {ex.target_reps}
+                  {ex.target_weight != null
+                    ? ` · ${ex.target_weight}${ex.weight_type === 'percent_1rm' ? '%' : ex.weight_type === 'kg' ? 'кг' : ''}`
+                    : ''}
+                </span>
+              </div>
+              {ex.rest_seconds ? (
+                <span className="exercise-rest">отдых {ex.rest_seconds}с</span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 };

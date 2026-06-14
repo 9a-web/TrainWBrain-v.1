@@ -53,7 +53,63 @@ BUILTIN_EXERCISES = [
     ("plank", "Планка", ["core"], "bodyweight", "isolation"),
     ("hanging-leg-raise", "Подъём ног в висе", ["core"], "bodyweight", "isolation"),
     ("dips", "Отжимания на брусьях", ["chest", "triceps"], "bodyweight", "compound"),
+    # --- Соревновательные вариации (пауэрлифтинг) ---
+    ("squat-competition", "Присед (Соревновательный)", ["legs", "glutes"], "barbell", "compound"),
+    ("squat-paused", "Присед (с паузой)", ["legs", "glutes"], "barbell", "compound"),
+    ("bench-no-legs", "Жим лёжа (без ног)", ["chest", "triceps"], "barbell", "compound"),
+    ("close-grip-bench", "Жим узким хватом", ["triceps", "chest"], "barbell", "compound"),
+    ("deadlift-competition", "Становая тяга (Соревновательная)", ["back", "legs", "glutes"], "barbell", "compound"),
 ]
+
+# Праймари-мышца упражнения по slug (для расчёта буквы группы)
+EX_MUSCLE = {slug: muscles[0] for slug, _n, muscles, _e, _c in BUILTIN_EXERCISES}
+
+# Мышечная группа -> русская буква
+MUSCLE_LETTER = {
+    "legs": "Н", "quads": "Н", "hamstrings": "Н", "glutes": "Н", "calves": "Н",
+    "chest": "Г",
+    "back": "С", "lats": "С",
+    "shoulders": "П",
+    "biceps": "Р", "triceps": "Р",
+    "core": "К",
+}
+# Порядок отображения букв в сводной «Группе»
+LETTER_ORDER = ["Н", "Г", "С", "П", "Р", "К"]
+
+
+def muscle_letter(muscle):
+    return MUSCLE_LETTER.get(muscle or "", "")
+
+
+def group_letters(muscles):
+    """Список ключей мышц -> строка вида 'Н+Г+С' (уникальные буквы в заданном порядке)."""
+    seen = []
+    for m in muscles:
+        ltr = muscle_letter(m)
+        if ltr and ltr not in seen:
+            seen.append(ltr)
+    seen.sort(key=lambda x: LETTER_ORDER.index(x) if x in LETTER_ORDER else 99)
+    return "+".join(seen)
+
+
+def percent_of(weight, slug, one_rep_max):
+    """Процент от 1ПМ: weight / 1ПМ * 100 (округлённо). None, если нет данных."""
+    if weight is None or not one_rep_max:
+        return None
+    orm = one_rep_max.get(slug)
+    if not orm:
+        return None
+    return round(weight / orm * 100)
+
+
+def scheme_tonnage(sets_scheme):
+    """Тоннаж по схеме подходов: сумма(вес * подходы * повторы)."""
+    total = 0.0
+    for s in sets_scheme or []:
+        w = s.get("weight")
+        if w:
+            total += w * (s.get("sets") or 0) * (s.get("reps") or 0)
+    return round(total)
 
 
 def _exercise_doc(slug, name, muscles, equipment, category) -> dict:
@@ -73,18 +129,31 @@ def _exercise_doc(slug, name, muscles, equipment, category) -> dict:
 # ---------------------------------------------------------------------------
 # Хелперы построения шаблонов
 # ---------------------------------------------------------------------------
-def _ex(slug, name, sets, reps, weight=None, weight_type="kg", rpe=None, rest=120, order=0):
+def _ex(slug, name, sets=3, reps="10", weight=None, weight_type="kg", rpe=None,
+        rest=120, order=0, scheme=None, difficulty=None):
+    """Упражнение программы. scheme = [(weight, sets, reps), ...] для многоподходных схем."""
+    if scheme:
+        sets_scheme = [{"weight": w, "sets": s, "reps": r} for (w, s, r) in scheme]
+        first = scheme[0]
+        t_weight, t_sets, t_reps = first[0], first[1], str(first[2])
+    else:
+        sets_scheme = []
+        t_weight, t_sets, t_reps = weight, sets, str(reps)
     return {
         "exercise_id": builtin_id("exercise", slug),
+        "exercise_slug": slug,
         "exercise_name": name,
+        "muscle_group": EX_MUSCLE.get(slug),
+        "difficulty": difficulty,
         "order": order,
-        "target_sets": sets,
-        "target_reps": reps,
-        "target_weight": weight,
+        "target_sets": t_sets,
+        "target_reps": t_reps,
+        "target_weight": t_weight,
         "weight_type": weight_type,
         "target_rpe": rpe,
         "rest_seconds": rest,
         "notes": None,
+        "sets_scheme": sets_scheme,
     }
 
 
@@ -102,7 +171,8 @@ def _replicate_weeks(day_factory, weeks_count):
     ]
 
 
-def _template_doc(slug, name, description, author, level, goal, days_per_week, tags, weeks):
+def _template_doc(slug, name, description, author, level, goal, days_per_week, tags, weeks,
+                  default_one_rep_max=None):
     return {
         "id": builtin_id("program", slug),
         "slug": slug,
@@ -117,6 +187,7 @@ def _template_doc(slug, name, description, author, level, goal, days_per_week, t
         "is_builtin": True,
         "owner_telegram_id": None,
         "tags": tags,
+        "default_one_rep_max": default_one_rep_max or {},
         "created_at": _iso_now(),
         "updated_at": _iso_now(),
     }
@@ -174,30 +245,67 @@ def _upper_lower_days(week):
     ]
 
 
-# --- Шаблон 3: Powerlifting Peaking (4 дня/нед, 3 недели), проценты от 1ПМ ---
+# --- Шаблон 3: Powerlifting Peaking (4 дня/нед, 3 недели), вес + %1ПМ ---
+# Референсные максимумы (1ПМ) для расчёта процентов на экране спортсмена.
+PL_ONE_REP_MAX = {
+    "back-squat": 170, "squat-competition": 170, "squat-paused": 170, "front-squat": 150,
+    "bench-press": 140, "bench-no-legs": 140, "close-grip-bench": 130,
+    "incline-bench-press": 120, "overhead-press": 95,
+    "deadlift": 200, "deadlift-competition": 200, "romanian-deadlift": 180, "barbell-row": 110,
+}
+
+
 def _powerlifting_days(week):
-    # Прогрессия по неделям: 75% -> 82% -> 90%
-    pct = {1: 75.0, 2: 82.0, 3: 90.0}[week]
     return [
-        _day(1, "Присед (тяжёлый)", [
-            _ex("back-squat", "Приседания со штангой", 5, "3", weight=pct, weight_type="percent_1rm", rest=240),
-            _ex("leg-press", "Жим ногами", 3, "8", rest=120),
-            _ex("plank", "Планка", 3, "60 сек", weight_type="bodyweight", rest=60),
+        # День 1 (Пн) — тяжёлый микс (как на макете)
+        _day(1, "Тяжёлый день", [
+            _ex("squat-competition", "Присед (Соревновательный)",
+                scheme=[(160, 1, 3), (145, 3, 4)], difficulty="Тяжело", rest=240),
+            _ex("bench-no-legs", "Жим лёжа (без ног)",
+                scheme=[(127.5, 1, 3), (115, 4, 4)], difficulty="Тяжело", rest=240),
+            _ex("squat-paused", "Присед (с паузой)",
+                scheme=[(160, 1, 3), (142.5, 3, 4)], difficulty="Тяжело", rest=240),
+            _ex("deadlift", "Становая тяга",
+                scheme=[(180, 1, 3), (160, 3, 4)], difficulty="Тяжело", rest=240),
+            _ex("close-grip-bench", "Жим узким хватом",
+                scheme=[(100, 4, 6)], difficulty="Средне", rest=150),
+            _ex("barbell-row", "Тяга штанги в наклоне",
+                scheme=[(90, 4, 8)], difficulty="Средне", rest=120),
+            _ex("hanging-leg-raise", "Подъём ног в висе",
+                scheme=[(None, 3, 12)], weight_type="bodyweight", difficulty="Легко", rest=60),
         ]),
-        _day(2, "Жим (тяжёлый)", [
-            _ex("bench-press", "Жим лёжа", 5, "3", weight=pct, weight_type="percent_1rm", rest=240),
-            _ex("overhead-press", "Жим стоя (армейский)", 3, "6", rest=150),
-            _ex("triceps-pushdown", "Разгибание на трицепс", 4, "10", rest=60),
+        # День 2 (Вт) — жим объёмный
+        _day(2, "Жим (объёмный)", [
+            _ex("bench-press", "Жим лёжа",
+                scheme=[(115, 5, 5)], difficulty="Средне", rest=180),
+            _ex("incline-bench-press", "Жим лёжа на наклонной",
+                scheme=[(90, 4, 8)], difficulty="Средне", rest=120),
+            _ex("close-grip-bench", "Жим узким хватом",
+                scheme=[(95, 3, 8)], difficulty="Средне", rest=120),
+            _ex("lateral-raise", "Махи в стороны",
+                scheme=[(12, 4, 15)], difficulty="Легко", rest=60),
         ]),
+        # День 4 (Чт) — тяга тяжёлая
         _day(4, "Тяга (тяжёлая)", [
-            _ex("deadlift", "Становая тяга", 4, "3", weight=pct, weight_type="percent_1rm", rest=240),
-            _ex("barbell-row", "Тяга штанги в наклоне", 3, "8", rest=120),
-            _ex("pull-up", "Подтягивания", 3, "8", weight_type="bodyweight", rest=120),
+            _ex("deadlift-competition", "Становая тяга (Соревновательная)",
+                scheme=[(185, 1, 2), (170, 3, 3)], difficulty="Тяжело", rest=240),
+            _ex("barbell-row", "Тяга штанги в наклоне",
+                scheme=[(95, 4, 6)], difficulty="Средне", rest=120),
+            _ex("pull-up", "Подтягивания",
+                scheme=[(None, 4, 8)], weight_type="bodyweight", difficulty="Средне", rest=120),
+            _ex("plank", "Планка",
+                scheme=[(None, 3, 60)], weight_type="bodyweight", difficulty="Легко", rest=60),
         ]),
-        _day(5, "Жим (объёмный)", [
-            _ex("bench-press", "Жим лёжа", 4, "6", weight=round(pct - 15, 1), weight_type="percent_1rm", rest=180),
-            _ex("incline-bench-press", "Жим лёжа на наклонной", 3, "8", rest=120),
-            _ex("dips", "Отжимания на брусьях", 3, "10", weight_type="bodyweight", rest=90),
+        # День 5 (Пт) — присед объёмный
+        _day(5, "Присед (объёмный)", [
+            _ex("back-squat", "Приседания со штангой",
+                scheme=[(135, 5, 5)], difficulty="Средне", rest=180),
+            _ex("front-squat", "Фронтальные приседания",
+                scheme=[(100, 3, 6)], difficulty="Средне", rest=150),
+            _ex("leg-press", "Жим ногами",
+                scheme=[(200, 3, 10)], difficulty="Средне", rest=120),
+            _ex("leg-curl", "Сгибание ног",
+                scheme=[(40, 3, 12)], difficulty="Легко", rest=60),
         ]),
     ]
 
@@ -221,9 +329,10 @@ def _builtin_templates():
         _template_doc(
             "powerlifting-peaking",
             "Powerlifting Peaking",
-            "3-недельный подводящий цикл к максимумам в приседе, жиме и тяге (проценты от 1ПМ).",
+            "3-недельный подводящий цикл к максимумам в приседе, жиме и тяге (вес и %1ПМ).",
             "TWB", "advanced", "powerlifting", 4, ["пауэрлифтинг", "1ПМ", "пик"],
             _replicate_weeks(_powerlifting_days, 3),
+            default_one_rep_max=PL_ONE_REP_MAX,
         ),
     ]
 
@@ -256,3 +365,5 @@ async def ensure_indexes(db) -> None:
     await db.programs.create_index("owner_telegram_id")
     await db.plans.create_index("athlete_telegram_id")
     await db.plans.create_index([("athlete_telegram_id", 1), ("status", 1)])
+    await db.workout_sessions.create_index("athlete_telegram_id")
+    await db.workout_sessions.create_index([("plan_id", 1), ("week_index", 1), ("day_index", 1)])

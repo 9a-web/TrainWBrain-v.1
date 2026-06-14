@@ -191,6 +191,7 @@
   padding-top: 10px;
   gap: 6px;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .day-card:hover {
@@ -460,3 +461,117 @@
     margin-top: 20px;
   }
 }
+
+
+/* ===== Phase 1 additions: real plan data ===== */
+
+/* Точка-индикатор тренировочного дня */
+.day-card-dot {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ff8a24;
+}
+.day-card-selected .day-card-dot {
+  background: #1c1c1c;
+}
+
+/* disabled-состояние кнопки "Начать" */
+.launch-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Карточка "нет программы" */
+.no-plan-card {
+  margin-top: 22px;
+  background: #262626;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 22px 18px;
+  text-align: center;
+}
+.no-plan-text {
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+}
+.no-plan-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 22px;
+  border-radius: 14px;
+  background: linear-gradient(-34deg, #ff8a24, #ffda24);
+  color: #1c1c1c;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+.no-plan-button:active {
+  transform: scale(0.97);
+}
+
+/* День отдыха */
+.rest-day-note {
+  margin-top: 20px;
+  padding: 18px;
+  text-align: center;
+  color: #959595;
+  font-size: 14px;
+  background: #262626;
+  border-radius: 16px;
+}
+
+/* Список упражнений дня */
+.day-exercises {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.day-exercises-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.exercise-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #333;
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.exercise-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.exercise-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.exercise-scheme {
+  font-size: 13px;
+  color: #ff8a24;
+  font-weight: 600;
+}
+.exercise-rest {
+  font-size: 12px;
+  color: #959595;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
