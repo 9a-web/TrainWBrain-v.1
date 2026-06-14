@@ -126,6 +126,38 @@
   background: linear-gradient(-34deg, #FF8A24, #FFDA24);
 }
 
+/* ===== Анимация смены недели (карточки выезжают, сменяя друг друга) ===== */
+@keyframes dayCardInNext {
+  from {
+    opacity: 0;
+    transform: translateX(34px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes dayCardInPrev {
+  from {
+    opacity: 0;
+    transform: translateX(-34px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.day-card.card-anim-next {
+  animation: dayCardInNext 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.day-card.card-anim-prev {
+  animation: dayCardInPrev 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+
 /* Day Name */
 .day-card-name {
   font-family: 'Plus Jakarta Sans', sans-serif;

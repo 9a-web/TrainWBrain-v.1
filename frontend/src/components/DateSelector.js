@@ -67,13 +67,14 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
 };
 
 // Компонент карточки дня
-const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick, index = 0 }) => {
+const DayCard = ({ date, dayName, dayNumber, progress, isSelected, onClick, index = 0, animClass = '' }) => {
   return (
     <button 
-      className={`day-card ${isSelected ? 'day-card-selected' : ''}`}
+      className={`day-card ${isSelected ? 'day-card-selected' : ''} ${animClass}`}
       onClick={onClick}
       aria-label={`${dayName}, ${dayNumber} число`}
       aria-pressed={isSelected}
+      style={animClass ? { animationDelay: `${index * 55}ms` } : undefined}
     >
       <span className="day-card-name">{dayName}</span>
       <div className="day-card-circle-wrapper">
@@ -97,6 +98,7 @@ const WEEK_OFFSETS = [-1, 0, 1];
 const DateSelector = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0); // Смещение недели (0 = текущая)
+  const [slideDir, setSlideDir] = useState(null); // Направление анимации смены недели: 'next' | 'prev' | null
   
   // Генерируем дни недели с учётом смещения
   const weekDays = useMemo(() => {
@@ -137,6 +139,9 @@ const DateSelector = () => {
   };
   
   const handleWeekDotClick = (offset) => {
+    if (offset === weekOffset) return;
+    // Направление: вперёд (следующая) — выезд справа, назад (прошлая) — слева
+    setSlideDir(offset > weekOffset ? 'next' : 'prev');
     setWeekOffset(offset);
   };
   
@@ -194,6 +199,13 @@ const DateSelector = () => {
               isSelected={isSameDay(day.date, selectedDate)}
               onClick={(e) => handleDayClick(day.date, e)}
               index={index}
+              animClass={
+                slideDir === 'next'
+                  ? 'card-anim-next'
+                  : slideDir === 'prev'
+                  ? 'card-anim-prev'
+                  : ''
+              }
             />
           ))}
         </div>
