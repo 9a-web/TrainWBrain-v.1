@@ -219,7 +219,16 @@ const DateSelector = () => {
         </div>
       </div>
 
-      <h2 className="selected-date-title">{formattedDate}</h2>
+      <div className="date-title-row">
+        <h2 className="selected-date-title">{formattedDate}</h2>
+        <button
+          className="launch-button"
+          type="button"
+          data-testid="launch-button"
+        >
+          Запустить
+        </button>
+      </div>
 
       {/* Статистика тренировки (мок-данные) */}
       <div className="workout-stats" data-testid="workout-stats">

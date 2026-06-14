@@ -89,6 +89,15 @@
   display: none; /* Chrome, Safari, Opera */
 }
 
+/* Date title + launch button row */
+.date-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 28px 24px 0;
+}
+
 /* Selected Date Title */
 .selected-date-title {
   font-family: 'GG Zaglav', sans-serif;
@@ -97,8 +106,32 @@
   line-height: 1;
   color: #FFFFFF;
   margin: 0;
-  margin-top: 28px;
-  margin-left: 24px;
+}
+
+/* Launch (green pill) button */
+.launch-button {
+  flex-shrink: 0;
+  padding: 12px 26px;
+  background-color: #34C759;
+  color: #FFFFFF;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(52, 199, 89, 0.32);
+  transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.launch-button:hover {
+  background-color: #2FB350;
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.4);
+}
+
+.launch-button:active {
+  transform: scale(0.96);
 }
 
 /* Workout stats row (значение сверху + подпись снизу) */
@@ -301,6 +334,9 @@
   
   .selected-date-title {
     font-size: 72px;
+  }
+  
+  .date-title-row {
     margin-top: 36px;
   }
 }
@@ -355,6 +391,9 @@
   
   .selected-date-title {
     font-size: 64px;
+  }
+  
+  .date-title-row {
     margin-top: 32px;
   }
 }
@@ -409,6 +448,9 @@
   
   .selected-date-title {
     font-size: 38px;
+  }
+  
+  .date-title-row {
     margin-top: 20px;
   }
 }
