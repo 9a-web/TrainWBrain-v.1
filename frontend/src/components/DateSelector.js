@@ -78,7 +78,7 @@ const MONTH_NAMES = [
 ];
 
 // Доступные тренировочные недели (смещения относительно текущей, 0 = текущая)
-const WEEK_OFFSETS = [-2, -1, 0, 1, 2];
+const WEEK_OFFSETS = [-1, 0, 1];
 
 const DateSelector = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -110,8 +110,16 @@ const DateSelector = () => {
     return days;
   }, [weekOffset]);
   
-  const handleDayClick = (date) => {
+  const handleDayClick = (date, event) => {
     setSelectedDate(date);
+    // Автоматический скролл к выбранной карточке дня
+    if (event?.currentTarget) {
+      event.currentTarget.scrollIntoView({
+        behavior: 'smooth',
+        inline: 'center',
+        block: 'nearest',
+      });
+    }
   };
   
   const handleWeekDotClick = (offset) => {
@@ -170,7 +178,7 @@ const DateSelector = () => {
               dayNumber={day.dayNumber}
               progress={day.progress}
               isSelected={isSameDay(day.date, selectedDate)}
-              onClick={() => handleDayClick(day.date)}
+              onClick={(e) => handleDayClick(day.date, e)}
             />
           ))}
         </div>
