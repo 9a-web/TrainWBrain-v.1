@@ -35,6 +35,7 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
         r={radius}
         strokeWidth={strokeWidth}
         fill={isSelected ? "transparent" : "#1C1C1C"}
+        stroke={progress > 0 ? "#FFEBD9" : "#1C1C1C"}
       />
       {/* Прогресс */}
       <circle
