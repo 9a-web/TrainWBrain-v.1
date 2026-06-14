@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10,6 +10,13 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
 import httpx
+
+from models import (
+    Exercise, ExerciseCreate,
+    ProgramTemplate, ProgramTemplateCreate,
+    Plan, PlanCreate,
+)
+from seed import seed_builtins, ensure_indexes
 
 
 ROOT_DIR = Path(__file__).parent
@@ -173,8 +180,6 @@ async def get_telegram_avatar(user_id: int):
     Получить URL аватарки пользователя Telegram через Bot API.
     Возвращает JSON с avatar_url.
     """
-    default_avatar = f"https://ui-avatars.com/api/?name=U&background=FF6B00&color=fff&size=80&bold=true"
-    
     if not TELEGRAM_BOT_TOKEN:
         logger.warning("TELEGRAM_BOT_TOKEN not configured")
         return {"avatar_url": None, "error": "Bot token not configured"}
@@ -232,6 +237,191 @@ async def get_telegram_avatar(user_id: int):
         logger.error(f"Error fetching Telegram avatar for user {user_id}: {e}")
         return {"avatar_url": None, "error": str(e)}
 
+# ===========================================================================
+# PHASE 1 — Программы и Планы
+# ===========================================================================
+
+# ---- Справочник упражнений ----
+@api_router.get("/exercises", response_model=List[Exercise])
+async def list_exercises(query: Optional[str] = None, muscle: Optional[str] = None, owner: Optional[int] = None):
+    filt = {}
+    if query:
+        filt["name"] = {"$regex": query, "$options": "i"}
+    if muscle:
+        filt["muscle_groups"] = muscle
+    if owner is not None:
+        filt["$or"] = [{"is_builtin": True}, {"owner_telegram_id": owner}]
+    else:
+        # по умолчанию отдаём встроенные упражнения
+        filt["is_builtin"] = True
+    docs = await db.exercises.find(filt, {"_id": 0}).to_list(1000)
+    return docs
+
+
+@api_router.post("/exercises", response_model=Exercise)
+async def create_exercise(payload: ExerciseCreate):
+    ex = Exercise(**payload.model_dump(), is_builtin=False)
+    doc = ex.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.exercises.insert_one(doc)
+    logger.info(f"Custom exercise created: {ex.name} (owner={ex.owner_telegram_id})")
+    return ex
+
+
+# ---- Шаблоны программ (библиотека / конструктор) ----
+@api_router.get("/programs/templates", response_model=List[ProgramTemplate])
+async def list_templates(level: Optional[str] = None, goal: Optional[str] = None, owner: Optional[int] = None):
+    filt = {}
+    if level:
+        filt["level"] = level
+    if goal:
+        filt["goal"] = goal
+    if owner is not None:
+        filt["$or"] = [{"is_builtin": True}, {"owner_telegram_id": owner}]
+    else:
+        filt["is_builtin"] = True
+    docs = await db.programs.find(filt, {"_id": 0}).to_list(1000)
+    return docs
+
+
+@api_router.get("/programs/templates/{template_id}", response_model=ProgramTemplate)
+async def get_template(template_id: str):
+    doc = await db.programs.find_one({"id": template_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return doc
+
+
+@api_router.post("/programs/templates", response_model=ProgramTemplate)
+async def create_template(payload: ProgramTemplateCreate):
+    tpl = ProgramTemplate(
+        **payload.model_dump(),
+        is_builtin=False,
+        weeks_count=len(payload.weeks or []),
+    )
+    doc = tpl.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    await db.programs.insert_one(doc)
+    logger.info(f"Custom template created: {tpl.name} (owner={tpl.owner_telegram_id})")
+    return tpl
+
+
+# ---- Планы (назначенный экземпляр программы = снимок шаблона) ----
+@api_router.post("/plans", response_model=Plan)
+async def create_plan(payload: PlanCreate):
+    weeks = payload.weeks
+    name = payload.name
+    source_template_id = payload.template_id
+
+    if payload.template_id:
+        tpl = await db.programs.find_one({"id": payload.template_id}, {"_id": 0})
+        if not tpl:
+            raise HTTPException(status_code=404, detail="Template not found")
+        weeks = tpl["weeks"]  # снимок структуры
+        if not name:
+            name = tpl["name"]
+
+    if weeks is None:
+        raise HTTPException(status_code=400, detail="Either template_id or weeks must be provided")
+
+    # Один активный план: прежние активные планы спортсмена помечаем завершёнными
+    await db.plans.update_many(
+        {"athlete_telegram_id": payload.athlete_telegram_id, "status": "active"},
+        {"$set": {"status": "completed", "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    plan = Plan(
+        athlete_telegram_id=payload.athlete_telegram_id,
+        coach_telegram_id=payload.coach_telegram_id,
+        source_template_id=source_template_id,
+        name=name or "Мой план",
+        start_date=payload.start_date,
+        weeks=weeks,
+    )
+    doc = plan.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    await db.plans.insert_one(doc)
+    logger.info(f"Plan created: {plan.id} for athlete={plan.athlete_telegram_id}")
+    return plan
+
+
+@api_router.get("/plans/active/{telegram_id}", response_model=Optional[Plan])
+async def get_active_plan(telegram_id: int):
+    doc = await db.plans.find_one(
+        {"athlete_telegram_id": telegram_id, "status": "active"},
+        {"_id": 0},
+    )
+    return doc  # может быть None → вернётся null
+
+
+@api_router.get("/plans/{plan_id}", response_model=Plan)
+async def get_plan(plan_id: str):
+    doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return doc
+
+
+@api_router.get("/plans/{plan_id}/day")
+async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
+    """День плана: упражнения + мета. day = 1..7 (Пн..Вс)."""
+    doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    rest_response = {
+        "plan_id": plan_id, "week_index": week, "day_index": day,
+        "is_rest": True, "title": "День отдыха", "exercises": [],
+    }
+    week_obj = next((w for w in doc["weeks"] if w["week_index"] == week), None)
+    if not week_obj:
+        return rest_response
+    day_obj = next((d for d in week_obj["days"] if d["day_index"] == day), None)
+    if not day_obj:
+        return rest_response
+    return {"plan_id": plan_id, "week_index": week, **day_obj}
+
+
+@api_router.get("/plans/{plan_id}/week-progress")
+async def get_week_progress(plan_id: str, week: int = 1):
+    """Прогресс/расписание по дням недели (для колец в селекторе)."""
+    doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    week_obj = next((w for w in doc["weeks"] if w["week_index"] == week), None)
+    days_map = {}
+    if week_obj:
+        for d in week_obj["days"]:
+            if d.get("is_rest"):
+                continue
+            planned_sets = sum(int(e.get("target_sets", 0)) for e in d.get("exercises", []))
+            days_map[d["day_index"]] = {
+                "title": d.get("title", ""),
+                "exercise_count": len(d.get("exercises", [])),
+                "planned_sets": planned_sets,
+            }
+
+    days = []
+    for di in range(1, 8):
+        info = days_map.get(di)
+        if info:
+            days.append({
+                "day_index": di, "is_workout": True, "title": info["title"],
+                "exercise_count": info["exercise_count"], "planned_sets": info["planned_sets"],
+                "completed_sets": 0, "progress_pct": 0,  # Phase 2: реальные данные из сессий
+            })
+        else:
+            days.append({
+                "day_index": di, "is_workout": False, "title": "Отдых",
+                "exercise_count": 0, "planned_sets": 0,
+                "completed_sets": 0, "progress_pct": 0,
+            })
+    return {"plan_id": plan_id, "week_index": week, "days": days}
+
+
 # Include the router in the main app
 app.include_router(api_router)
 
@@ -249,6 +439,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_seed():
+    """Идемпотентно создаёт индексы и встроенные данные (упражнения + шаблоны программ)."""
+    try:
+        await ensure_indexes(db)
+    except Exception as e:
+        logger.warning(f"ensure_indexes failed: {e}")
+    try:
+        res = await seed_builtins(db)
+        logger.info(f"Seed builtins complete: {res}")
+    except Exception as e:
+        logger.warning(f"seed_builtins failed: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
