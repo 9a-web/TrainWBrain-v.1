@@ -129,49 +129,51 @@ const DateSelector = () => {
   
   return (
     <div className="date-selector" data-testid="date-selector">
-      {/* Дни недели — горизонтальный скролл без обрезки */}
-      <div className="date-selector-scroll" data-testid="date-selector-scroll">
-        {weekDays.map((day, index) => (
-          <DayCard
-            key={`${weekOffset}-${index}`}
-            date={day.date}
-            dayName={day.dayName}
-            dayNumber={day.dayNumber}
-            progress={day.progress}
-            isSelected={isSameDay(day.date, selectedDate)}
-            onClick={() => handleDayClick(day.date)}
-          />
-        ))}
-      </div>
+      <div className="date-selector-row">
+        {/* Индикатор-точки: вертикально, слева от кнопок */}
+        <div
+          className="week-dots"
+          role="tablist"
+          aria-label="Выбор тренировочной недели"
+          data-testid="week-dots"
+        >
+          {WEEK_OFFSETS.map((offset) => {
+            const isActive = weekOffset === offset;
+            const label =
+              offset === 0
+                ? 'Текущая неделя'
+                : offset > 0
+                ? `Через ${offset} нед.`
+                : `${Math.abs(offset)} нед. назад`;
+            return (
+              <button
+                key={offset}
+                type="button"
+                className={`week-dot ${isActive ? 'week-dot-active' : ''}`}
+                onClick={() => handleWeekDotClick(offset)}
+                role="tab"
+                aria-selected={isActive}
+                aria-label={label}
+                data-testid={`week-dot-${offset}`}
+              />
+            );
+          })}
+        </div>
 
-      {/* Индикатор-точки: переключение тренировочной недели */}
-      <div
-        className="week-dots"
-        role="tablist"
-        aria-label="Выбор тренировочной недели"
-        data-testid="week-dots"
-      >
-        {WEEK_OFFSETS.map((offset) => {
-          const isActive = weekOffset === offset;
-          const label =
-            offset === 0
-              ? 'Текущая неделя'
-              : offset > 0
-              ? `Через ${offset} нед.`
-              : `${Math.abs(offset)} нед. назад`;
-          return (
-            <button
-              key={offset}
-              type="button"
-              className={`week-dot ${isActive ? 'week-dot-active' : ''}`}
-              onClick={() => handleWeekDotClick(offset)}
-              role="tab"
-              aria-selected={isActive}
-              aria-label={label}
-              data-testid={`week-dot-${offset}`}
+        {/* Дни недели — горизонтальный скролл (не перекрывает точки) */}
+        <div className="date-selector-scroll" data-testid="date-selector-scroll">
+          {weekDays.map((day, index) => (
+            <DayCard
+              key={`${weekOffset}-${index}`}
+              date={day.date}
+              dayName={day.dayName}
+              dayNumber={day.dayNumber}
+              progress={day.progress}
+              isSelected={isSameDay(day.date, selectedDate)}
+              onClick={() => handleDayClick(day.date)}
             />
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       <h2 className="selected-date-title">{formattedDate}</h2>

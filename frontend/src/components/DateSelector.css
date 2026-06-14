@@ -5,26 +5,22 @@
   margin-top: 24px;
 }
 
-/* Horizontal scroll row with day cards (no cropping) */
-.date-selector-scroll {
+/* Row: vertical dots column (left) + horizontal scroll of day cards */
+.date-selector-row {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  overflow-y: visible;
-  padding: 6px 24px 10px;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
-  -webkit-overflow-scrolling: touch;
+  align-items: center;
+  gap: 12px;
 }
 
-/* Week dots indicator (replaces prev/next arrows) */
+/* Week dots indicator — vertical column on the LEFT of the cards */
 .week-dots {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 18px;
-  padding: 0 24px;
+  flex-shrink: 0;
+  padding: 0 2px;
 }
 
 .week-dot {
@@ -37,7 +33,7 @@
   border-radius: 999px;
   background-color: #3A3A3A;
   cursor: pointer;
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
               background-color 0.3s ease,
               transform 0.2s ease,
               box-shadow 0.3s ease;
@@ -47,7 +43,7 @@
 .week-dot::before {
   content: '';
   position: absolute;
-  inset: -8px;
+  inset: -7px;
 }
 
 .week-dot:hover {
@@ -59,15 +55,30 @@
   transform: scale(0.92);
 }
 
+/* Active dot — vertical pill */
 .week-dot-active {
-  width: 26px;
-  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  height: 26px;
+  background: linear-gradient(160deg, #FFDA24, #FF8A24);
   box-shadow: 0 2px 8px rgba(255, 138, 36, 0.35);
 }
 
 .week-dot-active:hover {
-  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  background: linear-gradient(160deg, #FFDA24, #FF8A24);
   transform: none;
+}
+
+/* Horizontal scroll with day cards — clips content so cards never cover the dots */
+.date-selector-scroll {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 24px 10px 2px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  -webkit-overflow-scrolling: touch;
 }
 
 .date-selector-scroll::-webkit-scrollbar {
@@ -173,13 +184,16 @@
     margin-top: 32px;
   }
   
+  .date-selector-row {
+    gap: 16px;
+  }
+  
   .date-selector-scroll {
     gap: 12px;
   }
   
   .week-dots {
     gap: 10px;
-    margin-top: 24px;
   }
   
   .week-dot {
@@ -188,7 +202,7 @@
   }
   
   .week-dot-active {
-    width: 32px;
+    height: 32px;
   }
   
   .day-card {
@@ -224,13 +238,16 @@
     margin-top: 28px;
   }
   
+  .date-selector-row {
+    gap: 14px;
+  }
+  
   .date-selector-scroll {
     gap: 10px;
   }
   
   .week-dots {
     gap: 9px;
-    margin-top: 20px;
   }
   
   .week-dot {
@@ -239,7 +256,7 @@
   }
   
   .week-dot-active {
-    width: 28px;
+    height: 28px;
   }
   
   .day-card {
@@ -275,13 +292,16 @@
     margin-top: 20px;
   }
   
+  .date-selector-row {
+    gap: 8px;
+  }
+  
   .date-selector-scroll {
     gap: 6px;
   }
   
   .week-dots {
     gap: 7px;
-    margin-top: 14px;
   }
   
   .week-dot {
@@ -290,7 +310,7 @@
   }
   
   .week-dot-active {
-    width: 22px;
+    height: 22px;
   }
   
   .day-card {
