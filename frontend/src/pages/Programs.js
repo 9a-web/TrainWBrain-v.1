@@ -4,6 +4,8 @@ import { ArrowLeft, Check, Dumbbell, Upload, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import { getTemplates, getActivePlan, createPlan } from "@/api";
+import { haptic, hapticNotify } from "@/lib/platform";
+import { useBackButton } from "@/hooks/useTelegramUI";
 import "./Programs.css";
 
 const LEVEL_LABELS = {
@@ -117,6 +119,7 @@ const ProgramConfigModal = ({ tpl, onClose, onSubmit, submitting }) => {
 const Programs = () => {
   const { user } = useUser();
   const navigate = useNavigate();
+  useBackButton(true, () => navigate("/"));
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePlan, setActivePlan] = useState(null);
@@ -167,6 +170,7 @@ const Programs = () => {
       });
       setActivePlan(plan);
       setConfigTpl(null);
+      hapticNotify("success");
       toast.success(`Программа «${tpl.name}» выбрана`);
       setTimeout(() => navigate("/"), 600);
     } catch (e) {
@@ -177,6 +181,7 @@ const Programs = () => {
   };
 
   const handleChoose = (tpl) => {
+    haptic("light");
     if (!user?.telegram_id) {
       toast.error("Пользователь не определён");
       return;

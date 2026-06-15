@@ -9,6 +9,8 @@ import {
   editSessionExercise, finishSession, pauseSession,
 } from '@/api';
 import WorkoutView from '@/components/WorkoutView';
+import { haptic, hapticNotify, hapticSelection } from '@/lib/platform';
+import { useMainButton } from '@/hooks/useTelegramUI';
 import './DateSelector.css';
 
 // Сокращённые названия дней недели (index = JS getDay(): 0=Вс..6=Сб)
@@ -231,6 +233,7 @@ const DateSelector = () => {
   }, [plan?.id, planWeek, selectedDate]);
 
   const handleDayClick = (date, event) => {
+    hapticSelection();
     setSelectedDate(date);
     // Автоматический скролл к выбранной карточке дня
     if (event?.currentTarget) {
@@ -244,6 +247,7 @@ const DateSelector = () => {
 
   const handleWeekDotClick = (offset) => {
     if (offset === weekOffset) return;
+    hapticSelection();
     setSlideDir(offset > weekOffset ? 'next' : 'prev');
     setWeekOffset(offset);
   };
@@ -343,6 +347,7 @@ const DateSelector = () => {
         week: planWeek, day: selectedDayIndex,
       });
       setSession(s);
+      hapticNotify('success');
       refreshProgress();
     } catch (e) {
       if (e?.response?.status === 409) {
@@ -360,6 +365,7 @@ const DateSelector = () => {
   const handleStart = () => {
     if (!plan) { toast.info('Сначала выберите программу'); return; }
     if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
+    haptic('light');
     // Если выбранный день — не сегодня, спросить подтверждение
     if (!isSameDay(selectedDate, new Date())) {
       setConfirmStartOpen(true);
@@ -370,12 +376,17 @@ const DateSelector = () => {
 
   const handleAction = async (order, action) => {
     if (!session) return;
+    haptic(action === 'done' ? 'medium' : 'light');
     try {
       const s = await sessionExerciseAction(session.id, order, action);
       setSession(s);
       refreshProgress();
-      if (s.status === 'finished') toast.success('Тренировка завершена! 🎉');
+      if (s.status === 'finished') {
+        hapticNotify('success');
+        toast.success('Тренировка завершена! 🎉');
+      }
     } catch (e) {
+      hapticNotify('error');
       toast.error('Не удалось обновить упражнение');
     }
   };
@@ -393,6 +404,7 @@ const DateSelector = () => {
 
   const handlePauseToggle = async () => {
     if (!session) return;
+    haptic('light');
     try {
       const s = await pauseSession(session.id, session.paused);
       setSession(s);
@@ -401,15 +413,31 @@ const DateSelector = () => {
 
   const handleStop = async () => {
     if (!session) return;
+    haptic('medium');
     try {
       const s = await finishSession(session.id);
       setSession(s);
+      hapticNotify('success');
       refreshProgress();
       toast.success('Тренировка завершена');
     } catch (e) { /* no-op */ }
   };
 
   const sessionStatus = session?.status;
+
+  // Telegram native MainButton mirrors the primary CTA (no-op off-Telegram).
+  const tgMainVisible =
+    !!plan &&
+    !isRestSelected &&
+    (sessionStatus === 'in_progress' || (!session && !!previewView));
+  useMainButton({
+    enabled: true,
+    visible: tgMainVisible,
+    text: sessionStatus === 'in_progress' ? 'Завершить тренировку' : 'Начать тренировку',
+    disabled: starting || !plan,
+    progress: starting,
+    onClick: sessionStatus === 'in_progress' ? handleStop : handleStart,
+  });
 
   return (
     <div className="date-selector" data-testid="date-selector">
