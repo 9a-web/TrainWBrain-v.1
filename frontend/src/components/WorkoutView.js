@@ -268,7 +268,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek, 
               {forecast && forecast.length >= 2 ? (
                 <div className="ex-forecast">
                   <ForecastChart series={forecast} currentWeek={currentWeek} />
-                  <span className="ex-forecast-caption">Вес по неделям</span>
+                  <span className="ex-forecast-caption">Прогноз по плану</span>
                 </div>
               ) : null}
             </div>
