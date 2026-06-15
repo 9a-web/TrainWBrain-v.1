@@ -1,0 +1,133 @@
+.profile-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #1c1c1c;
+  padding: 0 20px 40px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0 16px;
+}
+
+.profile-back {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  background: #2b2b2b;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.profile-back:hover {
+  background: #333;
+}
+
+.profile-title {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.profile-card {
+  background: #2b2b2b;
+  border-radius: 22px;
+  padding: 28px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.profile-avatar-lg {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #ff6b00;
+  margin-bottom: 14px;
+}
+
+.profile-name {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.profile-email,
+.profile-username {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
+}
+
+.profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.profile-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffce8a;
+  background: rgba(255, 138, 36, 0.15);
+  border: 1px solid rgba(255, 138, 36, 0.35);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+
+.profile-meta {
+  background: #2b2b2b;
+  border-radius: 18px;
+  padding: 6px 16px;
+  margin-bottom: 24px;
+}
+.profile-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.profile-meta-row:last-child {
+  border-bottom: none;
+}
+.profile-meta-row b {
+  color: #fff;
+  font-weight: 600;
+}
+
+.profile-logout {
+  width: 100%;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff7b7b;
+  border-radius: 14px;
+  padding: 14px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease;
+}
+.profile-logout:hover {
+  background: rgba(255, 107, 107, 0.2);
+}

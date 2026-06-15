@@ -52,3 +52,22 @@ body {
     margin-left: 0;
   }
 }
+
+/* Auth splash while the session is being resolved */
+.app-splash {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1c1c;
+}
+.app-splash-logo {
+  width: 120px;
+  height: auto;
+  animation: twb-splash-pulse 1.4s ease-in-out infinite;
+}
+@keyframes twb-splash-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}

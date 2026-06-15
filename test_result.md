@@ -388,6 +388,42 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED: Avatar display working perfectly. Found avatar element with data-testid='profile-avatar' in header. Correctly shows UI Avatars fallback (https://ui-avatars.com/api/?name=Гость&background=FF6B00&color=fff&size=80&bold=true) with proper styling. Avatar visible and functional. External URL has routing issues but localhost works perfectly."
 
+  - task: "Auth UI: mandatory gating + Login screen (Telegram/Google/Email)"
+    implemented: true
+    working: "NA"
+    file: "App.js, context/AuthContext.js, pages/Login.js, api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Mandatory auth (no guest). AppShell: loading->splash, !auth->Login, auth->UserProvider+routes. Login screen renders: Google button (always), Email+password form with login/register toggle, Telegram button shown ONLY in Telegram (isTelegramAvailable). Verified visually (renders correctly, gating works, TG button hidden on web). NOTE: main agent could NOT drive interactive submit/redirect via screenshot tool (tool does not execute multi-step playwright interactions here). Needs auto_frontend_testing_agent: register new email -> lands on Home (main-container, greeting shows name); login existing -> Home; wrong password -> inline error 'Неверный email или пароль'; toggle to register shows name field; logout from /profile -> back to Login. Token stored in localStorage 'twb_token', sent as Authorization: Bearer."
+
+  - task: "Auth UI: Profile screen + logout + avatar link"
+    implemented: true
+    working: "NA"
+    file: "pages/Profile.js, App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Header avatar is a Link to /profile (data-testid=profile-link). Profile shows avatar, name, email, auth_provider badges, platform, and Выйти (logout). Telegram BackButton wired via useBackButton. Needs testing: navigate avatar->/profile shows profile-page with correct name/email; logout-btn returns to Login and clears token."
+
+  - task: "Auth UI: Google (Emergent) redirect + callback handling"
+    implemented: true
+    working: "NA"
+    file: "context/AuthContext.js, pages/Login.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Google button redirects to https://auth.emergentagent.com/?redirect=<origin+'/'>. On return, AuthProvider detects #session_id= in URL fragment FIRST, POSTs to /api/auth/google/session, stores token, cleans hash. Full happy path needs real Google account (cannot fully automate); verify the button redirects to auth.emergentagent.com."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"

@@ -1,11 +1,14 @@
 import "@/App.css";
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UserProvider, useUser } from "@/context/UserContext";
 import { getStats } from "@/api";
 import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
+import Login from "@/pages/Login";
+import Profile from "@/pages/Profile";
 import InstallPrompt from "@/components/InstallPrompt";
 
 const pluralize = (n, forms) => {
@@ -88,12 +91,14 @@ const Home = () => {
               <img src="/menu.svg" alt="Программы" width={40} height={40} />
             </Link>
             {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt="Профиль"
-                className="profile-avatar"
-                data-testid="profile-avatar"
-              />
+              <Link to="/profile" aria-label="Профиль" data-testid="profile-link">
+                <img
+                  src={avatarUrl}
+                  alt="Профиль"
+                  className="profile-avatar"
+                  data-testid="profile-avatar"
+                />
+              </Link>
             ) : null}
           </div>
         </header>
@@ -133,19 +138,38 @@ const Home = () => {
   );
 };
 
+const SplashScreen = () => (
+  <div className="app-splash" data-testid="app-splash">
+    <img src="/TWBlogo.png" alt="TrainWithBrain" className="app-splash-logo" />
+  </div>
+);
+
+const AppShell = () => {
+  const { loading, isAuthenticated } = useAuth();
+  if (loading) return <SplashScreen />;
+  if (!isAuthenticated) return <Login />;
+  return (
+    <UserProvider>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/programs" element={<Programs />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </UserProvider>
+  );
+};
+
 function App() {
   return (
     <div className="App">
-      <UserProvider>
+      <AuthProvider>
         <BrowserRouter>
           <Toaster position="top-center" theme="dark" richColors />
           <InstallPrompt />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/programs" element={<Programs />} />
-          </Routes>
+          <AppShell />
         </BrowserRouter>
-      </UserProvider>
+      </AuthProvider>
     </div>
   );
 }
