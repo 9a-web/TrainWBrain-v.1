@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Body, Depends, Header, Cookie, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -22,6 +22,12 @@ from models import (
 from seed import (
     seed_builtins, ensure_indexes,
     group_letters, muscle_letter, percent_of, scheme_tonnage,
+)
+from auth import (
+    RegisterReq, LoginReq, TelegramAuthReq, GoogleSessionReq,
+    hash_password, verify_password, new_session_token, session_expiry,
+    synthetic_telegram_id, validate_telegram_init_data, parse_telegram_user,
+    exchange_emergent_session, ensure_auth_indexes,
 )
 
 
@@ -178,6 +184,211 @@ async def get_user(telegram_id: int):
         if isinstance(user.get(field), str):
             user[field] = datetime.fromisoformat(user[field])
     return user
+
+
+# ===========================================================================
+# Аутентификация: Telegram (один тап) + Email/пароль + Google (Emergent Auth)
+# Единая модель сессий (коллекция user_sessions). Каждый аккаунт имеет
+# telegram_id (реальный или синтетический) — ключ всех данных приложения.
+# ===========================================================================
+
+def _token_from(authorization, session_token):
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return session_token
+
+
+async def _create_session(telegram_id: int, method: str) -> str:
+    token = new_session_token()
+    await db.user_sessions.insert_one({
+        "session_token": token,
+        "telegram_id": telegram_id,
+        "auth_method": method,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": session_expiry().isoformat(),
+    })
+    return token
+
+
+async def _user_public(telegram_id: int) -> dict:
+    return await db.users.find_one(
+        {"telegram_id": telegram_id},
+        {"_id": 0, "password_hash": 0},
+    )
+
+
+def _set_session_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="session_token", value=token,
+        max_age=7 * 24 * 3600, httponly=True, secure=True, samesite="none", path="/",
+    )
+
+
+async def _unique_synth_id() -> int:
+    tgid = synthetic_telegram_id()
+    while await db.users.find_one({"telegram_id": tgid}, {"_id": 0}):
+        tgid = synthetic_telegram_id()
+    return tgid
+
+
+async def get_current_user(
+    authorization: Optional[str] = Header(default=None),
+    session_token: Optional[str] = Cookie(default=None),
+):
+    token = _token_from(authorization, session_token)
+    if not token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        raise HTTPException(status_code=401, detail="Недействительная сессия")
+    exp = sess.get("expires_at")
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp and exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Сессия истекла")
+    user = await db.users.find_one(
+        {"telegram_id": sess["telegram_id"]},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Пользователь не найден")
+    return user
+
+
+@api_router.post("/auth/register")
+async def auth_register(payload: RegisterReq, response: Response):
+    email = (payload.email or "").strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Некорректный email")
+    if not payload.password or len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Пароль должен быть не короче 6 символов")
+    if await db.users.find_one({"email": email}, {"_id": 0}):
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+    tgid = await _unique_synth_id()
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()), "telegram_id": tgid,
+        "first_name": (payload.name or email.split("@")[0]).strip(),
+        "last_name": None, "username": None, "language_code": "ru",
+        "email": email, "password_hash": hash_password(payload.password),
+        "auth_provider": ["email"], "picture": None,
+        "created_at": now, "updated_at": now,
+    }
+    await db.users.insert_one(doc)
+    token = await _create_session(tgid, "email")
+    _set_session_cookie(response, token)
+    logger.info(f"Auth register: email={email}, telegram_id={tgid}")
+    return {"token": token, "user": await _user_public(tgid)}
+
+
+@api_router.post("/auth/login")
+async def auth_login(payload: LoginReq, response: Response):
+    email = (payload.email or "").strip().lower()
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password_hash") or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Неверный email или пароль")
+    token = await _create_session(user["telegram_id"], "email")
+    _set_session_cookie(response, token)
+    return {"token": token, "user": await _user_public(user["telegram_id"])}
+
+
+@api_router.post("/auth/telegram")
+async def auth_telegram(payload: TelegramAuthReq, response: Response):
+    parsed = validate_telegram_init_data(payload.init_data, TELEGRAM_BOT_TOKEN)
+    if not parsed:
+        raise HTTPException(status_code=401, detail="Не удалось проверить подпись Telegram")
+    tg_user = parse_telegram_user(parsed)
+    if not tg_user or "id" not in tg_user:
+        raise HTTPException(status_code=401, detail="Нет данных пользователя Telegram")
+    tgid = int(tg_user["id"])
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.users.find_one({"telegram_id": tgid}, {"_id": 0})
+    if existing:
+        await db.users.update_one({"telegram_id": tgid}, {
+            "$set": {
+                "first_name": tg_user.get("first_name") or existing.get("first_name") or "User",
+                "last_name": tg_user.get("last_name"),
+                "username": tg_user.get("username"),
+                "language_code": tg_user.get("language_code") or existing.get("language_code") or "ru",
+                "updated_at": now,
+            },
+            "$addToSet": {"auth_provider": "telegram"},
+        })
+    else:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "telegram_id": tgid,
+            "first_name": tg_user.get("first_name") or "User",
+            "last_name": tg_user.get("last_name"),
+            "username": tg_user.get("username"),
+            "language_code": tg_user.get("language_code") or "ru",
+            "email": None, "password_hash": None,
+            "auth_provider": ["telegram"], "picture": tg_user.get("photo_url"),
+            "created_at": now, "updated_at": now,
+        })
+    token = await _create_session(tgid, "telegram")
+    _set_session_cookie(response, token)
+    logger.info(f"Auth telegram: telegram_id={tgid}")
+    return {"token": token, "user": await _user_public(tgid)}
+
+
+@api_router.post("/auth/google/session")
+async def auth_google_session(payload: GoogleSessionReq, response: Response):
+    data = await exchange_emergent_session(payload.session_id)
+    if not data or not data.get("email"):
+        raise HTTPException(status_code=401, detail="Не удалось авторизоваться через Google")
+    email = data["email"].strip().lower()
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        tgid = existing["telegram_id"]
+        await db.users.update_one({"telegram_id": tgid}, {
+            "$set": {
+                "first_name": existing.get("first_name") or data.get("name") or email.split("@")[0],
+                "picture": data.get("picture") or existing.get("picture"),
+                "updated_at": now,
+            },
+            "$addToSet": {"auth_provider": "google"},
+        })
+    else:
+        tgid = await _unique_synth_id()
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "telegram_id": tgid,
+            "first_name": data.get("name") or email.split("@")[0],
+            "last_name": None, "username": None, "language_code": "ru",
+            "email": email, "password_hash": None,
+            "auth_provider": ["google"], "google_sub": data.get("id"),
+            "picture": data.get("picture"),
+            "created_at": now, "updated_at": now,
+        })
+    # Persist the Emergent-issued session_token if present, else our own.
+    token = data.get("session_token") or new_session_token()
+    await db.user_sessions.insert_one({
+        "session_token": token, "telegram_id": tgid, "auth_method": "google",
+        "created_at": now, "expires_at": session_expiry().isoformat(),
+    })
+    _set_session_cookie(response, token)
+    logger.info(f"Auth google: email={email}, telegram_id={tgid}")
+    return {"token": token, "user": await _user_public(tgid)}
+
+
+@api_router.get("/auth/me")
+async def auth_me(current=Depends(get_current_user)):
+    return current
+
+
+@api_router.post("/auth/logout")
+async def auth_logout(
+    response: Response,
+    authorization: Optional[str] = Header(default=None),
+    session_token: Optional[str] = Cookie(default=None),
+):
+    token = _token_from(authorization, session_token)
+    if token:
+        await db.user_sessions.delete_one({"session_token": token})
+    response.delete_cookie("session_token", path="/")
+    return {"ok": True}
 
 
 @api_router.get("/telegram/avatar/{user_id}")
@@ -908,6 +1119,10 @@ async def startup_seed():
         await ensure_indexes(db)
     except Exception as e:
         logger.warning(f"ensure_indexes failed: {e}")
+    try:
+        await ensure_auth_indexes(db)
+    except Exception as e:
+        logger.warning(f"ensure_auth_indexes failed: {e}")
     try:
         res = await seed_builtins(db)
         logger.info(f"Seed builtins complete: {res}")

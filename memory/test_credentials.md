@@ -1,11 +1,24 @@
 # Test Credentials & Environment Notes — TrainWithBrain
 
 ## Auth
-- **Нет классической аутентификации (логин/пароль).**
-- Личность пользователя:
-  - В Telegram → реальный `initDataUnsafe.user`.
-  - В обычном браузере / PWA → **стойкий web-гость**: `telegram_id` генерируется и хранится в `localStorage` (ключ `twb_web_uid`), имя по умолчанию «Гость» (`twb_web_name`). Данные персистятся на этот браузер.
-- Для тестов вне Telegram ничего вводить не нужно — пользователь авто-регистрируется при загрузке (`POST /api/users`).
+- **NEW: Three authentication methods implemented (mandatory auth, no guest mode):**
+  1. **Email/Password** — bcrypt hashing, JWT-less session tokens
+  2. **Telegram WebApp** — initData HMAC validation with bot token
+  3. **Google OAuth** — Emergent Managed Auth (session exchange)
+- Every account has a `telegram_id` (real for Telegram users, synthetic 900000000000+ for email/Google)
+- Session model: `user_sessions` collection with `session_token`, `telegram_id`, `auth_method`, `expires_at`, `created_at`
+- Auth dependency reads `Authorization: Bearer <token>` header first, then `session_token` cookie
+
+### Test Accounts Created (Email Auth)
+- **Email**: `authtest+1781538884@example.com`
+- **Password**: `password123`
+- **telegram_id**: `950454640997` (synthetic)
+- **Token**: Session tokens are ephemeral and regenerated on each login
+
+### Test Accounts Created (Telegram Auth)
+- **telegram_id**: `123456789` (test account via valid HMAC signature)
+- **first_name**: `TestTG`
+- **username**: `testtg`
 
 ## URLs
 - Внешний URL контейнера (frontend + `/api`): `https://ea220423-ac6a-48fa-9c5a-5a9fc43dfbfb.preview.emergentagent.com`

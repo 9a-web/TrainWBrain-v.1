@@ -105,6 +105,66 @@
 user_problem_statement: "TrainWithBrain Telegram WebApp - при открытии приложения в Telegram аватарка не подгружается. Нужно проверить создание пользователя в БД и работу с UID"
 
 backend:
+  - task: "Auth: Email register/login (JWT-less session tokens, bcrypt)"
+    implemented: true
+    working: true
+    file: "server.py, auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/auth/register {email,password,name} creates account with synthetic telegram_id (range 900000000000+), bcrypt password_hash (never returned), returns {token,user} + sets httpOnly cookie. POST /api/auth/login verifies password. Duplicate email -> 400, weak password (<6) -> 400, wrong creds -> 401. Smoke-tested OK on localhost."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All email auth scenarios passed (7 tests). (1) REGISTER SUCCESS: POST /api/auth/register creates user with synthetic telegram_id=950454640997 (>=900000000000), returns {token,user} with UUID id (36 chars), email in auth_provider, NO password_hash in response. (2) WEAK PASSWORD: password <6 chars rejected with 400. (3) INVALID EMAIL: emails without @ or without domain dot rejected with 400. (4) DUPLICATE EMAIL: registering same email twice rejected with 400. (5) LOGIN SUCCESS: POST /api/auth/login with correct credentials returns {token,user}, NO password_hash. (6) WRONG PASSWORD: login with wrong password rejected with 401. (7) UNKNOWN EMAIL: login with non-existent email rejected with 401. All responses are valid JSON, UUIDs are 36 chars, ISO datetime strings, no MongoDB _id leaks. Test account: authtest+1781538884@example.com / password123 / telegram_id=950454640997."
+
+  - task: "Auth: Telegram WebApp one-tap (initData HMAC validation)"
+    implemented: true
+    working: true
+    file: "server.py, auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/auth/telegram {init_data} validates HMAC-SHA256 with TELEGRAM_BOT_TOKEN (secret=HMAC('WebAppData',token)). On success upserts user by real telegram_id, returns {token,user}. Invalid/forged signature -> 401 (smoke-tested with bad init_data -> 401). NOTE: a fully valid initData can only be produced by Telegram; testing agent can verify the 401 path and that a correctly-signed payload (if constructable with the bot token) authenticates."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Both Telegram auth scenarios passed. (1) INVALID SIGNATURE: POST /api/auth/telegram with forged hash='badhash123' rejected with 401 ('Не удалось проверить подпись Telegram'). (2) VALID SIGNATURE: Constructed valid initData per Telegram WebApp HMAC scheme (secret_key=HMAC_SHA256(key='WebAppData', msg=bot_token), hash=HMAC_SHA256(key=secret_key, msg=data_check_string with sorted params)). POST with valid signature accepted with 200, returns {token,user} with telegram_id=123456789 (real, not synthetic), 'telegram' in auth_provider, NO password_hash. GET /api/auth/me with that token returns same user (200). All responses valid JSON, UUID id, ISO datetimes, no _id leaks. Test account: telegram_id=123456789, first_name=TestTG, username=testtg."
+
+  - task: "Auth: Google via Emergent Managed Auth (session exchange)"
+    implemented: true
+    working: true
+    file: "server.py, auth.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/auth/google/session {session_id} calls Emergent https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data with X-Session-ID; finds/creates user by email (synthetic telegram_id), stores returned session_token in user_sessions. Invalid session_id -> 401. Full happy path requires a real Emergent session_id (browser flow); testing agent can verify the 401 path for a bogus session_id."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Google auth invalid path verified. POST /api/auth/google/session with bogus session_id='bogus-session-id-12345' correctly rejected with 401 ('Не удалось авторизоваться через Google'). This confirms the Emergent session exchange integration is working (returns 401 when Emergent API rejects the session_id). Full happy path (valid session_id from browser OAuth flow) cannot be tested in automated test harness but the error handling is correct. Response is valid JSON."
+
+  - task: "Auth: session dependency + /auth/me + /auth/logout"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "get_current_user reads Authorization: Bearer <token> first, then session_token cookie; validates against user_sessions with expiry check. GET /api/auth/me returns current user (no password_hash) or 401. POST /api/auth/logout deletes session + clears cookie. Smoke-tested: me with token -> 200, me without -> 401."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All session management scenarios passed (5 tests). (1) GET /api/auth/me WITH BEARER TOKEN: Returns 200 with user data (id, telegram_id, email, auth_provider), NO password_hash, NO _id. (2) GET /api/auth/me WITHOUT TOKEN: Returns 401 ('Не авторизован'). (3) GET /api/auth/me WITH BOGUS TOKEN: Returns 401 ('Недействительная сессия'). (4) POST /api/auth/logout: Returns 200 {ok:true}, session deleted from user_sessions. (5) GET /api/auth/me AFTER LOGOUT: Same token now returns 401 ('Недействительная сессия'), confirming session was deleted. All responses valid JSON, UUIDs are 36 chars, ISO datetime strings."
+
   - task: "User registration/update on app load"
     implemented: true
     working: true
@@ -331,11 +391,15 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 6
+  test_sequence: 8
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Auth: Email register/login (JWT-less session tokens, bcrypt)"
+    - "Auth: session dependency + /auth/me + /auth/logout"
+    - "Auth: Telegram WebApp one-tap (initData HMAC validation)"
+    - "Auth: Google via Emergent Managed Auth (session exchange)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -361,3 +425,7 @@ agent_communication:
     message: "✅ EDIT EXERCISE ENDPOINT TESTS COMPLETE - ALL PASSED: Tested enhanced PATCH /api/sessions/{id}/exercise/{order}/edit endpoint with athlete telegram_id=990011. Created plan from powerlifting-peaking template (one_rep_max: squat-competition:170, bench-press:140, deadlift:200), started session week=1 day=1 (7 exercises, order=0 is squat-competition). All 9 test scenarios passed: (1) ADD SETS: 3 sets added, percent_1rm calculated correctly (100kg->59%, 110kg->65%, 120kg->71%), tonnage=1450. (2) DELETE SETS: Reduced to 1 set, tonnage=500. (3) COMMENT ADD: Comment trimmed correctly ('  Болело плечо, снизил вес  ' -> 'Болело плечо, снизил вес'), sets_scheme unchanged. (4) COMMENT CLEAR: Comment cleared with both empty string and null. (5) COMMENT PERSISTENCE: Comment persisted in both GET /api/sessions/{id} and GET /api/sessions/active. (6) CLAMP: Sets and reps clamped correctly (sets=0->1, reps=-3->0, tonnage=0). (7) COMBINED: Both sets_scheme and comment updated on exercise order=1 (tonnage=1350, comment='норм'), exercise order=0 untouched. (8) NAME EDIT: Exercise name edit still works ('Тест присед'). (9) GENERAL ASSERTIONS: No MongoDB _id leaks, all IDs are UUID strings, datetimes are ISO strings, stats object present. All responses valid JSON. Backend API fully functional."
   - agent: "testing"
     message: "✅ IMPORTED POWERLIFTING TEMPLATE + PLAN SCALING TESTS COMPLETE - ALL PASSED: Tested new '3 мес Подготовка на осень' (pl-autumn-3m) template with maxes scaling, day remapping, and accessory exercises. All 45 assertions passed across 7 test scenarios. (1) TEMPLATE LIST: GET /api/programs/templates returns exactly 4 templates (was 3). New template has name='3 мес Подготовка на осень', weeks_count=12, requires_maxes=true, base_maxes={squat:200,bench:131,deadlift:230}. (2) TEMPLATE DETAIL: Full 12 weeks returned; week 1 has 3 days [2,4,6]; day 1 has 4 main exercises (lift_group squat/bench/deadlift, non-empty sets_scheme) + 3 accessory exercises (is_accessory=true, empty sets_scheme). (3) PLAN WITH SCALING: Created plan with maxes={squat:180,bench:120,deadlift:210} and training_days=[1,3,5]. plan.maxes and plan.training_days stored correctly. one_rep_max scaled: squat-competition=180.0, bench-no-legs=108.0, deadlift-classic=189.0, squat-paused=157.5. Week 1 days remapped to [1,3,5]. First squat exercise weights scaled: [145.0, 150.0, 122.5] (original 160/167.5/135 * 0.9 rounded to 2.5kg). (4) PLAN DAY: GET /api/plans/{id}/day?week=1&day=1 returns is_rest=false, title='День 1 · Присед', group='Н+Г+С', difficulty='Тяжело'. 7 exercises: 4 main (percent_1rm computed, non-empty sets_scheme) + 3 accessory (is_accessory=true, empty sets_scheme). Day 2 is rest. (5) WEEK-PROGRESS: GET /api/plans/{id}/week-progress?week=1 returns 7 days; is_workout=true for [1,3,5], rest for [2,4,6,7]. (6) NO-MAXES PATH: Plan created without maxes/training_days uses template defaults: one_rep_max squat-competition=200, days=[2,4,6], first squat weight=160.0 (not scaled). (7) GENERAL: All IDs are UUID strings (36 chars), no MongoDB _id leaks, datetimes are ISO strings. Idempotent seed verified: template count stays at 4. Tested with athletes 661001 (with maxes) and 661002 (no maxes). Backend API fully functional."
+  - agent: "main"
+    message: "NEW FEATURE ready for backend testing: AUTHENTICATION (3 methods, mandatory auth, no guest). Test ONLY the new /api/auth/* endpoints (do NOT re-test prior phases). Unified session model: collection user_sessions {session_token, telegram_id, auth_method, expires_at(ISO), created_at}; every account keyed by telegram_id (real for Telegram, synthetic 900000000000+ for email/google). Auth dependency get_current_user reads Authorization: Bearer <token> first, then session_token cookie. SCENARIOS: (A) EMAIL: POST /api/auth/register {email,password,name} -> 200 {token,user}; user has telegram_id, email, auth_provider=['email'], NO password_hash field; weak password (<6 chars) -> 400; invalid email (no @ / no domain dot) -> 400; duplicate email -> 400. POST /api/auth/login {email,password} -> 200 {token,user}; wrong password -> 401; unknown email -> 401. (B) SESSION: GET /api/auth/me with header 'Authorization: Bearer <token>' -> 200 user (no password_hash); without header -> 401; with bogus token -> 401. POST /api/auth/logout with token -> {ok:true}; afterwards GET /api/auth/me with that same token -> 401 (session deleted). (C) TELEGRAM: POST /api/auth/telegram {init_data:'hash=bad&user=...'} with an INVALID signature -> 401 (cannot forge without bot token). If you can construct a valid initData using the bot token in backend/.env (TELEGRAM_BOT_TOKEN) per Telegram HMAC scheme (secret=HMAC_SHA256(key='WebAppData', msg=token); hash=HMAC_SHA256(key=secret, msg=data_check_string)), then a valid payload with user={id,first_name} -> 200 {token,user} with that real telegram_id and auth_provider containing 'telegram'. (D) GOOGLE: POST /api/auth/google/session {session_id:'bogus'} -> 401 (Emergent exchange fails for invalid id). Full happy path needs a real browser session_id, skip if unavailable. GENERAL: responses are JSON, UUID 'id' on users, ISO datetimes, NO _id leaks, password_hash never present in any auth response. Use fresh emails like authtest+<rand>@example.com. test_credentials.md will be updated with any created accounts."
+  - agent: "testing"
+    message: "✅ AUTHENTICATION BACKEND TESTS COMPLETE - ALL 17 TESTS PASSED: Tested all 4 auth tasks (email, telegram, google, session management) with comprehensive scenarios. (A) EMAIL AUTH (7 tests): Register creates user with synthetic telegram_id=950454640997 (>=900000000000), returns {token,user} with UUID id, 'email' in auth_provider, NO password_hash. Weak password (<6 chars) rejected with 400. Invalid emails (no @ or no domain dot) rejected with 400. Duplicate email rejected with 400. Login with correct credentials returns {token,user}. Wrong password rejected with 401. Unknown email rejected with 401. (B) SESSION MANAGEMENT (5 tests): GET /api/auth/me with Bearer token returns user (200), NO password_hash, NO _id. Without token returns 401. With bogus token returns 401. POST /api/auth/logout returns {ok:true} (200). After logout, same token returns 401 (session deleted). (C) TELEGRAM AUTH (2 tests): Invalid HMAC signature rejected with 401. Valid HMAC signature (constructed per Telegram WebApp spec with bot token) accepted with 200, returns {token,user} with real telegram_id=123456789, 'telegram' in auth_provider. GET /api/auth/me with Telegram token works (200). (D) GOOGLE AUTH (1 test): Bogus session_id rejected with 401 (Emergent exchange fails correctly). (E) GENERAL ASSERTIONS (2 tests): All responses are valid JSON. UUIDs are 36 chars with 4 hyphens. ISO datetime strings. NO MongoDB _id leaks. password_hash NEVER present in any auth response. Test accounts created: email=authtest+1781538884@example.com / password=password123 / telegram_id=950454640997; telegram_id=123456789 (TestTG). Updated /app/memory/test_credentials.md with test accounts. Backend authentication fully functional."
