@@ -6,6 +6,7 @@ import { UserProvider, useUser } from "@/context/UserContext";
 import { getStats } from "@/api";
 import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
+import InstallPrompt from "@/components/InstallPrompt";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -138,6 +139,7 @@ function App() {
       <UserProvider>
         <BrowserRouter>
           <Toaster position="top-center" theme="dark" richColors />
+          <InstallPrompt />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/programs" element={<Programs />} />
