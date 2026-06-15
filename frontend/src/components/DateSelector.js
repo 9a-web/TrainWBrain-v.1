@@ -319,6 +319,19 @@ const DateSelector = () => {
 
   const view = session || previewView;
 
+  // Оригинальные подходы дня из плана (по позиции упражнения) — для диффа правок
+  const planSetsByOrder = useMemo(() => {
+    if (!plan?.weeks) return {};
+    const wk = plan.weeks.find((w) => w.week_index === planWeek);
+    if (!wk) return {};
+    const day = (wk.days || []).find((d) => d.day_index === selectedDayIndex);
+    if (!day) return {};
+    const sorted = [...(day.exercises || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const map = {};
+    sorted.forEach((e, i) => { map[i] = e.sets_scheme || []; });
+    return map;
+  }, [plan, planWeek, selectedDayIndex]);
+
   const handleStart = async () => {
     if (!plan) { toast.info('Сначала выберите программу'); return; }
     if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
@@ -512,6 +525,7 @@ const DateSelector = () => {
           onEditSave={handleEditSave}
           forecastBySlug={forecastBySlug}
           currentWeek={planWeek}
+          planSetsByOrder={planSetsByOrder}
         />
       ) : null}
     </div>

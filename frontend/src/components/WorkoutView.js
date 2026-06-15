@@ -82,8 +82,37 @@ const ForecastChart = ({ series, currentWeek }) => {
   );
 };
 
+// ---------- строки подходов с диффом (карандаш/зачёркивание) ----------
+const PlanRows = ({ sets, planSets }) => (
+  <>
+    <div className="ex-plan-label">План:</div>
+    {diffSets(sets, planSets).map((s, i) => (
+      <div className={`ex-plan-row ${s._state === "deleted" ? "ex-plan-deleted" : ""}`} key={i}>
+        {s.weight !== null && s.weight !== undefined ? (
+          <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
+        ) : (
+          <span className="ex-plan-weight ex-plan-bw">Свой вес</span>
+        )}
+        <span className="ex-plan-dash">—</span>
+        <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
+        {s.percent_1rm !== null && s.percent_1rm !== undefined ? (
+          <span className="ex-plan-pctwrap">
+            <span className="ex-plan-bar" />
+            <span className="ex-plan-pct">{s.percent_1rm}%</span>
+          </span>
+        ) : (
+          <span />
+        )}
+        {s._state === "edited" ? (
+          <Pencil size={12} className="ex-plan-edit-ico" aria-label="изменён" />
+        ) : null}
+      </div>
+    ))}
+  </>
+);
+
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek, planSets }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
@@ -168,47 +197,31 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
         <>
           {isAcc ? (
             <div className="ex-acc-body">
-              <div className="ex-acc-rec"><b>4 подхода</b></div>
+              {ex.sets_scheme && ex.sets_scheme.length > 0 ? (
+                <div className="ex-plan">
+                  <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                </div>
+              ) : (
+                <div className="ex-acc-rec"><b>4 подхода</b></div>
+              )}
             </div>
           ) : (
-          <div className="ex-body">
-            <div className="ex-plan">
-              <div className="ex-plan-label">План:</div>
-              {diffSets(ex.sets_scheme, ex.plan_sets_scheme).map((s, i) => (
-                <div className={`ex-plan-row ${s._state === "deleted" ? "ex-plan-deleted" : ""}`} key={i}>
-                  {s.weight !== null && s.weight !== undefined ? (
-                    <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
-                  ) : (
-                    <span className="ex-plan-weight ex-plan-bw">Свой вес</span>
-                  )}
-                  <span className="ex-plan-dash">—</span>
-                  <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
-                  {s.percent_1rm !== null && s.percent_1rm !== undefined ? (
-                    <span className="ex-plan-pctwrap">
-                      <span className="ex-plan-bar" />
-                      <span className="ex-plan-pct">{s.percent_1rm}%</span>
-                    </span>
-                  ) : (
-                    <span />
-                  )}
-                  {s._state === "edited" ? (
-                    <Pencil size={12} className="ex-plan-edit-ico" aria-label="изменён" />
-                  ) : null}
+            <div className="ex-body">
+              <div className="ex-plan">
+                <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                <div className="ex-meta">
+                  <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
+                  {ex.muscle_letter ? <div className="ex-meta-row">Группа: <b>{ex.muscle_letter}</b></div> : null}
+                  {ex.difficulty ? <div className="ex-meta-row">Сложность: <b>{ex.difficulty}</b></div> : null}
                 </div>
-              ))}
-              <div className="ex-meta">
-                <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
-                {ex.muscle_letter ? <div className="ex-meta-row">Группа: <b>{ex.muscle_letter}</b></div> : null}
-                {ex.difficulty ? <div className="ex-meta-row">Сложность: <b>{ex.difficulty}</b></div> : null}
               </div>
+              {forecast && forecast.length >= 2 ? (
+                <div className="ex-forecast">
+                  <ForecastChart series={forecast} currentWeek={currentWeek} />
+                  <span className="ex-forecast-caption">Вес по неделям</span>
+                </div>
+              ) : null}
             </div>
-            {forecast && forecast.length >= 2 ? (
-              <div className="ex-forecast">
-                <ForecastChart series={forecast} currentWeek={currentWeek} />
-                <span className="ex-forecast-caption">Вес по неделям</span>
-              </div>
-            ) : null}
-          </div>
           )}
           {ex.comment ? (
             <div className="ex-comment" data-testid={`comment-${ex.order}`}>
@@ -339,7 +352,7 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
 };
 
 // ---------- основной вид тренировки ----------
-const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEditSave, forecastBySlug = {}, currentWeek }) => {
+const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEditSave, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
   const [now, setNow] = useState(() => Date.now());
   const [editing, setEditing] = useState(null);
   const [accOpen, setAccOpen] = useState(false);
@@ -415,6 +428,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEdit
             onEdit={(e) => setEditing(e)}
             forecast={forecastBySlug[ex.exercise_slug]}
             currentWeek={currentWeek}
+            planSets={planSetsByOrder[ex.order]}
           />
         ))}
       </div>
@@ -444,6 +458,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEdit
                   isPreview={isPreview}
                   onAction={onAction}
                   onEdit={(e) => setEditing(e)}
+                  planSets={planSetsByOrder[ex.order]}
                 />
               ))}
             </div>
