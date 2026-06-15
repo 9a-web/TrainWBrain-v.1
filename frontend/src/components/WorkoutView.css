@@ -360,15 +360,15 @@
 
 /* мини-график прогноза */
 .ex-forecast {
-  flex: 0 0 150px;
+  flex: 0 0 172px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
 .forecast-svg {
-  width: 150px;
-  height: 58px;
+  width: 172px;
+  height: 68px;
 }
 .ex-forecast-caption {
   font-size: 11px;
@@ -584,7 +584,7 @@
 
 /* адаптив: на узких экранах график прогноза скрываем */
 @media (max-width: 520px) {
-  .ex-forecast { flex-basis: 112px; }
-  .forecast-svg { width: 112px; height: 50px; }
+  .ex-forecast { flex-basis: 130px; }
+  .forecast-svg { width: 130px; height: 58px; }
   .wv-stats { gap: 12px; }
 }

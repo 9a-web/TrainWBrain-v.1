@@ -69,7 +69,25 @@ const ForecastChart = ({ series, currentWeek }) => {
   const xx = (i) => pad + (i / (n - 1)) * (W - 2 * pad);
   const yy = (v) => (H - pad) - ((v - min) / range) * (H - 2 * pad);
   const pts = series.map((p, i) => [xx(i), yy(p.value)]);
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  // Слегка скруглённая линия (Catmull-Rom -> Безье, мягкий коэффициент)
+  const smooth = (points) => {
+    if (points.length < 2) return "";
+    const k = 0.2;
+    let d = `M${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const p0 = points[i - 1] || points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] || p2;
+      const cp1x = p1[0] + (p2[0] - p0[0]) * k;
+      const cp1y = p1[1] + (p2[1] - p0[1]) * k;
+      const cp2x = p2[0] - (p3[0] - p1[0]) * k;
+      const cp2y = p2[1] - (p3[1] - p1[1]) * k;
+      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+    }
+    return d;
+  };
+  const line = smooth(pts);
   const area = `${line} L${pts[n - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
   const curIdx = series.findIndex((p) => p.week === currentWeek);
   const gid = `fc-${n}-${Math.round(min)}-${Math.round(max)}`;
