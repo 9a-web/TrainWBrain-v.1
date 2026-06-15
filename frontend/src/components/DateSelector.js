@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Pause, Play, Square, Settings2, Wand2 } from 'lucide-react';
+import { Zap, Pause, Play, Square, Bolt, WandSparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
@@ -420,7 +420,7 @@ const DateSelector = () => {
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Настройки тренировки скоро')}
                 aria-label="Настройки" data-testid="btn-settings">
-                <Settings2 size={18} />
+                <Bolt size={18} />
               </button>
             </>
           ) : sessionStatus === 'finished' ? (
@@ -428,12 +428,12 @@ const DateSelector = () => {
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Настройки тренировки скоро')}
                 aria-label="Настройки" data-testid="btn-settings">
-                <Settings2 size={18} />
+                <Bolt size={18} />
               </button>
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Нажмите ✨ на упражнении, чтобы изменить его')}
                 aria-label="Изменить" data-testid="btn-edit">
-                <Wand2 size={18} />
+                <WandSparkles size={18} />
               </button>
             </>
           ) : !isRestSelected ? (

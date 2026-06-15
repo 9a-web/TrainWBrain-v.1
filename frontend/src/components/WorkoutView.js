@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Check, X, Wand2, ChevronDown, CheckCircle2,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2,
 } from "lucide-react";
 import "./WorkoutView.css";
 
@@ -90,7 +90,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
                 data-testid={`edit-${ex.order}`}
                 onClick={(e) => { e.stopPropagation(); onEdit(ex); }}
               >
-                <Wand2 size={15} />
+                <WandSparkles size={15} />
               </span>
               <span
                 className="ex-btn ex-btn-skip"
@@ -110,7 +110,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
               data-testid={`edit-${ex.order}`}
               onClick={(e) => { e.stopPropagation(); onEdit(ex); }}
             >
-              <Wand2 size={14} />
+              <WandSparkles size={14} />
             </span>
           ) : null}
           <ChevronDown size={22} className={`ex-chevron ${open ? "open" : ""}`} />
