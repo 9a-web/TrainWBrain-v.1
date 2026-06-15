@@ -61,7 +61,8 @@
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 4px;
+  margin-right: -20px;
 }
 
 .menu-button {
