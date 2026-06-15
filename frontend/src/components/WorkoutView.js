@@ -18,6 +18,28 @@ export const fmtDuration = (sec) => {
   return h > 0 ? `${h}ч. ${m}м.` : `${m}м.`;
 };
 
+// Дифф подходов сессии относительно плана: normal | edited (добавлен/изменён) | deleted (удалён из плана)
+const setKey = (s) => `${s.weight === null || s.weight === undefined ? "bw" : s.weight}|${s.sets}|${s.reps}`;
+
+const diffSets = (cur, plan) => {
+  const c = cur || [];
+  const p = plan || [];
+  if (!p.length) return c.map((s) => ({ ...s, _state: "normal" }));
+  const planCount = {};
+  p.forEach((s) => { const k = setKey(s); planCount[k] = (planCount[k] || 0) + 1; });
+  const rows = [];
+  c.forEach((s) => {
+    const k = setKey(s);
+    if (planCount[k] > 0) { planCount[k] -= 1; rows.push({ ...s, _state: "normal" }); }
+    else rows.push({ ...s, _state: "edited" });
+  });
+  p.forEach((s) => {
+    const k = setKey(s);
+    if (planCount[k] > 0) { planCount[k] -= 1; rows.push({ ...s, _state: "deleted" }); }
+  });
+  return rows;
+};
+
 const STATUS_META = {
   done: { label: "Выполнено", color: "#3BD16F" },
   in_progress: { label: "В процессе", color: "#FFB020" },
@@ -70,6 +92,9 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
   // По умолчанию карточки свёрнуты
   const [open, setOpen] = useState(false);
 
+  // Кнопки действий: у основных — только у активного; у подсобных — пока не выполнено
+  const showActions = isActive || (isAcc && !isPreview && ex.status === "pending");
+
   return (
     <div className={`ex-card ${isActive ? "ex-card-active" : ""}`} data-testid={`exercise-card-${ex.order}`}>
       <button type="button" className="ex-head" onClick={() => setOpen((o) => !o)}>
@@ -92,7 +117,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
           </span>
         </div>
         <div className="ex-head-right">
-          {isFinishedCard && !isAcc ? (
+          {isFinishedCard ? (
             <span
               className="ex-btn ex-btn-magic-sm"
               role="button"
@@ -107,7 +132,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
         </div>
       </button>
 
-      {isActive ? (
+      {showActions ? (
         <div className="ex-actions" data-testid={`actions-${ex.order}`}>
           <span
             className="ex-btn ex-btn-done"
@@ -118,17 +143,15 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
           >
             <Check size={16} strokeWidth={3} /> Выполнить
           </span>
-          {!isAcc ? (
-            <span
-              className="ex-btn ex-btn-magic"
-              role="button"
-              tabIndex={0}
-              data-testid={`edit-${ex.order}`}
-              onClick={() => onEdit(ex)}
-            >
-              <WandSparkles size={16} />
-            </span>
-          ) : null}
+          <span
+            className="ex-btn ex-btn-magic"
+            role="button"
+            tabIndex={0}
+            data-testid={`edit-${ex.order}`}
+            onClick={() => onEdit(ex)}
+          >
+            <WandSparkles size={16} />
+          </span>
           <span
             className="ex-btn ex-btn-skip"
             role="button"
@@ -145,14 +168,14 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
         <>
           {isAcc ? (
             <div className="ex-acc-body">
-              <div className="ex-acc-rec">Рекомендация: <b>по 4 подхода</b></div>
+              <div className="ex-acc-rec"><b>4 подхода</b></div>
             </div>
           ) : (
           <div className="ex-body">
             <div className="ex-plan">
               <div className="ex-plan-label">План:</div>
-              {(ex.sets_scheme || []).map((s, i) => (
-                <div className="ex-plan-row" key={i}>
+              {diffSets(ex.sets_scheme, ex.plan_sets_scheme).map((s, i) => (
+                <div className={`ex-plan-row ${s._state === "deleted" ? "ex-plan-deleted" : ""}`} key={i}>
                   {s.weight !== null && s.weight !== undefined ? (
                     <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
                   ) : (
@@ -168,6 +191,9 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }
                   ) : (
                     <span />
                   )}
+                  {s._state === "edited" ? (
+                    <Pencil size={12} className="ex-plan-edit-ico" aria-label="изменён" />
+                  ) : null}
                 </div>
               ))}
               <div className="ex-meta">

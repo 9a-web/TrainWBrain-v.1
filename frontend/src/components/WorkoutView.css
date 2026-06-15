@@ -294,6 +294,17 @@
 .ex-plan-bw { color: #bdbdbd; font-weight: 500; }
 .ex-plan-dash { color: #6f6f6f; }
 .ex-plan-scheme { text-align: left; }
+/* удалённый из плана подход — зачёркнут и тусклый */
+.ex-plan-deleted {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.55);
+}
+/* иконка карандаша у добавленного/изменённого подхода */
+.ex-plan-edit-ico {
+  color: #FFB36B;
+  flex-shrink: 0;
+}
 .ex-plan-pctwrap {
   display: inline-flex;
   align-items: center;

@@ -493,6 +493,7 @@ def _view_exercise(pe, orm, order, status="pending"):
         "muscle_letter": muscle_letter(pe.get("muscle_group")),
         "difficulty": pe.get("difficulty"),
         "sets_scheme": sets,
+        "plan_sets_scheme": [dict(s) for s in sets],
         "tonnage": scheme_tonnage(sets),
         "status": status,
         "comment": pe.get("comment"),

@@ -190,6 +190,7 @@ class SessionExercise(BaseModel):
     muscle_letter: Optional[str] = None
     difficulty: Optional[str] = None
     sets_scheme: List[SessionSet] = Field(default_factory=list)
+    plan_sets_scheme: List[SessionSet] = Field(default_factory=list)  # оригинал из плана (для диффа)
     tonnage: float = 0
     status: str = "pending"          # pending | in_progress | done | skipped
     comment: Optional[str] = None    # комментарий спортсмена для тренера (виден тренеру)
