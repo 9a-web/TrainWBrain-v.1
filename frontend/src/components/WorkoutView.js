@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Check, X, Wand2, ChevronDown, Loader2, CheckCircle2,
+  Check, X, Wand2, ChevronDown, CheckCircle2,
 } from "lucide-react";
 import "./WorkoutView.css";
 
@@ -232,11 +232,15 @@ const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEdit
   const isFinished = status === "finished";
 
   const statusIcon = isFinished ? (
-    <span className="wv-icon-done"><Check size={20} strokeWidth={3.5} /></span>
-  ) : status === "in_progress" && !paused ? (
-    <Loader2 size={34} className="wv-icon-spin" />
+    <img src="/complete.svg" alt="Завершено" width={24} height={24} className="wv-status-img" />
   ) : (
-    <span className="wv-icon-ring" />
+    <img
+      src="/run.svg"
+      alt={status === "in_progress" ? "Тренировка идёт" : "Не начата"}
+      width={24}
+      height={24}
+      className={`wv-status-img ${status === "in_progress" && !paused ? "wv-status-spin" : ""}`}
+    />
   );
 
   const handleSave = (order, body) => {

@@ -14,33 +14,21 @@
 }
 .wv-status-icon {
   flex-shrink: 0;
-  width: 46px;
-  height: 46px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.wv-icon-done {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: #3BD16F;
-  color: #1c1c1c;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.wv-status-img {
+  display: block;
+  width: 24px;
+  height: 24px;
 }
-.wv-icon-spin {
-  color: #FF8A24;
-  animation: wv-spin 1.1s linear infinite;
+.wv-status-spin {
+  animation: wv-spin 2s linear infinite;
 }
 @keyframes wv-spin { to { transform: rotate(360deg); } }
-.wv-icon-ring {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 3px dashed #FF8A24;
-}
 .wv-stat {
   display: flex;
   flex-direction: column;
