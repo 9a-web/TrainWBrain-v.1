@@ -11,6 +11,8 @@ TrainWithBrain — идемпотентное сидирование Фазы 1.
 from __future__ import annotations
 
 import uuid
+import os
+import json
 from datetime import datetime, timezone
 
 # Пространство имён для детерминированных UUID встроенных сущностей
@@ -340,6 +342,49 @@ def _builtin_templates():
 # ---------------------------------------------------------------------------
 # Точка входа: идемпотентное сидирование
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Импортированные шаблоны из JSON (seed_data/*.json) — напр. Excel-импорт
+# ---------------------------------------------------------------------------
+SEED_DATA_DIR = os.path.join(os.path.dirname(__file__), "seed_data")
+
+
+def _imported_templates():
+    docs = []
+    if not os.path.isdir(SEED_DATA_DIR):
+        return docs
+    for fn in sorted(os.listdir(SEED_DATA_DIR)):
+        if not fn.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(SEED_DATA_DIR, fn), encoding="utf-8") as f:
+                tpl = json.load(f)
+        except Exception:
+            continue
+        slug = tpl.get("slug") or fn[:-5]
+        weeks = tpl.get("weeks", [])
+        docs.append({
+            "id": builtin_id("program", slug),
+            "slug": slug,
+            "name": tpl.get("name", slug),
+            "description": tpl.get("description", ""),
+            "author": tpl.get("author", "TWB"),
+            "level": tpl.get("level", "advanced"),
+            "goal": tpl.get("goal", "powerlifting"),
+            "days_per_week": tpl.get("days_per_week"),
+            "weeks_count": tpl.get("weeks_count") or len(weeks),
+            "weeks": weeks,
+            "is_builtin": True,
+            "owner_telegram_id": None,
+            "tags": tpl.get("tags", []),
+            "default_one_rep_max": tpl.get("default_one_rep_max", {}),
+            "requires_maxes": bool(tpl.get("requires_maxes", False)),
+            "base_maxes": tpl.get("base_maxes", {}),
+            "created_at": _iso_now(),
+            "updated_at": _iso_now(),
+        })
+    return docs
+
+
 async def seed_builtins(db) -> dict:
     """Создаёт/обновляет встроенные упражнения и шаблоны. Идемпотентно (upsert по id)."""
     ex_count = 0
@@ -350,6 +395,10 @@ async def seed_builtins(db) -> dict:
 
     tpl_count = 0
     for tpl in _builtin_templates():
+        await db.programs.update_one({"id": tpl["id"]}, {"$set": tpl}, upsert=True)
+        tpl_count += 1
+
+    for tpl in _imported_templates():
         await db.programs.update_one({"id": tpl["id"]}, {"$set": tpl}, upsert=True)
         tpl_count += 1
 

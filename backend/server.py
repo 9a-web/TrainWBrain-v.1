@@ -5,6 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import re
+import copy
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
@@ -313,12 +314,72 @@ async def create_template(payload: ProgramTemplateCreate):
 
 
 # ---- Планы (назначенный экземпляр программы = снимок шаблона) ----
+def _round_2_5(x):
+    """Округление веса до ближайших 2.5 кг."""
+    return round(round(float(x) / 2.5) * 2.5, 2)
+
+
+def _scale_and_map_weeks(weeks, tpl, maxes, training_days):
+    """Масштабирует веса под максимумы спортсмена и ремаппит дни недели.
+    Возвращает (weeks_copy, scaled_one_rep_max)."""
+    weeks = copy.deepcopy(weeks)
+    base = tpl.get("base_maxes") or {}
+    default_orm = dict(tpl.get("default_one_rep_max") or {})
+    scaled_orm = dict(default_orm)
+
+    # Коэффициенты масштабирования по группам (squat/bench/deadlift)
+    factors = {}
+    if maxes and base:
+        for g in ("squat", "bench", "deadlift"):
+            try:
+                if base.get(g) and maxes.get(g):
+                    factors[g] = float(maxes[g]) / float(base[g])
+            except (TypeError, ValueError):
+                pass
+
+    # slug -> lift_group (для масштабирования референсных 1ПМ)
+    slug_lift = {}
+    if factors:
+        for w in weeks:
+            for d in w.get("days", []):
+                for e in d.get("exercises", []):
+                    slug = e.get("exercise_slug")
+                    lg = e.get("lift_group")
+                    if slug and lg:
+                        slug_lift[slug] = lg
+                    f = factors.get(lg)
+                    if not f:
+                        continue
+                    for s in e.get("sets_scheme", []) or []:
+                        if s.get("weight") is not None:
+                            s["weight"] = _round_2_5(float(s["weight"]) * f)
+        for slug, ref in default_orm.items():
+            f = factors.get(slug_lift.get(slug))
+            scaled_orm[slug] = round(float(ref) * f, 1) if f else ref
+
+    # Ремаппинг дней недели: тренировочные дни шаблона -> выбранные пользователем
+    if training_days:
+        td = sorted({int(x) for x in training_days if 1 <= int(x) <= 7})
+        for w in weeks:
+            workout_days = sorted(
+                [d for d in w.get("days", []) if not d.get("is_rest")],
+                key=lambda d: d.get("day_index", 0),
+            )
+            for i, d in enumerate(workout_days):
+                if i < len(td):
+                    d["day_index"] = td[i]
+
+    return weeks, scaled_orm
+
+
 @api_router.post("/plans", response_model=Plan)
 async def create_plan(payload: PlanCreate):
     weeks = payload.weeks
     name = payload.name
     source_template_id = payload.template_id
     one_rep_max = payload.one_rep_max or {}
+    maxes = payload.maxes or {}
+    training_days = payload.training_days or []
 
     if payload.template_id:
         tpl = await db.programs.find_one({"id": payload.template_id}, {"_id": 0})
@@ -329,6 +390,11 @@ async def create_plan(payload: PlanCreate):
             name = tpl["name"]
         if not one_rep_max:
             one_rep_max = tpl.get("default_one_rep_max") or {}
+        # Масштабирование весов под максимумы спортсмена + ремаппинг дней недели
+        if maxes or training_days:
+            weeks, scaled_orm = _scale_and_map_weeks(weeks, tpl, maxes, training_days)
+            if maxes:
+                one_rep_max = scaled_orm
 
     if weeks is None:
         raise HTTPException(status_code=400, detail="Either template_id or weeks must be provided")
@@ -347,6 +413,8 @@ async def create_plan(payload: PlanCreate):
         start_date=payload.start_date,
         weeks=weeks,
         one_rep_max=one_rep_max,
+        maxes=maxes,
+        training_days=sorted(set(int(d) for d in training_days)) if training_days else [],
     )
     doc = plan.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -412,7 +480,8 @@ def _resolve_sets(pe, orm):
 
 def _view_exercise(pe, orm, order, status="pending"):
     """Унифицированная карточка упражнения для экрана дня/сессии."""
-    sets = _resolve_sets(pe, orm)
+    is_acc = bool(pe.get("is_accessory"))
+    sets = [] if is_acc else _resolve_sets(pe, orm)
     return {
         "order": order,
         "exercise_id": pe.get("exercise_id"),
@@ -426,6 +495,8 @@ def _view_exercise(pe, orm, order, status="pending"):
         "status": status,
         "comment": pe.get("comment"),
         "edited": pe.get("edited", False),
+        "lift_group": pe.get("lift_group"),
+        "is_accessory": is_acc,
     }
 
 

@@ -77,6 +77,8 @@ class ProgramExercise(BaseModel):
     rest_seconds: Optional[int] = None
     notes: Optional[str] = None
     sets_scheme: List[SetScheme] = Field(default_factory=list)  # рабочие подходы (вес×подходы×повторы)
+    lift_group: Optional[str] = None    # squat | bench | deadlift | null — для масштабирования по 1ПМ
+    is_accessory: bool = False          # подсобное упражнение (без веса/подходов)
 
 
 class ProgramDay(BaseModel):
@@ -127,6 +129,8 @@ class ProgramTemplate(BaseModel):
     owner_telegram_id: Optional[int] = None
     tags: List[str] = Field(default_factory=list)
     default_one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (референсные максимумы)
+    requires_maxes: bool = False                  # требует ввода 1ПМ (присед/жим/тяга) при выборе
+    base_maxes: dict = Field(default_factory=dict)  # {squat,bench,deadlift} автора для масштабирования
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -142,6 +146,8 @@ class PlanCreate(BaseModel):
     coach_telegram_id: Optional[int] = None
     start_date: Optional[str] = None           # ISO date (YYYY-MM-DD)
     one_rep_max: Optional[dict] = None
+    maxes: Optional[dict] = None               # {squat,bench,deadlift} — для масштабирования весов
+    training_days: Optional[List[int]] = None  # выбранные дни недели (1=Пн..7=Вс)
 
 
 class Plan(BaseModel):
@@ -157,6 +163,8 @@ class Plan(BaseModel):
     current_week: int = 1
     weeks: List[ProgramWeek] = Field(default_factory=list)
     one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (для расчёта %1ПМ)
+    maxes: dict = Field(default_factory=dict)        # {squat,bench,deadlift} спортсмена
+    training_days: List[int] = Field(default_factory=list)  # выбранные дни недели (1..7)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -186,6 +194,8 @@ class SessionExercise(BaseModel):
     status: str = "pending"          # pending | in_progress | done | skipped
     comment: Optional[str] = None    # комментарий спортсмена для тренера (виден тренеру)
     edited: bool = False             # упражнение было изменено (название/подходы)
+    lift_group: Optional[str] = None # squat | bench | deadlift | null
+    is_accessory: bool = False       # подсобное упражнение
 
 
 class WorkoutSession(BaseModel):
