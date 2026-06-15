@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Check, X, WandSparkles, ChevronDown, CheckCircle2,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText,
 } from "lucide-react";
 import "./WorkoutView.css";
 
@@ -63,8 +63,15 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
       <button type="button" className="ex-head" onClick={() => setOpen((o) => !o)}>
         <div className="ex-head-left">
           <span className="ex-name">{ex.exercise_name}</span>
-          <span className="ex-status" style={{ color: meta.color }}>
-            ● {meta.label}
+          <span className="ex-status-line">
+            <span className="ex-status" style={{ color: meta.color }}>
+              ● {meta.label}
+            </span>
+            {ex.comment ? (
+              <span className="ex-comment-flag" title="Есть комментарий тренеру" data-testid={`comment-flag-${ex.order}`}>
+                <MessageSquareText size={12} />
+              </span>
+            ) : null}
           </span>
         </div>
         <div className="ex-head-right">
@@ -116,45 +123,58 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
       ) : null}
 
       {open ? (
-        <div className="ex-body">
-          <div className="ex-plan">
-            <div className="ex-plan-label">План:</div>
-            {(ex.sets_scheme || []).map((s, i) => (
-              <div className="ex-plan-row" key={i}>
-                {s.weight !== null && s.weight !== undefined ? (
-                  <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
-                ) : (
-                  <span className="ex-plan-weight ex-plan-bw">Свой вес</span>
-                )}
-                <span className="ex-plan-dash">—</span>
-                <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
-                {s.percent_1rm !== null && s.percent_1rm !== undefined ? (
-                  <span className="ex-plan-pctwrap">
-                    <span className="ex-plan-bar" />
-                    <span className="ex-plan-pct">{s.percent_1rm}%</span>
-                  </span>
-                ) : (
-                  <span />
-                )}
+        <>
+          <div className="ex-body">
+            <div className="ex-plan">
+              <div className="ex-plan-label">План:</div>
+              {(ex.sets_scheme || []).map((s, i) => (
+                <div className="ex-plan-row" key={i}>
+                  {s.weight !== null && s.weight !== undefined ? (
+                    <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
+                  ) : (
+                    <span className="ex-plan-weight ex-plan-bw">Свой вес</span>
+                  )}
+                  <span className="ex-plan-dash">—</span>
+                  <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
+                  {s.percent_1rm !== null && s.percent_1rm !== undefined ? (
+                    <span className="ex-plan-pctwrap">
+                      <span className="ex-plan-bar" />
+                      <span className="ex-plan-pct">{s.percent_1rm}%</span>
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              ))}
+              <div className="ex-meta">
+                <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
+                {ex.muscle_letter ? <div className="ex-meta-row">Группа: <b>{ex.muscle_letter}</b></div> : null}
+                {ex.difficulty ? <div className="ex-meta-row">Сложность: <b>{ex.difficulty}</b></div> : null}
               </div>
-            ))}
-            <div className="ex-meta">
-              <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
-              {ex.muscle_letter ? <div className="ex-meta-row">Группа: <b>{ex.muscle_letter}</b></div> : null}
-              {ex.difficulty ? <div className="ex-meta-row">Сложность: <b>{ex.difficulty}</b></div> : null}
+            </div>
+            <div className="ex-forecast">
+              <ForecastChart seed={ex.order} />
+              <span className="ex-forecast-caption">Прогноз на 4 недели</span>
             </div>
           </div>
-          <div className="ex-forecast">
-            <ForecastChart seed={ex.order} />
-            <span className="ex-forecast-caption">Прогноз на 4 недели</span>
-          </div>
-        </div>
+          {ex.comment ? (
+            <div className="ex-comment" data-testid={`comment-${ex.order}`}>
+              <div className="ex-comment-head">
+                <MessageSquareText size={14} />
+                <span>Заметки</span>
+              </div>
+              <p className="ex-comment-text">{ex.comment}</p>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
 };
 
 // ---------- модалка редактирования упражнения (✨) ----------
+const COMMENT_MAX = 500;
+
 const EditExerciseModal = ({ ex, onClose, onSave }) => {
   const [name, setName] = useState(ex.exercise_name);
   const [sets, setSets] = useState(
@@ -164,9 +184,24 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
       reps: s.reps ?? 1,
     }))
   );
+  const [comment, setComment] = useState(ex.comment ?? "");
 
   const updateSet = (i, field, value) => {
     setSets((prev) => prev.map((s, idx) => (idx === i ? { ...s, [field]: value } : s)));
+  };
+
+  const addSet = () => {
+    setSets((prev) => {
+      const last = prev[prev.length - 1];
+      const base = last
+        ? { weight: last.weight, sets: last.sets, reps: last.reps }
+        : { weight: "", sets: 1, reps: 1 };
+      return [...prev, base];
+    });
+  };
+
+  const removeSet = (i) => {
+    setSets((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i)));
   };
 
   const handleSave = () => {
@@ -175,7 +210,12 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
       sets: Number(s.sets) || 1,
       reps: Number(s.reps) || 1,
     }));
-    onSave(ex.order, { exercise_name: name, sets_scheme });
+    const trimmed = (comment || "").trim();
+    onSave(ex.order, {
+      exercise_name: name,
+      sets_scheme,
+      comment: trimmed ? trimmed.slice(0, COMMENT_MAX) : null,
+    });
   };
 
   return (
@@ -184,21 +224,58 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
         <h3 className="edit-title">Изменить упражнение</h3>
         <label className="edit-label">Название</label>
         <input className="edit-input" value={name} onChange={(e) => setName(e.target.value)} />
+
         <div className="edit-sets">
           <div className="edit-sets-head">
-            <span>Вес, кг</span><span>Подходы</span><span>Повторы</span>
+            <span>Вес, кг</span><span>Подходы</span><span>Повторы</span><span aria-hidden="true" />
           </div>
           {sets.map((s, i) => (
             <div className="edit-set-row" key={i}>
-              <input className="edit-input-sm" type="number" value={s.weight}
+              <input className="edit-input-sm" type="number" inputMode="decimal" value={s.weight}
                 onChange={(e) => updateSet(i, "weight", e.target.value)} placeholder="—" />
-              <input className="edit-input-sm" type="number" value={s.sets}
+              <input className="edit-input-sm" type="number" inputMode="numeric" value={s.sets}
                 onChange={(e) => updateSet(i, "sets", e.target.value)} />
-              <input className="edit-input-sm" type="number" value={s.reps}
+              <input className="edit-input-sm" type="number" inputMode="numeric" value={s.reps}
                 onChange={(e) => updateSet(i, "reps", e.target.value)} />
+              <button
+                type="button"
+                className="edit-set-del"
+                data-testid={`edit-del-set-${i}`}
+                disabled={sets.length <= 1}
+                onClick={() => removeSet(i)}
+                aria-label="Удалить подход"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           ))}
+          <button type="button" className="edit-add-set" onClick={addSet} data-testid="edit-add-set">
+            <Plus size={16} /> Добавить подход
+          </button>
         </div>
+
+        <div className="edit-comment-block">
+          <label className="edit-label edit-comment-label" htmlFor="edit-comment-field">
+            <MessageSquareText size={15} /> Заметки
+          </label>
+          <textarea
+            id="edit-comment-field"
+            className="edit-textarea"
+            data-testid="edit-comment"
+            value={comment}
+            maxLength={COMMENT_MAX}
+            rows={3}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Например: последняя серия далась тяжело, потягивало плечо…"
+          />
+          <div className="edit-comment-foot">
+            <span className="edit-comment-hint">
+              <Check size={12} strokeWidth={3} /> Виден вашему тренеру
+            </span>
+            <span className="edit-comment-count">{(comment || "").length}/{COMMENT_MAX}</span>
+          </div>
+        </div>
+
         <div className="edit-actions">
           <button className="edit-btn-cancel" onClick={onClose}>Отмена</button>
           <button className="edit-btn-save" onClick={handleSave} data-testid="edit-save">Сохранить</button>

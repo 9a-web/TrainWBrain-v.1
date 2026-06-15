@@ -411,16 +411,16 @@ const DateSelector = () => {
             <>
               <button className="icon-btn" type="button" onClick={handlePauseToggle}
                 aria-label={session.paused ? 'Продолжить' : 'Пауза'} data-testid="btn-pause">
-                {session.paused ? <Play size={18} /> : <Pause size={18} />}
+                {session.paused ? <Play size={18} strokeWidth={2.2} color="#CACACA" /> : <Pause size={18} strokeWidth={2.2} color="#CACACA" />}
               </button>
               <button className="icon-btn" type="button" onClick={handleStop}
                 aria-label="Завершить" data-testid="btn-stop">
-                <Square size={15} />
+                <Square size={15} strokeWidth={2.2} color="#CACACA" />
               </button>
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Настройки тренировки скоро')}
                 aria-label="Настройки" data-testid="btn-settings">
-                <Bolt size={18} />
+                <Bolt size={18} strokeWidth={2.2} color="#CACACA" />
               </button>
             </>
           ) : sessionStatus === 'finished' ? (
@@ -428,7 +428,7 @@ const DateSelector = () => {
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Настройки тренировки скоро')}
                 aria-label="Настройки" data-testid="btn-settings">
-                <Bolt size={18} />
+                <Bolt size={18} strokeWidth={2.2} color="#CACACA" />
               </button>
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Нажмите ✨ на упражнении, чтобы изменить его')}

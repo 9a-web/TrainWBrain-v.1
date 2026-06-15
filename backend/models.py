@@ -184,6 +184,7 @@ class SessionExercise(BaseModel):
     sets_scheme: List[SessionSet] = Field(default_factory=list)
     tonnage: float = 0
     status: str = "pending"          # pending | in_progress | done | skipped
+    comment: Optional[str] = None    # комментарий спортсмена для тренера (виден тренеру)
 
 
 class WorkoutSession(BaseModel):

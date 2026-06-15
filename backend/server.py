@@ -424,6 +424,7 @@ def _view_exercise(pe, orm, order, status="pending"):
         "sets_scheme": sets,
         "tonnage": scheme_tonnage(sets),
         "status": status,
+        "comment": pe.get("comment"),
     }
 
 
@@ -695,12 +696,20 @@ async def edit_session_exercise(session_id: str, order: int, payload: dict = Bod
             w = st.get("weight")
             new_sets.append({
                 "weight": w,
-                "sets": st.get("sets") or 1,
-                "reps": st.get("reps") or 0,
+                "sets": max(1, int(st.get("sets") or 1)),
+                "reps": max(0, int(st.get("reps") or 0)),
                 "percent_1rm": percent_of(w, slug, orm),
             })
         target["sets_scheme"] = new_sets
         target["tonnage"] = scheme_tonnage(new_sets)
+    # Комментарий спортсмена тренеру (виден тренеру). Пустая строка/None -> сброс.
+    if "comment" in payload:
+        c = payload.get("comment")
+        if c is None:
+            target["comment"] = None
+        else:
+            c = str(c).strip()
+            target["comment"] = c[:500] if c else None
 
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
