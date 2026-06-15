@@ -117,6 +117,40 @@ const DateSelector = () => {
     return Math.min(Math.max(1, base + weekOffset), total);
   }, [plan, weekOffset]);
 
+  // Динамика топового веса каждого упражнения по неделям плана (для графика)
+  const forecastBySlug = useMemo(() => {
+    if (!plan?.weeks) return {};
+    const topWeight = (ex) => {
+      const ws = (ex.sets_scheme || [])
+        .map((s) => s.weight)
+        .filter((w) => w !== null && w !== undefined);
+      return ws.length ? Math.max(...ws) : null;
+    };
+    const bySlug = {};
+    [...plan.weeks]
+      .sort((a, b) => (a.week_index || 0) - (b.week_index || 0))
+      .forEach((w) => {
+        (w.days || []).forEach((d) => {
+          (d.exercises || []).forEach((ex) => {
+            const slug = ex.exercise_slug;
+            if (!slug) return;
+            const tw = topWeight(ex);
+            if (tw === null) return;
+            bySlug[slug] = bySlug[slug] || {};
+            bySlug[slug][w.week_index] = Math.max(bySlug[slug][w.week_index] ?? 0, tw);
+          });
+        });
+      });
+    const map = {};
+    Object.entries(bySlug).forEach(([slug, wk]) => {
+      map[slug] = Object.keys(wk)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((wki) => ({ week: wki, value: wk[wki] }));
+    });
+    return map;
+  }, [plan]);
+
   // Загрузка активного плана спортсмена
   useEffect(() => {
     if (!user?.telegram_id) return undefined;
@@ -476,6 +510,8 @@ const DateSelector = () => {
           paused={!!session?.paused}
           onAction={handleAction}
           onEditSave={handleEditSave}
+          forecastBySlug={forecastBySlug}
+          currentWeek={planWeek}
         />
       ) : null}
     </div>

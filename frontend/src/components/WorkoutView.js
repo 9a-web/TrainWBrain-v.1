@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers,
 } from "lucide-react";
 import "./WorkoutView.css";
 
@@ -25,35 +25,47 @@ const STATUS_META = {
   pending: { label: "Ожидает", color: "#FFC83F" },
 };
 
-// ---------- декоративный мини-график «Прогноз на 4 недели» ----------
-const FORECAST_PATHS = [
-  "M0,46 C18,42 32,50 52,30 C72,12 92,28 118,12 C132,4 150,10 150,10",
-  "M0,52 C24,50 44,48 68,42 C94,34 110,18 134,9 L150,7",
-  "M0,40 C20,44 36,26 56,34 C78,42 96,20 120,16 C134,13 150,18 150,18",
-];
-
-const ForecastChart = ({ seed = 0 }) => {
-  const d = FORECAST_PATHS[seed % FORECAST_PATHS.length];
-  const gid = `fc-${seed}`;
+// ---------- мини-график: динамика топового веса упражнения по неделям плана ----------
+const ForecastChart = ({ series, currentWeek }) => {
+  if (!series || series.length < 2) return null;
+  const W = 150;
+  const H = 56;
+  const pad = 8;
+  const vals = series.map((p) => p.value);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const n = series.length;
+  const xx = (i) => pad + (i / (n - 1)) * (W - 2 * pad);
+  const yy = (v) => (H - pad) - ((v - min) / range) * (H - 2 * pad);
+  const pts = series.map((p, i) => [xx(i), yy(p.value)]);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const area = `${line} L${pts[n - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
+  const curIdx = series.findIndex((p) => p.week === currentWeek);
+  const gid = `fc-${n}-${Math.round(min)}-${Math.round(max)}`;
   return (
-    <svg viewBox="0 0 150 60" className="forecast-svg" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox={`0 0 ${W} ${H}`} className="forecast-svg" preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#FF8A24" stopOpacity="0.45" />
           <stop offset="100%" stopColor="#FF8A24" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={`${d} L150,60 L0,60 Z`} fill={`url(#${gid})`} />
-      <path d={d} fill="none" stroke="#FF8A24" strokeWidth="2.5" strokeLinecap="round" />
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke="#FF8A24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {curIdx >= 0 ? (
+        <circle cx={pts[curIdx][0]} cy={pts[curIdx][1]} r="3.6" fill="#FFDA24" stroke="#1c1c1c" strokeWidth="1.5" />
+      ) : null}
     </svg>
   );
 };
 
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, forecast, currentWeek }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
+  const isAcc = !!ex.is_accessory;
 
   // По умолчанию карточки свёрнуты
   const [open, setOpen] = useState(false);
@@ -80,7 +92,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
           </span>
         </div>
         <div className="ex-head-right">
-          {isFinishedCard ? (
+          {isFinishedCard && !isAcc ? (
             <span
               className="ex-btn ex-btn-magic-sm"
               role="button"
@@ -106,15 +118,17 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
           >
             <Check size={16} strokeWidth={3} /> Выполнить
           </span>
-          <span
-            className="ex-btn ex-btn-magic"
-            role="button"
-            tabIndex={0}
-            data-testid={`edit-${ex.order}`}
-            onClick={() => onEdit(ex)}
-          >
-            <WandSparkles size={16} />
-          </span>
+          {!isAcc ? (
+            <span
+              className="ex-btn ex-btn-magic"
+              role="button"
+              tabIndex={0}
+              data-testid={`edit-${ex.order}`}
+              onClick={() => onEdit(ex)}
+            >
+              <WandSparkles size={16} />
+            </span>
+          ) : null}
           <span
             className="ex-btn ex-btn-skip"
             role="button"
@@ -129,6 +143,11 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
 
       {open ? (
         <>
+          {isAcc ? (
+            <div className="ex-acc-body">
+              <div className="ex-acc-rec">Рекомендация: <b>по 4 подхода</b></div>
+            </div>
+          ) : (
           <div className="ex-body">
             <div className="ex-plan">
               <div className="ex-plan-label">План:</div>
@@ -157,11 +176,14 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
                 {ex.difficulty ? <div className="ex-meta-row">Сложность: <b>{ex.difficulty}</b></div> : null}
               </div>
             </div>
-            <div className="ex-forecast">
-              <ForecastChart seed={ex.order} />
-              <span className="ex-forecast-caption">Прогноз на 4 недели</span>
-            </div>
+            {forecast && forecast.length >= 2 ? (
+              <div className="ex-forecast">
+                <ForecastChart series={forecast} currentWeek={currentWeek} />
+                <span className="ex-forecast-caption">Вес по неделям</span>
+              </div>
+            ) : null}
           </div>
+          )}
           {ex.comment ? (
             <div className="ex-comment" data-testid={`comment-${ex.order}`}>
               <div className="ex-comment-head">
@@ -291,13 +313,16 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
 };
 
 // ---------- основной вид тренировки ----------
-const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEditSave }) => {
+const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEditSave, forecastBySlug = {}, currentWeek }) => {
   const [now, setNow] = useState(() => Date.now());
   const [editing, setEditing] = useState(null);
+  const [accOpen, setAccOpen] = useState(false);
 
   const status = view.status;
   const stats = view.stats || {};
   const exercises = view.exercises || [];
+  const mainExs = exercises.filter((e) => !e.is_accessory);
+  const accExs = exercises.filter((e) => e.is_accessory);
 
   // живой таймер во время тренировки
   useEffect(() => {
@@ -353,18 +378,52 @@ const WorkoutView = ({ view, isPreview = false, paused = false, onAction, onEdit
         </div>
       </div>
 
-      {/* Список упражнений */}
+      {/* Список основных упражнений */}
       <div className="wv-exercises" data-testid="day-exercises">
-        {exercises.map((ex) => (
+        {mainExs.map((ex) => (
           <ExerciseCard
             key={ex.order}
             ex={ex}
             isPreview={isPreview}
             onAction={onAction}
             onEdit={(e) => setEditing(e)}
+            forecast={forecastBySlug[ex.exercise_slug]}
+            currentWeek={currentWeek}
           />
         ))}
       </div>
+
+      {/* Папка подсобных упражнений */}
+      {accExs.length > 0 ? (
+        <div className="wv-accessory" data-testid="accessory-folder">
+          <button
+            type="button"
+            className={`wv-accessory-head ${accOpen ? "open" : ""}`}
+            onClick={() => setAccOpen((o) => !o)}
+            data-testid="accessory-toggle"
+          >
+            <span className="wv-accessory-title">
+              <Layers size={17} className="wv-accessory-ico" />
+              Подсобные упражнения
+              <span className="wv-accessory-count">{accExs.length}</span>
+            </span>
+            <ChevronDown size={20} className={`wv-accessory-chevron ${accOpen ? "open" : ""}`} />
+          </button>
+          {accOpen ? (
+            <div className="wv-accessory-list" data-testid="accessory-list">
+              {accExs.map((ex) => (
+                <ExerciseCard
+                  key={ex.order}
+                  ex={ex}
+                  isPreview={isPreview}
+                  onAction={onAction}
+                  onEdit={(e) => setEditing(e)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Нижний прогресс-бар */}
       {!isPreview ? (

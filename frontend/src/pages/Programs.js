@@ -18,6 +18,102 @@ const GOAL_LABELS = {
   general: "Общее",
 };
 
+const WEEKDAYS = [
+  { idx: 1, label: "Пн" }, { idx: 2, label: "Вт" }, { idx: 3, label: "Ср" },
+  { idx: 4, label: "Чт" }, { idx: 5, label: "Пт" }, { idx: 6, label: "Сб" }, { idx: 7, label: "Вс" },
+];
+
+// Модалка настройки программы перед выбором: максимумы (1ПМ) + дни тренировок
+const ProgramConfigModal = ({ tpl, onClose, onSubmit, submitting }) => {
+  const needMaxes = !!tpl.requires_maxes;
+  const daysNeeded = tpl.days_per_week || 3;
+  const [squat, setSquat] = useState("");
+  const [bench, setBench] = useState("");
+  const [deadlift, setDeadlift] = useState("");
+  const [days, setDays] = useState([]);
+
+  const toggleDay = (idx) => {
+    setDays((prev) =>
+      prev.includes(idx)
+        ? prev.filter((d) => d !== idx)
+        : prev.length >= daysNeeded
+          ? prev
+          : [...prev, idx]
+    );
+  };
+
+  const maxesOk = !needMaxes || (Number(squat) > 0 && Number(bench) > 0 && Number(deadlift) > 0);
+  const daysOk = days.length === daysNeeded;
+  const canSubmit = maxesOk && daysOk && !submitting;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const payload = { training_days: [...days].sort((a, b) => a - b) };
+    if (needMaxes) {
+      payload.maxes = { squat: Number(squat), bench: Number(bench), deadlift: Number(deadlift) };
+    }
+    onSubmit(payload);
+  };
+
+  return (
+    <div className="cfg-overlay" onClick={onClose} data-testid="program-config-modal">
+      <div className="cfg-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 className="cfg-title">{tpl.name}</h3>
+        <p className="cfg-sub">Настройте программу под себя</p>
+
+        {needMaxes ? (
+          <div className="cfg-section">
+            <div className="cfg-section-title">Ваши максимумы (1ПМ), кг</div>
+            <div className="cfg-maxes">
+              <label className="cfg-max">
+                <span>Присед</span>
+                <input type="number" inputMode="decimal" value={squat}
+                  onChange={(e) => setSquat(e.target.value)} placeholder="0" data-testid="max-squat" />
+              </label>
+              <label className="cfg-max">
+                <span>Жим</span>
+                <input type="number" inputMode="decimal" value={bench}
+                  onChange={(e) => setBench(e.target.value)} placeholder="0" data-testid="max-bench" />
+              </label>
+              <label className="cfg-max">
+                <span>Тяга</span>
+                <input type="number" inputMode="decimal" value={deadlift}
+                  onChange={(e) => setDeadlift(e.target.value)} placeholder="0" data-testid="max-deadlift" />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="cfg-section">
+          <div className="cfg-section-title">
+            Когда тренируетесь? <span className="cfg-hint">выберите {daysNeeded}</span>
+          </div>
+          <div className="cfg-days">
+            {WEEKDAYS.map((d) => (
+              <button
+                key={d.idx}
+                type="button"
+                className={`cfg-day ${days.includes(d.idx) ? "active" : ""}`}
+                onClick={() => toggleDay(d.idx)}
+                data-testid={`day-${d.idx}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="cfg-actions">
+          <button className="cfg-btn-cancel" onClick={onClose}>Отмена</button>
+          <button className="cfg-btn-save" onClick={submit} disabled={!canSubmit} data-testid="config-submit">
+            {submitting ? "Назначаем…" : "Выбрать программу"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Programs = () => {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -25,6 +121,7 @@ const Programs = () => {
   const [loading, setLoading] = useState(true);
   const [activePlan, setActivePlan] = useState(null);
   const [assigningId, setAssigningId] = useState(null);
+  const [configTpl, setConfigTpl] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,18 +157,16 @@ const Programs = () => {
     };
   }, [user?.telegram_id]);
 
-  const handleChoose = async (tpl) => {
-    if (!user?.telegram_id) {
-      toast.error("Пользователь не определён");
-      return;
-    }
+  const assign = async (tpl, extra = {}) => {
     setAssigningId(tpl.id);
     try {
       const plan = await createPlan({
         athlete_telegram_id: user.telegram_id,
         template_id: tpl.id,
+        ...extra,
       });
       setActivePlan(plan);
+      setConfigTpl(null);
       toast.success(`Программа «${tpl.name}» выбрана`);
       setTimeout(() => navigate("/"), 600);
     } catch (e) {
@@ -79,6 +174,19 @@ const Programs = () => {
     } finally {
       setAssigningId(null);
     }
+  };
+
+  const handleChoose = (tpl) => {
+    if (!user?.telegram_id) {
+      toast.error("Пользователь не определён");
+      return;
+    }
+    // Программы с гибкой настройкой (максимумы + дни) — через модалку
+    if (tpl.requires_maxes) {
+      setConfigTpl(tpl);
+      return;
+    }
+    assign(tpl);
   };
 
   return (
@@ -167,6 +275,15 @@ const Programs = () => {
           })}
         </div>
       )}
+
+      {configTpl ? (
+        <ProgramConfigModal
+          tpl={configTpl}
+          submitting={assigningId === configTpl.id}
+          onClose={() => setConfigTpl(null)}
+          onSubmit={(payload) => assign(configTpl, payload)}
+        />
+      ) : null}
     </div>
   );
 };

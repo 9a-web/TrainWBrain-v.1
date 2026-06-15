@@ -368,6 +368,8 @@ def _scale_and_map_weeks(weeks, tpl, maxes, training_days):
             for i, d in enumerate(workout_days):
                 if i < len(td):
                     d["day_index"] = td[i]
+            # оставляем только тренировочные дни (отсутствующие дни = отдых) — без коллизий
+            w["days"] = workout_days
 
     return weeks, scaled_orm
 

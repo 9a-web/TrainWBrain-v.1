@@ -8,6 +8,7 @@
 .wv-stats {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 18px;
   margin-bottom: 18px;
   flex-wrap: nowrap;
@@ -54,6 +55,78 @@
   flex-direction: column;
   gap: 14px;
 }
+
+/* ---- Папка «Подсобные упражнения» ---- */
+.wv-accessory {
+  margin-top: 14px;
+}
+.wv-accessory-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #242424;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-radius 0.15s ease;
+}
+.wv-accessory-head.open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+.wv-accessory-head:active { transform: scale(0.995); }
+.wv-accessory-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #efefef;
+}
+.wv-accessory-ico { color: #FF8A24; flex-shrink: 0; }
+.wv-accessory-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 138, 36, 0.18);
+  color: #FFB36B;
+  font-size: 12px;
+  font-weight: 700;
+}
+.wv-accessory-chevron {
+  color: #8a8a8a;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.wv-accessory-chevron.open { transform: rotate(180deg); }
+.wv-accessory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+}
+
+/* тело подсобной карточки — только рекомендация */
+.ex-acc-body {
+  padding: 0 18px 16px;
+}
+.ex-acc-rec {
+  font-size: 14px;
+  color: #b9b9b9;
+}
+.ex-acc-rec b { color: #FFB36B; font-weight: 700; }
 .ex-card {
   background: #2c2c2c;
   border-radius: 20px;
