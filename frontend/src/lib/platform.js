@@ -111,6 +111,54 @@ export function hapticNotify(type = "success") {
   }
 }
 
+export function hapticSelection() {
+  try {
+    tg && tg.HapticFeedback && tg.HapticFeedback.selectionChanged && tg.HapticFeedback.selectionChanged();
+  } catch (e) {
+    /* no-op */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telegram theme (respect Telegram colors, keep brand dark header/background)
+// ---------------------------------------------------------------------------
+export function getThemeParams() {
+  return (tg && tg.themeParams) || {};
+}
+
+export function getColorScheme() {
+  return (tg && tg.colorScheme) || "dark";
+}
+
+export function applyTheme() {
+  if (!tg) return;
+  try {
+    const tp = tg.themeParams || {};
+    const root = document.documentElement;
+    Object.keys(tp).forEach((k) => {
+      root.style.setProperty(`--tg-${k.replace(/_/g, "-")}`, tp[k]);
+    });
+    root.setAttribute("data-color-scheme", tg.colorScheme || "dark");
+    // Keep the brand dark chrome regardless of Telegram light/dark scheme
+    tg.setHeaderColor && tg.setHeaderColor("#1C1C1C");
+    tg.setBackgroundColor && tg.setBackgroundColor("#1C1C1C");
+  } catch (e) {
+    /* no-op */
+  }
+}
+
+export function onThemeChange(cb) {
+  if (!tg || !tg.onEvent) return () => {};
+  tg.onEvent("themeChanged", cb);
+  return () => {
+    try {
+      tg.offEvent("themeChanged", cb);
+    } catch (e) {
+      /* no-op */
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // PWA install prompt
 // ---------------------------------------------------------------------------
@@ -124,8 +172,8 @@ export function initPlatform() {
     try {
       tg.ready();
       tg.expand();
-      tg.setHeaderColor && tg.setHeaderColor("#1C1C1C");
-      tg.setBackgroundColor && tg.setBackgroundColor("#1C1C1C");
+      applyTheme();
+      onThemeChange(applyTheme);
     } catch (e) {
       /* no-op */
     }
