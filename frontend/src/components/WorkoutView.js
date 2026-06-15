@@ -22,7 +22,7 @@ const STATUS_META = {
   done: { label: "Выполнено", color: "#3BD16F" },
   in_progress: { label: "В процессе", color: "#FFB020" },
   skipped: { label: "Пропущено", color: "#FF5A5A" },
-  pending: { label: "Ожидает", color: "#8a8a8a" },
+  pending: { label: "Ожидает", color: "#FFC83F" },
 };
 
 // ---------- декоративный мини-график «Прогноз на 4 недели» ----------
@@ -55,21 +55,17 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
 
-  const defaultOpen = isPreview || ex.status === "in_progress" || ex.status === "pending";
-  const [open, setOpen] = useState(defaultOpen);
+  // По умолчанию карточки свёрнуты
+  const [open, setOpen] = useState(false);
 
   return (
     <div className={`ex-card ${isActive ? "ex-card-active" : ""}`} data-testid={`exercise-card-${ex.order}`}>
       <button type="button" className="ex-head" onClick={() => setOpen((o) => !o)}>
         <div className="ex-head-left">
           <span className="ex-name">{ex.exercise_name}</span>
-          {!isPreview ? (
-            <span className="ex-status" style={{ color: meta.color }}>
-              ● {meta.label}
-            </span>
-          ) : (
-            ex.difficulty ? <span className="ex-status ex-status-plan">● {ex.difficulty}</span> : null
-          )}
+          <span className="ex-status" style={{ color: meta.color }}>
+            ● {meta.label}
+          </span>
         </div>
         <div className="ex-head-right">
           {isActive ? (
@@ -131,11 +127,13 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
                 <span className="ex-plan-dash">—</span>
                 <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
                 {s.percent_1rm !== null && s.percent_1rm !== undefined ? (
-                  <>
+                  <span className="ex-plan-pctwrap">
                     <span className="ex-plan-bar" />
                     <span className="ex-plan-pct">{s.percent_1rm}%</span>
-                  </>
-                ) : null}
+                  </span>
+                ) : (
+                  <span />
+                )}
               </div>
             ))}
             <div className="ex-meta">

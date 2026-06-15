@@ -162,18 +162,24 @@
   margin-bottom: 6px;
 }
 .ex-plan-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 76px 34px 56px auto;
   align-items: center;
-  gap: 10px;
   font-size: 15px;
   font-weight: 600;
   color: #efefef;
   margin-bottom: 4px;
 }
-.ex-plan-weight { min-width: 64px; }
-.ex-plan-bw { color: #bdbdbd; font-weight: 500; }
-.ex-plan-dash { color: #6f6f6f; }
-.ex-plan-scheme { min-width: 38px; }
+.ex-plan-weight { text-align: right; }
+.ex-plan-bw { color: #bdbdbd; font-weight: 500; text-align: right; }
+.ex-plan-dash { color: #6f6f6f; text-align: center; }
+.ex-plan-scheme { text-align: left; }
+.ex-plan-pctwrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 4px;
+}
 .ex-plan-bar {
   width: 2px;
   height: 16px;
