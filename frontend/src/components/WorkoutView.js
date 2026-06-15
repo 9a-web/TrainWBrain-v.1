@@ -25,19 +25,27 @@ const diffSets = (cur, plan) => {
   const c = cur || [];
   const p = plan || [];
   if (!p.length) return c.map((s) => ({ ...s, _state: "normal" }));
-  const planCount = {};
-  p.forEach((s) => { const k = setKey(s); planCount[k] = (planCount[k] || 0) + 1; });
-  const rows = [];
-  c.forEach((s) => {
-    const k = setKey(s);
-    if (planCount[k] > 0) { planCount[k] -= 1; rows.push({ ...s, _state: "normal" }); }
-    else rows.push({ ...s, _state: "edited" });
+  const used = new Array(c.length).fill(false);
+  const out = [];
+  // Идём по плану в его порядке: совпавшие — normal, отсутствующие в текущей — deleted (на своём месте)
+  p.forEach((ps) => {
+    const pk = setKey(ps);
+    let mi = -1;
+    for (let i = 0; i < c.length; i += 1) {
+      if (!used[i] && setKey(c[i]) === pk) { mi = i; break; }
+    }
+    if (mi >= 0) {
+      used[mi] = true;
+      out.push({ ...c[mi], _state: "normal" });
+    } else {
+      out.push({ ...ps, _state: "deleted" });
+    }
   });
-  p.forEach((s) => {
-    const k = setKey(s);
-    if (planCount[k] > 0) { planCount[k] -= 1; rows.push({ ...s, _state: "deleted" }); }
+  // Оставшиеся текущие подходы (добавленные/изменённые) — в конец
+  c.forEach((cs, i) => {
+    if (!used[i]) out.push({ ...cs, _state: "edited" });
   });
-  return rows;
+  return out;
 };
 
 const STATUS_META = {
