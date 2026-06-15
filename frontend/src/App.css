@@ -49,7 +49,7 @@
   display: flex;
   align-items: center;
   gap: 0;
-  margin-left: -24px;
+  margin-left: -20px;
 }
 
 .header-logo img {
@@ -102,7 +102,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: -24px;
+  margin-left: -20px;
 }
 
 /* Greeting Text */
@@ -128,7 +128,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  margin-left: -24px;
+  margin-left: -20px;
 }
 
 .streak-icon {
