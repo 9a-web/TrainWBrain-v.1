@@ -263,6 +263,7 @@ const DateSelector = () => {
   // Тренировочная сессия выбранного дня
   const [session, setSession] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [confirmStartOpen, setConfirmStartOpen] = useState(false);
 
   const refreshProgress = useCallback(async () => {
     if (!plan?.id) return;
@@ -332,9 +333,9 @@ const DateSelector = () => {
     return map;
   }, [plan, planWeek, selectedDayIndex]);
 
-  const handleStart = async () => {
+  const doStart = async () => {
+    setConfirmStartOpen(false);
     if (!plan) { toast.info('Сначала выберите программу'); return; }
-    if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
     setStarting(true);
     try {
       const s = await startSession({
@@ -344,10 +345,27 @@ const DateSelector = () => {
       setSession(s);
       refreshProgress();
     } catch (e) {
-      toast.error('Не удалось начать тренировку');
+      if (e?.response?.status === 409) {
+        const msg = e.response.data?.detail?.message
+          || 'У вас уже есть активная тренировка. Завершите её, чтобы начать новую.';
+        toast.error(msg);
+      } else {
+        toast.error('Не удалось начать тренировку');
+      }
     } finally {
       setStarting(false);
     }
+  };
+
+  const handleStart = () => {
+    if (!plan) { toast.info('Сначала выберите программу'); return; }
+    if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
+    // Если выбранный день — не сегодня, спросить подтверждение
+    if (!isSameDay(selectedDate, new Date())) {
+      setConfirmStartOpen(true);
+      return;
+    }
+    doStart();
   };
 
   const handleAction = async (order, action) => {
@@ -527,6 +545,26 @@ const DateSelector = () => {
           currentWeek={planWeek}
           planSetsByOrder={planSetsByOrder}
         />
+      ) : null}
+
+      {/* Подтверждение старта тренировки не на сегодня */}
+      {confirmStartOpen ? (
+        <div className="confirm-overlay" onClick={() => setConfirmStartOpen(false)} data-testid="confirm-start-modal">
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="confirm-title">Тренировка не на сегодня</h3>
+            <p className="confirm-text">
+              Выбранный день — {formattedDate}, а не сегодня. Начать тренировку всё равно?
+            </p>
+            <div className="confirm-actions">
+              <button className="confirm-btn-cancel" onClick={() => setConfirmStartOpen(false)}>
+                Отмена
+              </button>
+              <button className="confirm-btn-ok" onClick={doStart} data-testid="confirm-start-ok" disabled={starting}>
+                {starting ? 'Запуск…' : 'Начать'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

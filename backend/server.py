@@ -662,6 +662,21 @@ async def start_session(req: SessionStartReq):
     if existing:
         return _serialize_session(existing)
 
+    # Запрет нескольких одновременных тренировок: незавершённая сессия в другой день
+    active_other = await db.workout_sessions.find_one(
+        {"athlete_telegram_id": req.athlete_telegram_id, "status": "in_progress"},
+        {"_id": 0},
+    )
+    if active_other:
+        raise HTTPException(status_code=409, detail={
+            "error": "active_session_exists",
+            "message": "У вас уже есть активная тренировка. Завершите её, чтобы начать новую.",
+            "session_id": active_other["id"],
+            "plan_id": active_other.get("plan_id"),
+            "week_index": active_other.get("week_index"),
+            "day_index": active_other.get("day_index"),
+        })
+
     week_obj = next((w for w in plan["weeks"] if w["week_index"] == req.week), None)
     day_obj = next((d for d in week_obj["days"] if d["day_index"] == req.day), None) if week_obj else None
     if not day_obj or day_obj.get("is_rest"):

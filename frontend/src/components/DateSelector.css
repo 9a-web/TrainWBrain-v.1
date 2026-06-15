@@ -510,6 +510,58 @@
   background: #3d3d3d;
 }
 
+/* ===== Модалка подтверждения старта ===== */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 20px;
+}
+.confirm-modal {
+  width: 100%;
+  max-width: 380px;
+  background: #232323;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 22px;
+}
+.confirm-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+.confirm-text {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #b9b9b9;
+}
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+.confirm-btn-cancel,
+.confirm-btn-ok {
+  flex: 1 1 0;
+  padding: 12px;
+  border-radius: 14px;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm-btn-cancel { background: #3a3a3a; color: #fff; }
+.confirm-btn-ok {
+  background: linear-gradient(-20deg, #FF8A24, #FFD24A);
+  color: #1c1c1c;
+}
+.confirm-btn-ok:disabled { opacity: 0.55; cursor: not-allowed; }
+
 /* Карточка "нет программы" */
 .no-plan-card {
   margin-top: 22px;
