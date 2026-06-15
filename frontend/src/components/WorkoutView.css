@@ -151,19 +151,19 @@
 .ex-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 2px 18px 16px;
+  gap: 8px;
+  padding: 0 18px 16px;
 }
 .ex-actions .ex-btn-done {
   flex: 1 1 auto;
-  padding: 11px 16px;
-  font-size: 14px;
+  padding: 9px 14px;
+  font-size: 13px;
 }
 .ex-actions .ex-btn-magic,
 .ex-actions .ex-btn-skip {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
 }
 
 /* тело карточки */
