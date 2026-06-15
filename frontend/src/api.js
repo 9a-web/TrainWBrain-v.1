@@ -35,4 +35,27 @@ export const getPlanDay = (id, week, day) =>
 export const getWeekProgress = (id, week) =>
   client.get(`/plans/${id}/week-progress`, { params: { week } }).then((r) => r.data);
 
+// --- Тренировочные сессии (Phase 2) ---
+export const startSession = (payload) =>
+  client.post(`/sessions/start`, payload).then((r) => r.data);
+export const getSession = (id) =>
+  client.get(`/sessions/${id}`).then((r) => r.data);
+export const getActiveSession = (params) =>
+  client.get(`/sessions/active`, { params }).then((r) => r.data);
+export const sessionExerciseAction = (id, order, action) =>
+  client.patch(`/sessions/${id}/exercise/${order}`, null, { params: { action } }).then((r) => r.data);
+export const editSessionExercise = (id, order, body) =>
+  client.patch(`/sessions/${id}/exercise/${order}/edit`, body).then((r) => r.data);
+export const finishSession = (id) =>
+  client.post(`/sessions/${id}/finish`).then((r) => r.data);
+export const pauseSession = (id, resume) =>
+  client.post(`/sessions/${id}/pause`, null, { params: { resume } }).then((r) => r.data);
+
+// --- Статистика ---
+export const getStats = (telegramId) =>
+  client.get(`/stats/${telegramId}`).then((r) => r.data);
+
+export const getTelegramAvatar = (userId) =>
+  client.get(`/telegram/avatar/${userId}`).then((r) => r.data);
+
 export default client;

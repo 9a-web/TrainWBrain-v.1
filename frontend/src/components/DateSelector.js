@@ -1,9 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Zap } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Zap, Pause, Play, Square, Settings2, Wand2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
-import { getActivePlan, getWeekProgress, getPlanDay } from '@/api';
+import {
+  getActivePlan, getWeekProgress, getPlanDay,
+  startSession, getActiveSession, sessionExerciseAction,
+  editSessionExercise, finishSession, pauseSession,
+} from '@/api';
+import WorkoutView from '@/components/WorkoutView';
 import './DateSelector.css';
 
 // Сокращённые названия дней недели (index = JS getDay(): 0=Вс..6=Сб)
@@ -219,31 +224,127 @@ const DateSelector = () => {
   const formattedDate = `${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]}`;
 
   const isRestSelected = !dayDetail || dayDetail.is_rest;
+  const selectedDayIndex = toDayIndex(selectedDate.getDay());
 
-  // Статистика выбранного дня (реальные данные из плана)
-  const dayStats = useMemo(() => {
-    const exs = (dayDetail && !dayDetail.is_rest && dayDetail.exercises) || [];
-    if (!exs.length) return [];
-    const totalSets = exs.reduce((s, e) => s + (Number(e.target_sets) || 0), 0);
-    const estSec = exs.reduce(
-      (s, e) => s + (Number(e.target_sets) || 0) * ((Number(e.rest_seconds) || 90) + 40),
-      0
-    );
-    const h = Math.floor(estSec / 3600);
-    const m = Math.round((estSec % 3600) / 60);
-    const timeStr = h > 0 ? `${h}ч ${m}м` : `${m}м`;
-    return [
-      { value: String(exs.length), label: 'Упражнений' },
-      { value: String(totalSets), label: 'Подходов' },
-      { value: `~${timeStr}`, label: 'Время' },
-    ];
+  // Тренировочная сессия выбранного дня
+  const [session, setSession] = useState(null);
+  const [starting, setStarting] = useState(false);
+
+  const refreshProgress = useCallback(async () => {
+    if (!plan?.id) return;
+    try {
+      const data = await getWeekProgress(plan.id, planWeek);
+      const map = {};
+      (data.days || []).forEach((d) => { map[d.day_index] = d; });
+      setProgressByDay(map);
+      window.dispatchEvent(new Event('twb:progress'));
+    } catch (e) { /* no-op */ }
+  }, [plan?.id, planWeek]);
+
+  // Загрузка активной сессии выбранного дня
+  useEffect(() => {
+    if (!plan?.id || isRestSelected || !user?.telegram_id) { setSession(null); return undefined; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await getActiveSession({
+          plan_id: plan.id, week: planWeek, day: selectedDayIndex, athlete: user.telegram_id,
+        });
+        if (!cancelled) setSession(s);
+      } catch (e) {
+        if (!cancelled) setSession(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [plan?.id, planWeek, selectedDayIndex, isRestSelected, user?.telegram_id]);
+
+  // Превью дня (до старта тренировки)
+  const previewView = useMemo(() => {
+    if (!dayDetail || dayDetail.is_rest) return null;
+    const exs = (dayDetail.exercises || []).map((e) => ({ ...e, status: 'pending' }));
+    const tonnage = exs.reduce((s, e) => s + (Number(e.tonnage) || 0), 0);
+    const estSec = exs.reduce((s, e) => {
+      const sets = (e.sets_scheme || []).reduce((a, x) => a + (Number(x.sets) || 0), 0);
+      return s + sets * 130;
+    }, 0);
+    return {
+      status: 'not_started',
+      title: dayDetail.title,
+      exercises: exs,
+      stats: {
+        tonnage: Math.round(tonnage),
+        group: dayDetail.group,
+        difficulty: dayDetail.difficulty,
+        duration_sec: estSec,
+        done_count: 0,
+        total_count: exs.length,
+        progress_pct: 0,
+      },
+    };
   }, [dayDetail]);
 
-  const handleStart = () => {
+  const view = session || previewView;
+
+  const handleStart = async () => {
     if (!plan) { toast.info('Сначала выберите программу'); return; }
     if (isRestSelected) { toast.info('Сегодня день отдыха 💤'); return; }
-    toast('Запуск тренировки появится в Фазе 2 🏋️', { description: dayDetail.title });
+    setStarting(true);
+    try {
+      const s = await startSession({
+        plan_id: plan.id, athlete_telegram_id: user.telegram_id,
+        week: planWeek, day: selectedDayIndex,
+      });
+      setSession(s);
+      refreshProgress();
+    } catch (e) {
+      toast.error('Не удалось начать тренировку');
+    } finally {
+      setStarting(false);
+    }
   };
+
+  const handleAction = async (order, action) => {
+    if (!session) return;
+    try {
+      const s = await sessionExerciseAction(session.id, order, action);
+      setSession(s);
+      refreshProgress();
+      if (s.status === 'finished') toast.success('Тренировка завершена! 🎉');
+    } catch (e) {
+      toast.error('Не удалось обновить упражнение');
+    }
+  };
+
+  const handleEditSave = async (order, body) => {
+    if (!session) return;
+    try {
+      const s = await editSessionExercise(session.id, order, body);
+      setSession(s);
+      toast.success('Упражнение обновлено');
+    } catch (e) {
+      toast.error('Не удалось сохранить');
+    }
+  };
+
+  const handlePauseToggle = async () => {
+    if (!session) return;
+    try {
+      const s = await pauseSession(session.id, session.paused);
+      setSession(s);
+    } catch (e) { /* no-op */ }
+  };
+
+  const handleStop = async () => {
+    if (!session) return;
+    try {
+      const s = await finishSession(session.id);
+      setSession(s);
+      refreshProgress();
+      toast.success('Тренировка завершена');
+    } catch (e) { /* no-op */ }
+  };
+
+  const sessionStatus = session?.status;
 
   return (
     <div className="date-selector" data-testid="date-selector">
@@ -305,16 +406,49 @@ const DateSelector = () => {
 
       <div className="date-title-row">
         <h2 className="selected-date-title">{formattedDate}</h2>
-        <button
-          className="launch-button"
-          type="button"
-          data-testid="launch-button"
-          onClick={handleStart}
-          disabled={!plan || isRestSelected}
-        >
-          <Zap className="launch-button-icon" size={16} strokeWidth={2.5} />
-          <span>Начать</span>
-        </button>
+        <div className="date-actions" data-testid="date-actions">
+          {sessionStatus === 'in_progress' ? (
+            <>
+              <button className="icon-btn" type="button" onClick={handlePauseToggle}
+                aria-label={session.paused ? 'Продолжить' : 'Пауза'} data-testid="btn-pause">
+                {session.paused ? <Play size={18} /> : <Pause size={18} />}
+              </button>
+              <button className="icon-btn" type="button" onClick={handleStop}
+                aria-label="Завершить" data-testid="btn-stop">
+                <Square size={15} />
+              </button>
+              <button className="icon-btn" type="button"
+                onClick={() => toast.info('Настройки тренировки скоро')}
+                aria-label="Настройки" data-testid="btn-settings">
+                <Settings2 size={18} />
+              </button>
+            </>
+          ) : sessionStatus === 'finished' ? (
+            <>
+              <button className="icon-btn" type="button"
+                onClick={() => toast.info('Настройки тренировки скоро')}
+                aria-label="Настройки" data-testid="btn-settings">
+                <Settings2 size={18} />
+              </button>
+              <button className="icon-btn" type="button"
+                onClick={() => toast.info('Нажмите ✨ на упражнении, чтобы изменить его')}
+                aria-label="Изменить" data-testid="btn-edit">
+                <Wand2 size={18} />
+              </button>
+            </>
+          ) : !isRestSelected ? (
+            <button
+              className="launch-button"
+              type="button"
+              data-testid="launch-button"
+              onClick={handleStart}
+              disabled={!plan || starting}
+            >
+              <Zap className="launch-button-icon" size={16} strokeWidth={2.5} />
+              <span>{starting ? 'Запуск…' : 'Начать'}</span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Нет активной программы */}
@@ -327,18 +461,6 @@ const DateSelector = () => {
         </div>
       ) : null}
 
-      {/* Статистика выбранного дня (реальные данные) */}
-      {plan && dayStats.length > 0 ? (
-        <div className="workout-stats" data-testid="workout-stats">
-          {dayStats.map((stat) => (
-            <div className="workout-stat" key={stat.label}>
-              <span className="workout-stat-value">{stat.value}</span>
-              <span className="workout-stat-label">{stat.label}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {/* День отдыха */}
       {plan && isRestSelected ? (
         <div className="rest-day-note" data-testid="rest-day-note">
@@ -346,27 +468,15 @@ const DateSelector = () => {
         </div>
       ) : null}
 
-      {/* Список упражнений дня */}
-      {plan && dayDetail && !dayDetail.is_rest && dayDetail.exercises?.length ? (
-        <div className="day-exercises" data-testid="day-exercises">
-          <div className="day-exercises-title">{dayDetail.title}</div>
-          {dayDetail.exercises.map((ex, i) => (
-            <div className="exercise-row" key={`${ex.exercise_id || ex.exercise_name}-${i}`}>
-              <div className="exercise-main">
-                <span className="exercise-name">{ex.exercise_name}</span>
-                <span className="exercise-scheme">
-                  {ex.target_sets} × {ex.target_reps}
-                  {ex.target_weight != null
-                    ? ` · ${ex.target_weight}${ex.weight_type === 'percent_1rm' ? '%' : ex.weight_type === 'kg' ? 'кг' : ''}`
-                    : ''}
-                </span>
-              </div>
-              {ex.rest_seconds ? (
-                <span className="exercise-rest">отдых {ex.rest_seconds}с</span>
-              ) : null}
-            </div>
-          ))}
-        </div>
+      {/* Тренировка дня */}
+      {plan && !isRestSelected && view ? (
+        <WorkoutView
+          view={view}
+          isPreview={!session}
+          paused={!!session?.paused}
+          onAction={handleAction}
+          onEditSave={handleEditSave}
+        />
       ) : null}
     </div>
   );

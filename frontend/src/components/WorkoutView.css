@@ -1,0 +1,358 @@
+/* ===== Workout View (Phase 2) ===== */
+.workout-view {
+  margin-top: 18px;
+  padding-bottom: 96px; /* место под нижний бар */
+}
+
+/* ---- Статистика дня ---- */
+.wv-stats {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+  flex-wrap: nowrap;
+}
+.wv-status-icon {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wv-icon-done {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #3BD16F;
+  color: #1c1c1c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wv-icon-spin {
+  color: #FF8A24;
+  animation: wv-spin 1.1s linear infinite;
+}
+@keyframes wv-spin { to { transform: rotate(360deg); } }
+.wv-icon-ring {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px dashed #FF8A24;
+}
+.wv-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  min-width: 0;
+}
+.wv-stat-val {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.wv-stat-label {
+  font-size: 12px;
+  color: #959595;
+}
+
+/* ---- Карточки упражнений ---- */
+.wv-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ex-card {
+  background: #2c2c2c;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.ex-card-active {
+  background: #313131;
+  border-color: rgba(255, 138, 36, 0.25);
+}
+.ex-head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 16px 18px;
+  text-align: left;
+}
+.ex-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ex-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.ex-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ex-status-plan {
+  color: #959595;
+}
+.ex-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ex-chevron {
+  color: #8a8a8a;
+  transition: transform 0.2s ease;
+}
+.ex-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* кнопки действий активного упражнения */
+.ex-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.ex-btn:active { transform: scale(0.94); }
+.ex-btn-done {
+  background: linear-gradient(-20deg, #FF8A24, #FFD24A);
+  color: #1c1c1c;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 7px 13px;
+  border-radius: 999px;
+}
+.ex-btn-magic,
+.ex-btn-skip,
+.ex-btn-magic-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+.ex-btn-magic, .ex-btn-magic-sm {
+  background: #4a4a4a;
+  color: #fff;
+}
+.ex-btn-skip {
+  background: #FF5A5A;
+  color: #fff;
+}
+
+/* тело карточки */
+.ex-body {
+  display: flex;
+  gap: 12px;
+  padding: 0 18px 18px;
+  align-items: flex-end;
+}
+.ex-plan {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ex-plan-label {
+  color: #cfcfcf;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.ex-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #efefef;
+  margin-bottom: 4px;
+}
+.ex-plan-weight { min-width: 64px; }
+.ex-plan-bw { color: #bdbdbd; font-weight: 500; }
+.ex-plan-dash { color: #6f6f6f; }
+.ex-plan-scheme { min-width: 38px; }
+.ex-plan-bar {
+  width: 2px;
+  height: 16px;
+  background: #6f6f6f;
+  border-radius: 2px;
+}
+.ex-plan-pct { color: #efefef; }
+.ex-meta {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ex-meta-row {
+  font-size: 14px;
+  color: #9a9a9a;
+}
+.ex-meta-row b {
+  color: #efefef;
+  font-weight: 600;
+}
+
+/* мини-график прогноза */
+.ex-forecast {
+  flex: 0 0 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.forecast-svg {
+  width: 130px;
+  height: 50px;
+}
+.ex-forecast-caption {
+  font-size: 11px;
+  color: #8a8a8a;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ---- Нижний прогресс-бар ---- */
+.wv-footer {
+  position: sticky;
+  bottom: 0;
+  margin: 22px -20px 0;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: rgba(20, 20, 20, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.wv-footer-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wv-footer-check { color: #3BD16F; }
+.wv-footer-count {
+  font-size: 15px;
+  font-weight: 600;
+  color: #dcdcdc;
+}
+.wv-segments {
+  display: flex;
+  gap: 6px;
+}
+.wv-seg {
+  flex: 1 1 0;
+  height: 7px;
+  border-radius: 4px;
+  background: #3a3a3a;
+}
+.wv-seg-done { background: #3BD16F; }
+.wv-seg-skipped { background: #FF5A5A; }
+.wv-footer-status {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: #8a8a8a;
+}
+
+/* ---- Модалка редактирования ---- */
+.edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+.edit-modal {
+  width: 100%;
+  max-width: 420px;
+  background: #262626;
+  border-radius: 22px;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.edit-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 16px;
+}
+.edit-label {
+  display: block;
+  font-size: 13px;
+  color: #959595;
+  margin-bottom: 6px;
+}
+.edit-input,
+.edit-input-sm {
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+.edit-input { width: 100%; margin-bottom: 16px; }
+.edit-input:focus,
+.edit-input-sm:focus { border-color: #FF8A24; }
+.edit-sets-head,
+.edit-set-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.edit-sets-head {
+  font-size: 12px;
+  color: #959595;
+  margin-bottom: 6px;
+}
+.edit-set-row { margin-bottom: 8px; }
+.edit-input-sm { width: 100%; }
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.edit-btn-cancel,
+.edit-btn-save {
+  flex: 1 1 0;
+  padding: 12px;
+  border-radius: 14px;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.edit-btn-cancel {
+  background: #3a3a3a;
+  color: #fff;
+}
+.edit-btn-save {
+  background: linear-gradient(-20deg, #FF8A24, #FFD24A);
+  color: #1c1c1c;
+}
+
+/* адаптив: на узких экранах график прогноза скрываем */
+@media (max-width: 520px) {
+  .ex-forecast { flex-basis: 96px; }
+  .forecast-svg { width: 96px; height: 44px; }
+  .wv-stats { gap: 12px; }
+}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { registerUser } from "@/api";
+import { registerUser, getTelegramAvatar } from "@/api";
 
 const UserContext = createContext(null);
 
@@ -17,6 +17,7 @@ export function UserProvider({ children }) {
   const [user, setUser] = useState(null);
   const [dbUser, setDbUser] = useState(null);
   const [isTelegram, setIsTelegram] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,6 +45,17 @@ export function UserProvider({ children }) {
       };
       setUser(normalized);
 
+      // Аватар: сначала ставим заглушку, затем пробуем Telegram Bot API
+      const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        normalized.first_name || "U"
+      )}&background=FF6B00&color=fff&size=80&bold=true`;
+      setAvatarUrl(effective.photo_url || fallback);
+      getTelegramAvatar(normalized.telegram_id)
+        .then((a) => {
+          if (a?.avatar_url) setAvatarUrl(a.avatar_url);
+        })
+        .catch(() => {});
+
       try {
         const db = await registerUser(normalized);
         setDbUser(db);
@@ -57,7 +69,7 @@ export function UserProvider({ children }) {
   }, []);
 
   return (
-    <UserContext.Provider value={{ user, dbUser, isTelegram, loading }}>
+    <UserContext.Provider value={{ user, dbUser, isTelegram, avatarUrl, loading }}>
       {children}
     </UserContext.Provider>
   );
@@ -69,6 +81,7 @@ export function useUser() {
       user: null,
       dbUser: null,
       isTelegram: false,
+      avatarUrl: null,
       loading: true,
     }
   );

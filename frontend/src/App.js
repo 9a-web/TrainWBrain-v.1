@@ -1,12 +1,44 @@
 import "@/App.css";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { Toaster } from "sonner";
 import { UserProvider, useUser } from "@/context/UserContext";
+import { getStats } from "@/api";
 import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
 
+const pluralize = (n, forms) => {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return forms[2];
+  if (b > 1 && b < 5) return forms[1];
+  if (b === 1) return forms[0];
+  return forms[2];
+};
+
 const Home = () => {
-  const { user } = useUser();
+  const { user, avatarUrl } = useUser();
+  const [streak, setStreak] = useState(0);
+
+  useEffect(() => {
+    if (!user?.telegram_id) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const s = await getStats(user.telegram_id);
+        if (!cancelled) setStreak(s?.streak_days || 0);
+      } catch (e) {
+        /* no-op */
+      }
+    };
+    load();
+    const onProgress = () => load();
+    window.addEventListener("twb:progress", onProgress);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("twb:progress", onProgress);
+    };
+  }, [user?.telegram_id]);
 
   // Get greeting and icon based on current time
   const getGreetingData = () => {
@@ -44,7 +76,7 @@ const Home = () => {
             <img src="/TWBlogo.png" alt="TrainWithBrain" />
           </div>
           
-          {/* Right side: Menu */}
+          {/* Right side: Menu + Avatar */}
           <div className="header-right" data-testid="header-right">
             <Link
               to="/programs"
@@ -54,6 +86,14 @@ const Home = () => {
             >
               <img src="/menu.svg" alt="Программы" width={40} height={40} />
             </Link>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Профиль"
+                className="profile-avatar"
+                data-testid="profile-avatar"
+              />
+            ) : null}
           </div>
         </header>
         
@@ -80,7 +120,7 @@ const Home = () => {
               data-testid="streak-icon"
             />
             <span className="streak-text" data-testid="streak-text">
-              Тренировочная серия в течение 0 дней
+              Тренировочная серия в течение {streak} {pluralize(streak, ['дня', 'дней', 'дней'])}
             </span>
           </div>
           
