@@ -89,7 +89,10 @@ const ForecastChart = ({ series, currentWeek }) => {
   };
   const line = smooth(pts);
   const area = `${line} L${pts[n - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
-  const curIdx = series.findIndex((p) => p.week === currentWeek);
+  let curIdx = series.findIndex((p) => p.week === currentWeek);
+  if (curIdx < 0) curIdx = n - 1;
+  const solidPts = pts.slice(0, curIdx + 1);   // пройдено (до текущей недели включительно)
+  const dashedPts = pts.slice(curIdx);         // предстоит (от текущей недели до конца)
   const gid = `fc-${n}-${Math.round(min)}-${Math.round(max)}`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="forecast-svg" preserveAspectRatio="none" aria-hidden="true">
@@ -100,7 +103,28 @@ const ForecastChart = ({ series, currentWeek }) => {
         </linearGradient>
       </defs>
       <path d={area} fill={`url(#${gid})`} />
-      <path d={line} fill="none" stroke="#FF8A24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {dashedPts.length >= 2 ? (
+        <path
+          d={smooth(dashedPts)}
+          fill="none"
+          stroke="#FF8A24"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="2.5 4"
+          opacity="0.7"
+        />
+      ) : null}
+      {solidPts.length >= 2 ? (
+        <path
+          d={smooth(solidPts)}
+          fill="none"
+          stroke="#FF8A24"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : null}
       {curIdx >= 0 ? (
         <circle cx={pts[curIdx][0]} cy={pts[curIdx][1]} r="3.6" fill="#FFDA24" stroke="#1c1c1c" strokeWidth="1.5" />
       ) : null}
