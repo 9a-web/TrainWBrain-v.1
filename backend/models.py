@@ -185,6 +185,7 @@ class SessionExercise(BaseModel):
     tonnage: float = 0
     status: str = "pending"          # pending | in_progress | done | skipped
     comment: Optional[str] = None    # комментарий спортсмена для тренера (виден тренеру)
+    edited: bool = False             # упражнение было изменено (название/подходы)
 
 
 class WorkoutSession(BaseModel):

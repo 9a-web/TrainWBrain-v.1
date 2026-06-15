@@ -415,7 +415,7 @@ const DateSelector = () => {
               </button>
               <button className="icon-btn" type="button" onClick={handleStop}
                 aria-label="Завершить" data-testid="btn-stop">
-                <Square size={15} strokeWidth={2.2} color="#CACACA" />
+                <Square size={15} strokeWidth={2.6} color="#CACACA" />
               </button>
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Настройки тренировки скоро')}

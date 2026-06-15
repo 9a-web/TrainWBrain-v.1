@@ -425,6 +425,7 @@ def _view_exercise(pe, orm, order, status="pending"):
         "tonnage": scheme_tonnage(sets),
         "status": status,
         "comment": pe.get("comment"),
+        "edited": pe.get("edited", False),
     }
 
 
@@ -687,10 +688,18 @@ async def edit_session_exercise(session_id: str, order: int, payload: dict = Bod
     if not target:
         raise HTTPException(status_code=404, detail="Exercise not found")
 
+    changed = False
     if payload.get("exercise_name"):
+        if payload["exercise_name"] != target.get("exercise_name"):
+            changed = True
         target["exercise_name"] = payload["exercise_name"]
     if isinstance(payload.get("sets_scheme"), list):
         slug = target.get("exercise_slug")
+        old_norm = [
+            (float(s.get("weight")) if s.get("weight") is not None else None,
+             int(s.get("sets") or 0), int(s.get("reps") or 0))
+            for s in (target.get("sets_scheme") or [])
+        ]
         new_sets = []
         for st in payload["sets_scheme"]:
             w = st.get("weight")
@@ -700,6 +709,12 @@ async def edit_session_exercise(session_id: str, order: int, payload: dict = Bod
                 "reps": max(0, int(st.get("reps") or 0)),
                 "percent_1rm": percent_of(w, slug, orm),
             })
+        new_norm = [
+            (float(s["weight"]) if s["weight"] is not None else None, s["sets"], s["reps"])
+            for s in new_sets
+        ]
+        if new_norm != old_norm:
+            changed = True
         target["sets_scheme"] = new_sets
         target["tonnage"] = scheme_tonnage(new_sets)
     # Комментарий спортсмена тренеру (виден тренеру). Пустая строка/None -> сброс.
@@ -710,6 +725,9 @@ async def edit_session_exercise(session_id: str, order: int, payload: dict = Bod
         else:
             c = str(c).strip()
             target["comment"] = c[:500] if c else None
+    # Флажок "изменено" ставим только при реальной правке названия/подходов
+    if changed:
+        target["edited"] = True
 
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil,
 } from "lucide-react";
 import "./WorkoutView.css";
 
@@ -67,6 +67,11 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
             <span className="ex-status" style={{ color: meta.color }}>
               ● {meta.label}
             </span>
+            {ex.edited ? (
+              <span className="ex-edited-flag" title="Упражнение изменено" data-testid={`edited-flag-${ex.order}`}>
+                <Pencil size={12} />
+              </span>
+            ) : null}
             {ex.comment ? (
               <span className="ex-comment-flag" title="Есть комментарий тренеру" data-testid={`comment-flag-${ex.order}`}>
                 <MessageSquareText size={12} />

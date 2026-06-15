@@ -1,6 +1,6 @@
 /* ===== Workout View (Phase 2) ===== */
 .workout-view {
-  margin-top: 18px;
+  margin-top: 4px;
   padding-bottom: 96px; /* место под нижний бар */
 }
 
@@ -110,6 +110,16 @@
   color: #FFB36B;
   background: rgba(255, 138, 36, 0.14);
   border: 1px solid rgba(255, 138, 36, 0.3);
+  border-radius: 999px;
+  padding: 3px;
+}
+.ex-edited-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #BDBDBD;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   padding: 3px;
 }
@@ -266,15 +276,15 @@
 
 /* мини-график прогноза */
 .ex-forecast {
-  flex: 0 0 130px;
+  flex: 0 0 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
 .forecast-svg {
-  width: 130px;
-  height: 50px;
+  width: 150px;
+  height: 58px;
 }
 .ex-forecast-caption {
   font-size: 11px;
@@ -490,7 +500,7 @@
 
 /* адаптив: на узких экранах график прогноза скрываем */
 @media (max-width: 520px) {
-  .ex-forecast { flex-basis: 96px; }
-  .forecast-svg { width: 96px; height: 44px; }
+  .ex-forecast { flex-basis: 112px; }
+  .forecast-svg { width: 112px; height: 50px; }
   .wv-stats { gap: 12px; }
 }

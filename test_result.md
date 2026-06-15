@@ -254,8 +254,23 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: All 9 test scenarios passed for enhanced edit exercise endpoint. Created plan from powerlifting-peaking template for athlete 990011, started session week=1 day=1 (7 exercises, order=0 is squat-competition with 1RM=170). (1) ADD SETS: Successfully added 3 sets, percent_1rm calculated correctly (100kg->59%, 110kg->65%, 120kg->71%), tonnage=1450. (2) DELETE SETS: Reduced to 1 set, tonnage=500. (3) COMMENT ADD: Comment trimmed correctly ('  Болело плечо, снизил вес  ' -> 'Болело плечо, снизил вес'), sets_scheme unchanged. (4) COMMENT CLEAR: Comment cleared with both empty string and null. (5) COMMENT PERSISTENCE: Comment persisted in both GET /api/sessions/{id} and GET /api/sessions/active. (6) CLAMP: Sets and reps clamped correctly (sets=0->1, reps=-3->0, tonnage=0). (7) COMBINED: Both sets_scheme and comment updated on exercise order=1 (tonnage=1350, comment='норм'), exercise order=0 untouched. (8) NAME EDIT: Exercise name edit still works ('Тест присед'). (9) GENERAL ASSERTIONS: No MongoDB _id leaks, all IDs are UUID strings, datetimes are ISO strings, stats object present. All responses valid JSON."
+      - working: true
+        agent: "main"
+        comment: "ADDED AFTER above test: SessionExercise now has 'edited' bool field (default false). The edit endpoint sets edited=true ONLY when exercise_name or sets_scheme actually changed (normalized weight/sets/reps compare); a comment-only edit does NOT set edited. _view_exercise passes edited through (default false). Manually verified via API: editing sets on order=0 -> edited=true; comment-only edit on order=1 -> edited=false. Frontend renders a pencil flag when edited=true and a notes flag when comment present (both next to the status)."
 
 frontend:
+  - task: "Edit exercise UI: add/delete sets, notes textarea, edited/comment flags"
+    implemented: true
+    working: "NA"
+    file: "components/WorkoutView.js, components/WorkoutView.css, components/DateSelector.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "EditExerciseModal ('Изменить упражнение') enhanced: per-row delete-set button (Trash2, disabled when only 1 set left), '+ Добавить подход' button, and a 'Заметки' textarea (500-char counter, hint 'Виден вашему тренеру') that maps to the backend comment field. Save sends {exercise_name, sets_scheme, comment}. ExerciseCard now shows: a pencil flag when ex.edited=true and a notes-icon flag when ex.comment is set (both in the status line), plus the comment text block when expanded. Also: workout control buttons (pause/stop/settings) restyled to 28x28px, border-radius 9px, icons strokeWidth 2.2 (Square=2.6) color #CACACA; forecast chart slightly enlarged (150x58 / mobile 112x50). Needs UI testing (start session -> edit exercise -> add/remove sets -> add note -> save -> verify flags + persistence)."
+
   - task: "Register user on Telegram WebApp init"
     implemented: true
     working: "NA"
@@ -293,7 +308,8 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Edit exercise UI: add/delete sets, notes textarea, edited/comment flags"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

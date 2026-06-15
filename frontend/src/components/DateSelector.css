@@ -102,7 +102,7 @@
 .selected-date-title {
   font-family: 'GG Zaglav', sans-serif;
   font-weight: 400;
-  font-size: 56px;
+  font-size: 61px;
   line-height: 1;
   color: #FFFFFF;
   margin: 0;
@@ -493,9 +493,9 @@
   gap: 8px;
 }
 .icon-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
   background: #333;
   color: #fff;
   border: none;
