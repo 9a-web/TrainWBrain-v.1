@@ -82,11 +82,13 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .ex-name {
   font-size: 16px;
   font-weight: 700;
   color: #fff;
+  overflow-wrap: anywhere;
 }
 .ex-status {
   font-size: 13px;
@@ -143,6 +145,25 @@
 .ex-btn-skip {
   background: #FF5A5A;
   color: #fff;
+}
+
+/* строка действий активного упражнения (отдельно от названия) */
+.ex-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 18px 16px;
+}
+.ex-actions .ex-btn-done {
+  flex: 1 1 auto;
+  padding: 11px 16px;
+  font-size: 14px;
+}
+.ex-actions .ex-btn-magic,
+.ex-actions .ex-btn-skip {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
 }
 
 /* тело карточки */

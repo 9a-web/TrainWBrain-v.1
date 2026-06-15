@@ -68,37 +68,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
           </span>
         </div>
         <div className="ex-head-right">
-          {isActive ? (
-            <>
-              <span
-                className="ex-btn ex-btn-done"
-                role="button"
-                tabIndex={0}
-                data-testid={`done-${ex.order}`}
-                onClick={(e) => { e.stopPropagation(); onAction(ex.order, "done"); }}
-              >
-                <Check size={16} strokeWidth={3} /> Выполнить
-              </span>
-              <span
-                className="ex-btn ex-btn-magic"
-                role="button"
-                tabIndex={0}
-                data-testid={`edit-${ex.order}`}
-                onClick={(e) => { e.stopPropagation(); onEdit(ex); }}
-              >
-                <WandSparkles size={15} />
-              </span>
-              <span
-                className="ex-btn ex-btn-skip"
-                role="button"
-                tabIndex={0}
-                data-testid={`skip-${ex.order}`}
-                onClick={(e) => { e.stopPropagation(); onAction(ex.order, "skip"); }}
-              >
-                <X size={16} strokeWidth={3} />
-              </span>
-            </>
-          ) : isFinishedCard ? (
+          {isFinishedCard ? (
             <span
               className="ex-btn ex-btn-magic-sm"
               role="button"
@@ -112,6 +82,38 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit }) => {
           <ChevronDown size={22} className={`ex-chevron ${open ? "open" : ""}`} />
         </div>
       </button>
+
+      {isActive ? (
+        <div className="ex-actions" data-testid={`actions-${ex.order}`}>
+          <span
+            className="ex-btn ex-btn-done"
+            role="button"
+            tabIndex={0}
+            data-testid={`done-${ex.order}`}
+            onClick={() => onAction(ex.order, "done")}
+          >
+            <Check size={16} strokeWidth={3} /> Выполнить
+          </span>
+          <span
+            className="ex-btn ex-btn-magic"
+            role="button"
+            tabIndex={0}
+            data-testid={`edit-${ex.order}`}
+            onClick={() => onEdit(ex)}
+          >
+            <WandSparkles size={16} />
+          </span>
+          <span
+            className="ex-btn ex-btn-skip"
+            role="button"
+            tabIndex={0}
+            data-testid={`skip-${ex.order}`}
+            onClick={() => onAction(ex.order, "skip")}
+          >
+            <X size={16} strokeWidth={3} />
+          </span>
+        </div>
+      ) : null}
 
       {open ? (
         <div className="ex-body">
