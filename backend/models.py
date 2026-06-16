@@ -94,6 +94,7 @@ class ProgramWeek(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     week_index: int = 1
+    published: bool = True   # неделя видна спортсмену (показ «по одной неделе»)
     days: List[ProgramDay] = Field(default_factory=list)
 
 
@@ -148,6 +149,8 @@ class PlanCreate(BaseModel):
     one_rep_max: Optional[dict] = None
     maxes: Optional[dict] = None               # {squat,bench,deadlift} — для масштабирования весов
     training_days: Optional[List[int]] = None  # выбранные дни недели (1=Пн..7=Вс)
+    visibility: Optional[str] = None           # draft | published (если не задано — авто по автору)
+    prepared_by_coach: bool = False            # план собран тренером заранее
 
 
 class Plan(BaseModel):
@@ -165,6 +168,23 @@ class Plan(BaseModel):
     one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (для расчёта %1ПМ)
     maxes: dict = Field(default_factory=dict)        # {squat,bench,deadlift} спортсмена
     training_days: List[int] = Field(default_factory=list)  # выбранные дни недели (1..7)
+    visibility: str = "published"             # draft | published (черновик тренера / опубликован)
+    published_at: Optional[str] = None        # ISO — когда план показан спортсмену
+    prepared_by_coach: bool = False           # план собран тренером заранее
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------------------------------------------------------------------------
+# Связь тренер ↔ спортсмен
+# ---------------------------------------------------------------------------
+class CoachLink(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=_uuid)
+    coach_telegram_id: int
+    athlete_telegram_id: int
+    status: str = "active"   # pending | active | revoked
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

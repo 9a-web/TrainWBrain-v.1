@@ -416,3 +416,8 @@ async def ensure_indexes(db) -> None:
     await db.plans.create_index([("athlete_telegram_id", 1), ("status", 1)])
     await db.workout_sessions.create_index("athlete_telegram_id")
     await db.workout_sessions.create_index([("plan_id", 1), ("week_index", 1), ("day_index", 1)])
+    # P3 — режим тренера
+    await db.users.create_index("invite_code", unique=True, sparse=True)
+    await db.plans.create_index([("coach_telegram_id", 1), ("status", 1)])
+    await db.coach_links.create_index([("coach_telegram_id", 1), ("athlete_telegram_id", 1)], unique=True)
+    await db.coach_links.create_index("athlete_telegram_id")

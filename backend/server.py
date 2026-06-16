@@ -18,6 +18,7 @@ from models import (
     ProgramTemplate, ProgramTemplateCreate,
     Plan, PlanCreate,
     WorkoutSession, SessionStartReq,
+    CoachLink,
 )
 from seed import (
     seed_builtins, ensure_indexes,
@@ -188,6 +189,113 @@ async def get_user(telegram_id: int):
         if isinstance(user.get(field), str):
             user[field] = datetime.fromisoformat(user[field])
     return user
+
+
+# ===========================================================================
+# P3 — Режим пользователя (athlete/coach), приглашения, подопечные, видимость плана
+# ===========================================================================
+import secrets as _secrets
+
+_BOT_USERNAME_CACHE = {"value": None}
+
+
+class ModeReq(BaseModel):
+    mode: str  # athlete | coach
+
+
+class CoachInviteReq(BaseModel):
+    coach_telegram_id: int
+
+
+class CoachLinkReq(BaseModel):
+    code: str
+    athlete_telegram_id: int
+
+
+class CoachUnlinkReq(BaseModel):
+    athlete_telegram_id: int
+
+
+class VisibilityReq(BaseModel):
+    visibility: str  # draft | published
+
+
+class WeekPublishReq(BaseModel):
+    published: bool = True
+
+
+class TrainingDaysReq(BaseModel):
+    training_days: List[int] = Field(default_factory=list)
+
+
+def _gen_invite_code(n: int = 8) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без неоднозначных символов
+    return "".join(_secrets.choice(alphabet) for _ in range(n))
+
+
+async def _unique_invite_code() -> str:
+    code = _gen_invite_code()
+    while await db.users.find_one({"invite_code": code}, {"_id": 0}):
+        code = _gen_invite_code()
+    return code
+
+
+async def _get_bot_username() -> Optional[str]:
+    """Best-effort: получить username бота через getMe (кэшируется)."""
+    if _BOT_USERNAME_CACHE["value"] is not None:
+        return _BOT_USERNAME_CACHE["value"] or None
+    if not TELEGRAM_BOT_TOKEN:
+        _BOT_USERNAME_CACHE["value"] = ""
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=8) as cx:
+            r = await cx.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe")
+            if r.status_code == 200:
+                uname = (r.json().get("result") or {}).get("username")
+                _BOT_USERNAME_CACHE["value"] = uname or ""
+                return uname
+    except Exception:
+        pass
+    _BOT_USERNAME_CACHE["value"] = ""
+    return None
+
+
+def _user_brief(u: Optional[dict]) -> Optional[dict]:
+    if not u:
+        return None
+    return {
+        "telegram_id": u.get("telegram_id"),
+        "first_name": u.get("first_name"),
+        "last_name": u.get("last_name"),
+        "username": u.get("username"),
+        "picture": u.get("picture"),
+        "roles": u.get("roles") or ["athlete"],
+        "active_mode": u.get("active_mode") or "athlete",
+    }
+
+
+@api_router.patch("/users/{telegram_id}/mode")
+async def switch_user_mode(telegram_id: int, payload: ModeReq):
+    """Переключить активный режим UI (athlete/coach). При первом переходе в coach —
+    добавляет роль coach и генерирует invite_code."""
+    mode = (payload.mode or "").strip().lower()
+    if mode not in ("athlete", "coach"):
+        raise HTTPException(status_code=400, detail="mode должен быть athlete или coach")
+    user = await db.users.find_one({"telegram_id": telegram_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    roles = set(user.get("roles") or ["athlete"])
+    roles.add("athlete")
+    set_fields = {"active_mode": mode, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if mode == "coach":
+        roles.add("coach")
+        if not user.get("invite_code"):
+            set_fields["invite_code"] = await _unique_invite_code()
+    set_fields["roles"] = sorted(roles)
+    await db.users.update_one({"telegram_id": telegram_id}, {"$set": set_fields})
+    updated = await db.users.find_one({"telegram_id": telegram_id}, {"_id": 0, "password_hash": 0})
+    return updated
 
 
 # ===========================================================================
@@ -669,6 +777,16 @@ async def create_plan(payload: PlanCreate):
         {"$set": {"status": "completed", "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
 
+    # Видимость: тренер, готовящий план другому спортсмену → по умолчанию черновик
+    coach_id = payload.coach_telegram_id
+    is_coach_prepared = bool(coach_id and coach_id != payload.athlete_telegram_id)
+    if payload.visibility in ("draft", "published"):
+        visibility = payload.visibility
+    else:
+        visibility = "draft" if is_coach_prepared else "published"
+    prepared_by_coach = payload.prepared_by_coach or is_coach_prepared
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     plan = Plan(
         athlete_telegram_id=payload.athlete_telegram_id,
         coach_telegram_id=payload.coach_telegram_id,
@@ -679,12 +797,15 @@ async def create_plan(payload: PlanCreate):
         one_rep_max=one_rep_max,
         maxes=maxes,
         training_days=sorted(set(int(d) for d in training_days)) if training_days else [],
+        visibility=visibility,
+        published_at=now_iso if visibility == "published" else None,
+        prepared_by_coach=prepared_by_coach,
     )
     doc = plan.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     doc["updated_at"] = doc["updated_at"].isoformat()
     await db.plans.insert_one(doc)
-    logger.info(f"Plan created: {plan.id} for athlete={plan.athlete_telegram_id}")
+    logger.info(f"Plan created: {plan.id} for athlete={plan.athlete_telegram_id} (visibility={visibility})")
     return plan
 
 
@@ -694,6 +815,11 @@ async def get_active_plan(telegram_id: int):
         {"athlete_telegram_id": telegram_id, "status": "active"},
         {"_id": 0},
     )
+    if not doc:
+        return None
+    # Черновик тренера: спортсмену не показываем содержимое («план готовится»)
+    if doc.get("visibility") == "draft":
+        doc["weeks"] = []
     return doc  # может быть None → вернётся null
 
 
@@ -703,6 +829,219 @@ async def get_plan(plan_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
     return doc
+
+
+# ===========================================================================
+# P3 — Приглашения тренера, связь тренер↔спортсмен, подопечные
+# ===========================================================================
+@api_router.post("/coach/invite")
+async def coach_invite(payload: CoachInviteReq):
+    """Тренер получает (или генерирует) invite-код + deep link для приглашения спортсмена."""
+    user = await db.users.find_one({"telegram_id": payload.coach_telegram_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    roles = set(user.get("roles") or ["athlete"])
+    roles.update(["athlete", "coach"])
+    set_fields = {"roles": sorted(roles), "updated_at": datetime.now(timezone.utc).isoformat()}
+    code = user.get("invite_code")
+    if not code:
+        code = await _unique_invite_code()
+        set_fields["invite_code"] = code
+    await db.users.update_one({"telegram_id": payload.coach_telegram_id}, {"$set": set_fields})
+
+    bot = await _get_bot_username()
+    deep_link = f"https://t.me/{bot}?startapp=coach_{code}" if bot else None
+    return {"invite_code": code, "deep_link": deep_link, "bot_username": bot}
+
+
+@api_router.post("/coach/link")
+async def coach_link(payload: CoachLinkReq):
+    """Спортсмен привязывается к тренеру по коду (инициатива спортсмена = согласие → active)."""
+    code = (payload.code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="Код не указан")
+    coach = await db.users.find_one({"invite_code": code}, {"_id": 0})
+    if not coach:
+        raise HTTPException(status_code=404, detail="Тренер с таким кодом не найден")
+    coach_tgid = coach["telegram_id"]
+    if coach_tgid == payload.athlete_telegram_id:
+        raise HTTPException(status_code=400, detail="Нельзя привязать самого себя")
+
+    athlete = await db.users.find_one({"telegram_id": payload.athlete_telegram_id}, {"_id": 0})
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Спортсмен не найден")
+
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.coach_links.find_one(
+        {"coach_telegram_id": coach_tgid, "athlete_telegram_id": payload.athlete_telegram_id},
+        {"_id": 0},
+    )
+    if existing:
+        await db.coach_links.update_one(
+            {"coach_telegram_id": coach_tgid, "athlete_telegram_id": payload.athlete_telegram_id},
+            {"$set": {"status": "active", "updated_at": now}},
+        )
+    else:
+        link = CoachLink(coach_telegram_id=coach_tgid, athlete_telegram_id=payload.athlete_telegram_id)
+        doc = link.model_dump()
+        doc["created_at"] = doc["created_at"].isoformat()
+        doc["updated_at"] = doc["updated_at"].isoformat()
+        await db.coach_links.insert_one(doc)
+
+    # У спортсмена один активный тренер
+    await db.users.update_one(
+        {"telegram_id": payload.athlete_telegram_id},
+        {"$set": {"coach_telegram_id": coach_tgid, "updated_at": now}},
+    )
+    logger.info(f"Coach link: coach={coach_tgid} <- athlete={payload.athlete_telegram_id}")
+    return {"status": "active", "coach": _user_brief(coach)}
+
+
+@api_router.post("/coach/unlink")
+async def coach_unlink(payload: CoachUnlinkReq):
+    """Спортсмен отвязывается от текущего тренера."""
+    athlete = await db.users.find_one({"telegram_id": payload.athlete_telegram_id}, {"_id": 0})
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Спортсмен не найден")
+    coach_tgid = athlete.get("coach_telegram_id")
+    now = datetime.now(timezone.utc).isoformat()
+    if coach_tgid:
+        await db.coach_links.update_one(
+            {"coach_telegram_id": coach_tgid, "athlete_telegram_id": payload.athlete_telegram_id},
+            {"$set": {"status": "revoked", "updated_at": now}},
+        )
+    await db.users.update_one(
+        {"telegram_id": payload.athlete_telegram_id},
+        {"$set": {"coach_telegram_id": None, "updated_at": now}},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/athlete/{telegram_id}/coach")
+async def athlete_coach(telegram_id: int):
+    """Текущий тренер спортсмена (или null)."""
+    athlete = await db.users.find_one({"telegram_id": telegram_id}, {"_id": 0})
+    if not athlete:
+        raise HTTPException(status_code=404, detail="User not found")
+    coach_tgid = athlete.get("coach_telegram_id")
+    if not coach_tgid:
+        return {"coach": None}
+    coach = await db.users.find_one({"telegram_id": coach_tgid}, {"_id": 0})
+    return {"coach": _user_brief(coach)}
+
+
+@api_router.get("/coach/{telegram_id}/clients")
+async def coach_clients(telegram_id: int):
+    """Список подопечных тренера + краткая активность (активный план, последняя/текущая сессия)."""
+    links = await db.coach_links.find(
+        {"coach_telegram_id": telegram_id, "status": "active"}, {"_id": 0}
+    ).to_list(500)
+    clients = []
+    for link in links:
+        a_id = link["athlete_telegram_id"]
+        user = await db.users.find_one({"telegram_id": a_id}, {"_id": 0})
+        plan = await db.plans.find_one(
+            {"athlete_telegram_id": a_id, "status": "active"}, {"_id": 0}
+        )
+        active_session = await db.workout_sessions.find_one(
+            {"athlete_telegram_id": a_id, "status": "in_progress"}, {"_id": 0}
+        )
+        last_session = await db.workout_sessions.find_one(
+            {"athlete_telegram_id": a_id, "status": "finished"},
+            {"_id": 0, "finished_at": 1},
+            sort=[("finished_at", -1)],
+        )
+        clients.append({
+            "athlete": _user_brief(user),
+            "plan": ({
+                "id": plan["id"], "name": plan.get("name"),
+                "visibility": plan.get("visibility", "published"),
+                "current_week": plan.get("current_week", 1),
+                "weeks_count": len(plan.get("weeks", [])),
+                "prepared_by_coach": plan.get("prepared_by_coach", False),
+            } if plan else None),
+            "is_training_now": bool(active_session),
+            "active_session_id": active_session["id"] if active_session else None,
+            "last_workout_at": last_session.get("finished_at") if last_session else None,
+            "linked_at": link.get("created_at"),
+        })
+    return {"coach_telegram_id": telegram_id, "clients": clients}
+
+
+async def _assert_coach_of(coach_tgid: int, athlete_tgid: int):
+    link = await db.coach_links.find_one(
+        {"coach_telegram_id": coach_tgid, "athlete_telegram_id": athlete_tgid, "status": "active"},
+        {"_id": 0},
+    )
+    if not link:
+        raise HTTPException(status_code=403, detail="Вы не тренер этого спортсмена")
+
+
+@api_router.get("/coach/{telegram_id}/clients/{athlete_id}/plan", response_model=Optional[Plan])
+async def coach_client_plan(telegram_id: int, athlete_id: int):
+    """Активный план подопечного (полный, в т.ч. черновик — тренер видит всегда)."""
+    await _assert_coach_of(telegram_id, athlete_id)
+    doc = await db.plans.find_one(
+        {"athlete_telegram_id": athlete_id, "status": "active"}, {"_id": 0}
+    )
+    return doc
+
+
+# ===========================================================================
+# P3 — Видимость плана, публикация недель, тренировочные дни
+# ===========================================================================
+async def _get_plan_or_404(plan_id: str) -> dict:
+    doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return doc
+
+
+@api_router.patch("/plans/{plan_id}/visibility", response_model=Plan)
+async def set_plan_visibility(plan_id: str, payload: VisibilityReq):
+    vis = (payload.visibility or "").strip().lower()
+    if vis not in ("draft", "published"):
+        raise HTTPException(status_code=400, detail="visibility должен быть draft или published")
+    plan = await _get_plan_or_404(plan_id)
+    now = datetime.now(timezone.utc).isoformat()
+    set_fields = {"visibility": vis, "updated_at": now}
+    if vis == "published" and not plan.get("published_at"):
+        set_fields["published_at"] = now
+    await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
+    return await _get_plan_or_404(plan_id)
+
+
+@api_router.patch("/plans/{plan_id}/weeks/{week}/publish", response_model=Plan)
+async def publish_plan_week(plan_id: str, week: int, payload: WeekPublishReq):
+    plan = await _get_plan_or_404(plan_id)
+    weeks = plan.get("weeks", [])
+    found = False
+    for w in weeks:
+        if w.get("week_index") == week:
+            w["published"] = bool(payload.published)
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Week not found")
+    await db.plans.update_one(
+        {"id": plan_id},
+        {"$set": {"weeks": weeks, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return await _get_plan_or_404(plan_id)
+
+
+@api_router.patch("/plans/{plan_id}/training-days", response_model=Plan)
+async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq):
+    days = payload.training_days or []
+    if any((not isinstance(d, int)) or d < 1 or d > 7 for d in days):
+        raise HTTPException(status_code=400, detail="training_days: числа 1..7")
+    norm = sorted(set(int(d) for d in days))
+    await _get_plan_or_404(plan_id)
+    await db.plans.update_one(
+        {"id": plan_id},
+        {"$set": {"training_days": norm, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return await _get_plan_or_404(plan_id)
 
 
 # ===========================================================================
@@ -1114,6 +1453,35 @@ async def pause_session(session_id: str, resume: bool = False):
         {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now}}
     )
     s["paused"] = (not resume)
+    return _serialize_session(s)
+
+
+class SessionConfirmReq(BaseModel):
+    coach_telegram_id: Optional[int] = None
+
+
+@api_router.post("/sessions/{session_id}/confirm")
+async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(default=None)):
+    """Тренер подтверждает выполнение тренировки подопечного (coach_confirmed=true)."""
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    coach_tgid = payload.coach_telegram_id if payload else None
+    if coach_tgid is not None:
+        await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
+    now = datetime.now(timezone.utc).isoformat()
+    await db.workout_sessions.update_one(
+        {"id": session_id},
+        {"$set": {
+            "coach_confirmed": True,
+            "confirmed_by": coach_tgid,
+            "confirmed_at": now,
+            "updated_at": now,
+        }},
+    )
+    s["coach_confirmed"] = True
+    s["confirmed_by"] = coach_tgid
+    s["confirmed_at"] = now
     return _serialize_session(s)
 
 

@@ -105,6 +105,82 @@
 user_problem_statement: "TrainWithBrain Telegram WebApp - при открытии приложения в Telegram аватарка не подгружается. Нужно проверить создание пользователя в БД и работу с UID"
 
 backend:
+  - task: "P3 Coach: role/mode switch (PATCH /api/users/{telegram_id}/mode)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "PATCH /api/users/{telegram_id}/mode {mode: athlete|coach}. Validates mode (else 400). 404 if user missing. Switching to coach adds 'coach' to roles[] (always keeps 'athlete'), sets active_mode, and generates a unique invite_code if absent. Returns updated user (no password_hash). Smoke-tested via curl: roles=['athlete','coach'], invite_code generated."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 4 mode switch scenarios passed. (1) SWITCH TO COACH: PATCH /api/users/701001/mode {mode:coach} returns 200, roles include both 'athlete' and 'coach', active_mode='coach', invite_code present (8 chars). (2) INVALID MODE: mode='bad' returns 400. (3) UNKNOWN USER: telegram_id=999999 returns 404. (4) SWITCH BACK: mode='athlete' keeps coach role, active_mode='athlete'. All responses valid JSON, no _id leaks, ISO datetimes."
+
+  - task: "P3 Coach: invite + link + unlink + clients + client plan + athlete coach"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/models.py, backend/seed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoints: POST /api/coach/invite {coach_telegram_id} -> {invite_code, deep_link, bot_username} (adds coach role, stable code). POST /api/coach/link {code, athlete_telegram_id} -> links athlete to coach (status active), sets user.coach_telegram_id; 404 unknown code; 400 self-link; coach_links upsert unique (coach,athlete). POST /api/coach/unlink {athlete_telegram_id} -> revokes link, clears coach_telegram_id. GET /api/coach/{telegram_id}/clients -> [{athlete brief, plan summary, is_training_now, active_session_id, last_workout_at, linked_at}]. GET /api/coach/{telegram_id}/clients/{athlete_id}/plan -> active plan (full, even draft); 403 if not coach of athlete. GET /api/athlete/{telegram_id}/coach -> {coach brief|null}. Smoke-tested via curl end-to-end OK."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 11 scenarios passed. (1) INVITE: POST /api/coach/invite returns {invite_code, deep_link, bot_username}. (2) STABLE CODE: Second call returns SAME invite_code. (3) LINK: POST /api/coach/link with valid code links athlete 701002 to coach 701001, returns status='active' and coach brief. (4) UNKNOWN CODE: Invalid code returns 404. (5) SELF-LINK: Linking to self returns 400. (6) ATHLETE COACH: GET /api/athlete/701002/coach returns coach 701001. (7) COACH NO COACH: GET /api/athlete/701001/coach returns null. (8) CLIENTS LIST: GET /api/coach/701001/clients includes athlete 701002 with plan summary, is_training_now, last_workout_at, linked_at. (9) CLIENT PLAN: GET /api/coach/701001/clients/701002/plan returns full plan (even draft). (10) UNLINKED COACH: Unlinked coach 701003 calling endpoint returns 403. (11) UNLINK: POST /api/coach/unlink removes athlete from clients list, GET /api/athlete/701002/coach returns null. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+  - task: "P3 Plan visibility draft/published (+ active plan draft hiding)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Plan model += visibility(draft|published, default published), published_at, prepared_by_coach. POST /api/plans: when coach_telegram_id != athlete_telegram_id -> visibility defaults to 'draft' & prepared_by_coach=true; self-created -> published; explicit visibility honored. PATCH /api/plans/{id}/visibility {visibility} validates value, sets published_at on first publish. GET /api/plans/active/{telegram_id}: for draft plan returns the plan WITH weeks=[] (content hidden, 'план готовится'); published returns full weeks. Backward compat: existing plans (no visibility field) read as 'published'. Smoke-tested: draft hides weeks, publish reveals them."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 7 scenarios passed. (1) COACH CREATES DRAFT: POST /api/plans with coach_telegram_id != athlete_telegram_id creates plan with visibility='draft', prepared_by_coach=true, weeks non-empty. (2) ATHLETE SEES HIDDEN: GET /api/plans/active/701002 returns draft plan with weeks=[] (content hidden). (3) COACH SEES FULL: GET /api/coach/701001/clients/701002/plan returns full weeks (coach can see draft content). (4) UNLINKED COACH 403: Unlinked coach 701003 calling endpoint returns 403. (5) PUBLISH: PATCH /api/plans/{id}/visibility {visibility:published} sets visibility='published', published_at timestamp. (6) ATHLETE SEES FULL: GET /api/plans/active/701002 now returns full weeks. (7) INVALID VISIBILITY: Invalid value returns 400. (8) SELF-PLAN PUBLISHED: POST /api/plans without coach_telegram_id creates plan with visibility='published' (backward compatible). All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+  - task: "P3 Plan: week publish toggle + training-days (coach controls)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/models.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "ProgramWeek model += published(bool, default true). PATCH /api/plans/{id}/weeks/{week}/publish {published} toggles that week's published flag (404 if week not found). PATCH /api/plans/{id}/training-days {training_days:[1..7]} validates range (400 otherwise), stores sorted unique. Both return full updated plan. Smoke-tested: week1.published=false, training_days=[1,3,5]."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 4 scenarios passed. (1) UNPUBLISH WEEK: PATCH /api/plans/{id}/weeks/1/publish {published:false} sets week 1 published=false. (2) NONEXISTENT WEEK: Week 99 returns 404. (3) SET TRAINING DAYS: PATCH /api/plans/{id}/training-days {training_days:[1,3,5]} stores sorted [1,3,5]. (4) OUT-OF-RANGE: Days [0,8] return 400. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+  - task: "P3 Coach: confirm workout session (POST /api/sessions/{id}/confirm)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/sessions/{id}/confirm {coach_telegram_id?} sets session coach_confirmed=true, confirmed_by, confirmed_at. If coach_telegram_id provided, asserts coach is linked to the session's athlete (403 otherwise). 404 if session missing. Returns serialized session with stats."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 3 scenarios passed. (1) COACH CONFIRMS: POST /api/sessions/{id}/confirm {coach_telegram_id:701001} on linked athlete's session sets coach_confirmed=true, confirmed_by=701001, confirmed_at timestamp. (2) NONLINKED COACH: Coach 701003 (not linked to athlete) returns 403. (3) MISSING SESSION: Invalid session_id returns 404. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+
   - task: "Auth: Email register/login (JWT-less session tokens, bcrypt)"
     implemented: true
     working: true
@@ -444,10 +520,11 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Auth: Email register/login (JWT-less session tokens, bcrypt)"
-    - "Auth: session dependency + /auth/me + /auth/logout"
-    - "Auth: Telegram WebApp one-tap (initData HMAC validation)"
-    - "Auth: Google via Emergent Managed Auth (session exchange)"
+    - "P3 Coach: role/mode switch (PATCH /api/users/{telegram_id}/mode)"
+    - "P3 Coach: invite + link + unlink + clients + client plan + athlete coach"
+    - "P3 Plan visibility draft/published (+ active plan draft hiding)"
+    - "P3 Plan: week publish toggle + training-days (coach controls)"
+    - "P3 Coach: confirm workout session (POST /api/sessions/{id}/confirm)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -477,3 +554,8 @@ agent_communication:
     message: "NEW FEATURE ready for backend testing: AUTHENTICATION (3 methods, mandatory auth, no guest). Test ONLY the new /api/auth/* endpoints (do NOT re-test prior phases). Unified session model: collection user_sessions {session_token, telegram_id, auth_method, expires_at(ISO), created_at}; every account keyed by telegram_id (real for Telegram, synthetic 900000000000+ for email/google). Auth dependency get_current_user reads Authorization: Bearer <token> first, then session_token cookie. SCENARIOS: (A) EMAIL: POST /api/auth/register {email,password,name} -> 200 {token,user}; user has telegram_id, email, auth_provider=['email'], NO password_hash field; weak password (<6 chars) -> 400; invalid email (no @ / no domain dot) -> 400; duplicate email -> 400. POST /api/auth/login {email,password} -> 200 {token,user}; wrong password -> 401; unknown email -> 401. (B) SESSION: GET /api/auth/me with header 'Authorization: Bearer <token>' -> 200 user (no password_hash); without header -> 401; with bogus token -> 401. POST /api/auth/logout with token -> {ok:true}; afterwards GET /api/auth/me with that same token -> 401 (session deleted). (C) TELEGRAM: POST /api/auth/telegram {init_data:'hash=bad&user=...'} with an INVALID signature -> 401 (cannot forge without bot token). If you can construct a valid initData using the bot token in backend/.env (TELEGRAM_BOT_TOKEN) per Telegram HMAC scheme (secret=HMAC_SHA256(key='WebAppData', msg=token); hash=HMAC_SHA256(key=secret, msg=data_check_string)), then a valid payload with user={id,first_name} -> 200 {token,user} with that real telegram_id and auth_provider containing 'telegram'. (D) GOOGLE: POST /api/auth/google/session {session_id:'bogus'} -> 401 (Emergent exchange fails for invalid id). Full happy path needs a real browser session_id, skip if unavailable. GENERAL: responses are JSON, UUID 'id' on users, ISO datetimes, NO _id leaks, password_hash never present in any auth response. Use fresh emails like authtest+<rand>@example.com. test_credentials.md will be updated with any created accounts."
   - agent: "testing"
     message: "✅ AUTHENTICATION BACKEND TESTS COMPLETE - ALL 17 TESTS PASSED: Tested all 4 auth tasks (email, telegram, google, session management) with comprehensive scenarios. (A) EMAIL AUTH (7 tests): Register creates user with synthetic telegram_id=950454640997 (>=900000000000), returns {token,user} with UUID id, 'email' in auth_provider, NO password_hash. Weak password (<6 chars) rejected with 400. Invalid emails (no @ or no domain dot) rejected with 400. Duplicate email rejected with 400. Login with correct credentials returns {token,user}. Wrong password rejected with 401. Unknown email rejected with 401. (B) SESSION MANAGEMENT (5 tests): GET /api/auth/me with Bearer token returns user (200), NO password_hash, NO _id. Without token returns 401. With bogus token returns 401. POST /api/auth/logout returns {ok:true} (200). After logout, same token returns 401 (session deleted). (C) TELEGRAM AUTH (2 tests): Invalid HMAC signature rejected with 401. Valid HMAC signature (constructed per Telegram WebApp spec with bot token) accepted with 200, returns {token,user} with real telegram_id=123456789, 'telegram' in auth_provider. GET /api/auth/me with Telegram token works (200). (D) GOOGLE AUTH (1 test): Bogus session_id rejected with 401 (Emergent exchange fails correctly). (E) GENERAL ASSERTIONS (2 tests): All responses are valid JSON. UUIDs are 36 chars with 4 hyphens. ISO datetime strings. NO MongoDB _id leaks. password_hash NEVER present in any auth response. Test accounts created: email=authtest+1781538884@example.com / password=password123 / telegram_id=950454640997; telegram_id=123456789 (TestTG). Updated /app/memory/test_credentials.md with test accounts. Backend authentication fully functional."
+  - agent: "main"
+    message: "PHASE 3 (Coach mode) backend ready for testing. Test ONLY the new P3 endpoints (do NOT re-test prior phases). Conventions unchanged: UUIDs only, ISO datetimes, no _id leaks, explicit telegram_id in path/body (same pattern as /plans). SETUP: create two users via POST /api/users -> coach (e.g. telegram_id=701001, first_name='Coach') and athlete (e.g. 701002, first_name='Sam'). SCENARIOS: (1) MODE: PATCH /api/users/701001/mode {\"mode\":\"coach\"} -> 200, returns user with roles containing both 'athlete' and 'coach', active_mode='coach', invite_code present (8 chars). PATCH with mode='bad' -> 400. PATCH /api/users/999999/mode -> 404. PATCH back to {\"mode\":\"athlete\"} keeps coach role but active_mode='athlete'. (2) INVITE: POST /api/coach/invite {\"coach_telegram_id\":701001} -> 200 {invite_code, deep_link, bot_username}; calling again returns the SAME invite_code (stable). (3) LINK: POST /api/coach/link {\"code\":<invite_code>,\"athlete_telegram_id\":701002} -> 200 {status:'active', coach:{telegram_id:701001,...}}; user 701002 now has coach_telegram_id=701001. Unknown code -> 404. Self-link (code belongs to coach, athlete_telegram_id=701001) -> 400. (4) ATHLETE COACH: GET /api/athlete/701002/coach -> {coach:{telegram_id:701001,...}}; GET /api/athlete/701001/coach -> {coach:null}. (5) CLIENTS: GET /api/coach/701001/clients -> {clients:[{athlete:{telegram_id:701002}, plan:null, is_training_now:false, last_workout_at:null, linked_at}]}. (6) COACH CREATES DRAFT PLAN: get a template id from GET /api/programs/templates; POST /api/plans {\"athlete_telegram_id\":701002,\"template_id\":<id>,\"coach_telegram_id\":701001} -> plan.visibility='draft', prepared_by_coach=true, weeks non-empty. GET /api/plans/active/701002 -> visibility='draft' AND weeks=[] (content hidden). GET /api/coach/701001/clients/701002/plan -> full plan WITH weeks (coach sees draft). A coach who is NOT linked (e.g. 701003) calling that endpoint -> 403. (7) VISIBILITY: PATCH /api/plans/{plan_id}/visibility {\"visibility\":\"published\"} -> 200 visibility='published', published_at set. GET /api/plans/active/701002 now returns full weeks. Invalid visibility -> 400. (8) WEEK PUBLISH: PATCH /api/plans/{plan_id}/weeks/1/publish {\"published\":false} -> 200, weeks[0].published=false. Non-existent week (e.g. 99) -> 404. (9) TRAINING DAYS: PATCH /api/plans/{plan_id}/training-days {\"training_days\":[1,3,5]} -> 200 training_days=[1,3,5]; out-of-range like [0,8] -> 400. (10) SELF PLAN STILL PUBLISHED: POST /api/plans {\"athlete_telegram_id\":701002,\"template_id\":<id>} (no coach) -> visibility='published' (backward compatible). (11) CONFIRM SESSION (optional): start a session for the published plan via POST /api/sessions/start, then POST /api/sessions/{id}/confirm {\"coach_telegram_id\":701001} -> coach_confirmed=true, confirmed_by=701001; a non-linked coach -> 403; missing session -> 404. (12) UNLINK: POST /api/coach/unlink {\"athlete_telegram_id\":701002} -> {ok:true}; GET /api/athlete/701002/coach -> {coach:null}; GET /api/coach/701001/clients -> clients list no longer includes 701002. Verify all responses are JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+  - agent: "testing"
+    message: "✅ PHASE 3 COACH MODE BACKEND TESTS COMPLETE - ALL 29 TESTS PASSED: Tested all 5 P3 tasks with comprehensive scenarios covering all 12 flows specified in review_request. Created test users: coach (701001), athlete (701002), unlinked coach (701003). (1) MODE SWITCH (4 tests): PATCH /api/users/{telegram_id}/mode switches to coach (roles include athlete+coach, active_mode=coach, invite_code generated 8 chars), invalid mode returns 400, unknown user returns 404, switch back to athlete keeps coach role. (2) INVITE+LINK+UNLINK (11 tests): POST /api/coach/invite generates stable invite_code+deep_link+bot_username. POST /api/coach/link links athlete to coach (status=active, coach brief returned), unknown code returns 404, self-link returns 400. GET /api/athlete/701002/coach returns coach 701001. GET /api/athlete/701001/coach returns null. GET /api/coach/701001/clients includes athlete 701002 with plan summary, is_training_now, last_workout_at, linked_at. POST /api/coach/unlink removes link, athlete coach becomes null, clients list no longer includes athlete. (3) PLAN VISIBILITY (7 tests): Coach creates plan with coach_telegram_id -> visibility=draft, prepared_by_coach=true. GET /api/plans/active/701002 returns draft with weeks=[] (hidden). GET /api/coach/701001/clients/701002/plan returns full weeks (coach sees draft). Unlinked coach 701003 returns 403. PATCH /api/plans/{id}/visibility {visibility:published} sets published_at, athlete now sees full weeks. Invalid visibility returns 400. Self-created plan (no coach) has visibility=published (backward compatible). (4) WEEK PUBLISH + TRAINING DAYS (4 tests): PATCH /api/plans/{id}/weeks/1/publish {published:false} sets week1.published=false. Non-existent week returns 404. PATCH /api/plans/{id}/training-days {training_days:[1,3,5]} stores sorted [1,3,5]. Out-of-range days return 400. (5) CONFIRM SESSION (3 tests): POST /api/sessions/{id}/confirm {coach_telegram_id:701001} sets coach_confirmed=true, confirmed_by=701001, confirmed_at timestamp. Non-linked coach returns 403. Missing session returns 404. All responses valid JSON, UUIDs only (36 chars, 4 hyphens), ISO datetime strings, NO MongoDB _id leaks. All conventions verified across multiple endpoints. Backend API fully functional for Phase 3 Coach mode."
