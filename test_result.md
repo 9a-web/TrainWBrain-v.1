@@ -146,6 +146,18 @@ backend:
       - working: "NA"
         agent: "main"
         comment: "POST /api/auth/google/session {session_id} calls Emergent https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data with X-Session-ID; finds/creates user by email (synthetic telegram_id), stores returned session_token in user_sessions. Invalid session_id -> 401. Full happy path requires a real Emergent session_id (browser flow); testing agent can verify the 401 path for a bogus session_id."
+
+  - task: "Auth: Direct Google OAuth (own client_id/secret, own branding)"
+    implemented: true
+    working: "NA"
+    file: "server.py, auth.py, .env"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Switched Google login from Emergent-managed to DIRECT Google OAuth so the consent screen shows the app's own branding. GOOGLE_CLIENT_ID/SECRET in backend/.env. GET /api/auth/google/config -> {client_id} (public). POST /api/auth/google/oauth {code, redirect_uri} -> exchanges code at oauth2.googleapis.com/token, fetches userinfo, finds/creates user by email (synthetic telegram_id), returns {token,user}. Smoke-tested: config returns client_id; bogus code -> 401. Happy path needs real Google account (browser) -> not agent-testable. NOTE: redirect_uri must be window.location.origin + '/auth/google' and EXACTLY match the URI registered in Google Console."
       - working: true
         agent: "testing"
         comment: "✅ TESTED: Google auth invalid path verified. POST /api/auth/google/session with bogus session_id='bogus-session-id-12345' correctly rejected with 401 ('Не удалось авторизоваться через Google'). This confirms the Emergent session exchange integration is working (returns 401 when Emergent API rejects the session_id). Full happy path (valid session_id from browser OAuth flow) cannot be tested in automated test harness but the error handling is correct. Response is valid JSON."

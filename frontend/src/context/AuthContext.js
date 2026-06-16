@@ -10,7 +10,8 @@ import {
   authLoginEmail,
   authRegisterEmail,
   authTelegram,
-  authGoogleSession,
+  authGoogleOAuth,
+  getGoogleConfig,
   authLogout,
   setAuthToken,
 } from "@/api";
@@ -44,33 +45,12 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Bootstrap: handle Google (Emergent) callback first, then existing session.
+  // Bootstrap: restore an existing session token. The Google callback is
+  // handled by the dedicated /auth/google route (see App.js -> GoogleCallback).
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const hash = window.location.hash || "";
-        if (hash.includes("session_id=")) {
-          const sid = new URLSearchParams(hash.replace(/^#/, "")).get("session_id");
-          // Clean the URL fragment regardless of outcome
-          window.history.replaceState(
-            null,
-            "",
-            window.location.pathname + window.location.search
-          );
-          if (sid) {
-            try {
-              const { token, user } = await authGoogleSession(sid);
-              if (!active) return;
-              saveToken(token);
-              setAuthUser(user);
-              setLoading(false);
-              return;
-            } catch (e) {
-              /* fall through to normal session check */
-            }
-          }
-        }
         const token = window.localStorage.getItem(TOKEN_KEY);
         if (token) {
           setAuthToken(token);
@@ -111,12 +91,29 @@ export function AuthProvider({ children }) {
     return user;
   }, []);
 
-  const loginGoogle = useCallback(() => {
+  const loginGoogle = useCallback(async () => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(
-      redirectUrl
-    )}`;
+    const { client_id } = await getGoogleConfig();
+    const redirectUri = window.location.origin + "/auth/google";
+    const params = new URLSearchParams({
+      client_id,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      include_granted_scopes: "true",
+      prompt: "select_account",
+    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }, []);
+
+  const handleGoogleCode = useCallback(async (code) => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const redirectUri = window.location.origin + "/auth/google";
+    const { token, user } = await authGoogleOAuth(code, redirectUri);
+    saveToken(token);
+    setAuthUser(user);
+    return user;
   }, []);
 
   const logout = useCallback(async () => {
@@ -140,6 +137,7 @@ export function AuthProvider({ children }) {
         registerEmail,
         loginTelegram,
         loginGoogle,
+        handleGoogleCode,
         logout,
         refresh,
       }}

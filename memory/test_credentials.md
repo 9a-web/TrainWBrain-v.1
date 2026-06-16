@@ -32,3 +32,11 @@
 
 ## Seed data (built-in)
 - 29 упражнений, 4 шаблона программ: `full-body-beginner`, `upper-lower`, `powerlifting-peaking` (slug), `pl-autumn-3m` («3 мес Подготовка на осень»).
+
+## Google OAuth (direct, own credentials) — added
+- Switched from Emergent-managed to DIRECT Google OAuth (own branding on consent screen).
+- Config: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in backend/.env (secret NOT stored here).
+- Public config endpoint: GET /api/auth/google/config -> {client_id}.
+- Flow: frontend redirects to accounts.google.com -> back to <origin>/auth/google?code=... -> POST /api/auth/google/oauth {code, redirect_uri} -> {token, user}.
+- Registered redirect URI (Google Console): https://ea220423-ac6a-48fa-9c5a-5a9fc43dfbfb.preview.emergentagent.com/auth/google
+- No app-managed password for Google accounts. On deploy, the deployed domain's origin + /auth/google must also be added in Google Console.

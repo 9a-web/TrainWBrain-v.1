@@ -36,6 +36,10 @@ export const authTelegram = (init_data) =>
   client.post(`/auth/telegram`, { init_data }).then((r) => r.data);
 export const authGoogleSession = (session_id) =>
   client.post(`/auth/google/session`, { session_id }).then((r) => r.data);
+export const getGoogleConfig = () =>
+  client.get(`/auth/google/config`).then((r) => r.data);
+export const authGoogleOAuth = (code, redirect_uri) =>
+  client.post(`/auth/google/oauth`, { code, redirect_uri }).then((r) => r.data);
 export const authLogout = () => client.post(`/auth/logout`).then((r) => r.data);
 
 // --- Пользователи ---

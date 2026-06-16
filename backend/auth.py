@@ -55,6 +55,11 @@ class GoogleSessionReq(BaseModel):
     session_id: str
 
 
+class GoogleOAuthReq(BaseModel):
+    code: str
+    redirect_uri: str
+
+
 # ---------------------------------------------------------------------------
 # Passwords
 # ---------------------------------------------------------------------------
@@ -144,6 +149,47 @@ async def exchange_emergent_session(session_id: str) -> Optional[dict]:
             if r.status_code != 200:
                 return None
             return r.json()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Direct Google OAuth 2.0 (own credentials) — authorization code flow.
+# Shows the app's OWN branding on the Google consent screen.
+# ---------------------------------------------------------------------------
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+async def exchange_google_code(code: str, redirect_uri: str, client_id: str, client_secret: str) -> Optional[dict]:
+    """Exchange an authorization code for the user's Google profile.
+    Returns {sub, email, name, picture, ...} or None."""
+    if not code or not client_id or not client_secret:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            tok = await cx.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+            )
+            if tok.status_code != 200:
+                return None
+            access_token = tok.json().get("access_token")
+            if not access_token:
+                return None
+            ui = await cx.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if ui.status_code != 200:
+                return None
+            return ui.json()
     except Exception:
         return None
 

@@ -1,6 +1,14 @@
 import "@/App.css";
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UserProvider, useUser } from "@/context/UserContext";
@@ -144,8 +152,34 @@ const SplashScreen = () => (
   </div>
 );
 
+// Handles the Google OAuth redirect back to <origin>/auth/google?code=...
+const GoogleCallback = () => {
+  const { handleGoogleCode } = useAuth();
+  const navigate = useNavigate();
+  const ranRef = useRef(false);
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    (async () => {
+      if (code) {
+        try {
+          await handleGoogleCode(code);
+        } catch (e) {
+          /* ignore — fall back to login */
+        }
+      }
+      navigate("/", { replace: true });
+    })();
+  }, [handleGoogleCode, navigate]);
+  return <SplashScreen />;
+};
+
 const AppShell = () => {
   const { loading, isAuthenticated } = useAuth();
+  const location = useLocation();
+  if (location.pathname === "/auth/google") return <GoogleCallback />;
   if (loading) return <SplashScreen />;
   if (!isAuthenticated) return <Login />;
   return (

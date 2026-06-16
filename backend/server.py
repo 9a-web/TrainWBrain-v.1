@@ -24,10 +24,10 @@ from seed import (
     group_letters, muscle_letter, percent_of, scheme_tonnage,
 )
 from auth import (
-    RegisterReq, LoginReq, TelegramAuthReq, GoogleSessionReq,
+    RegisterReq, LoginReq, TelegramAuthReq, GoogleSessionReq, GoogleOAuthReq,
     hash_password, verify_password, new_session_token, session_expiry,
     synthetic_telegram_id, validate_telegram_init_data, parse_telegram_user,
-    exchange_emergent_session, ensure_auth_indexes,
+    exchange_emergent_session, exchange_google_code, ensure_auth_indexes,
 )
 
 
@@ -41,6 +41,10 @@ db = client[os.environ['DB_NAME']]
 
 # Telegram Bot Token
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+
+# Google OAuth (own credentials — shows the app's own consent-screen branding)
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -370,6 +374,53 @@ async def auth_google_session(payload: GoogleSessionReq, response: Response):
     })
     _set_session_cookie(response, token)
     logger.info(f"Auth google: email={email}, telegram_id={tgid}")
+    return {"token": token, "user": await _user_public(tgid)}
+
+
+@api_router.get("/auth/google/config")
+async def auth_google_config():
+    """Public Google OAuth config for the frontend (client_id is not secret)."""
+    return {"client_id": GOOGLE_CLIENT_ID}
+
+
+@api_router.post("/auth/google/oauth")
+async def auth_google_oauth(payload: GoogleOAuthReq, response: Response):
+    """Direct Google OAuth (own credentials): exchange the authorization code
+    for the user's profile, then create/load the account and issue our session."""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Google OAuth не настроен на сервере")
+    data = await exchange_google_code(
+        payload.code, payload.redirect_uri, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+    )
+    if not data or not data.get("email"):
+        raise HTTPException(status_code=401, detail="Не удалось авторизоваться через Google")
+    email = data["email"].strip().lower()
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        tgid = existing["telegram_id"]
+        await db.users.update_one({"telegram_id": tgid}, {
+            "$set": {
+                "first_name": existing.get("first_name") or data.get("name") or email.split("@")[0],
+                "picture": data.get("picture") or existing.get("picture"),
+                "updated_at": now,
+            },
+            "$addToSet": {"auth_provider": "google"},
+        })
+    else:
+        tgid = await _unique_synth_id()
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "telegram_id": tgid,
+            "first_name": data.get("name") or email.split("@")[0],
+            "last_name": None, "username": None, "language_code": "ru",
+            "email": email, "password_hash": None,
+            "auth_provider": ["google"], "google_sub": data.get("sub"),
+            "picture": data.get("picture"),
+            "created_at": now, "updated_at": now,
+        })
+    token = await _create_session(tgid, "google")
+    _set_session_cookie(response, token)
+    logger.info(f"Auth google-oauth: email={email}, telegram_id={tgid}")
     return {"token": token, "user": await _user_public(tgid)}
 
 
