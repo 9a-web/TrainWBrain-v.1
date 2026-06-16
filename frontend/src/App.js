@@ -17,7 +17,6 @@ import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
 import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
-import InstallPrompt from "@/components/InstallPrompt";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -200,7 +199,6 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Toaster position="top-center" theme="dark" richColors />
-          <InstallPrompt />
           <AppShell />
         </BrowserRouter>
       </AuthProvider>
