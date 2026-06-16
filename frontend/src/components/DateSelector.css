@@ -12,6 +12,54 @@
   gap: 12px;
 }
 
+/* Навигация по неделям плана: ‹ Неделя X / N › */
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 0 20px 14px;
+}
+
+.week-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.2s ease;
+}
+
+.week-nav-btn:active {
+  transform: scale(0.9);
+}
+
+.week-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.week-nav-btn img {
+  display: block;
+}
+
+.week-nav-label {
+  min-width: 128px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #FFFFFF;
+  letter-spacing: 0.2px;
+}
+
+.week-nav-sep {
+  color: #8A8A8A;
+  font-style: normal;
+  margin: 0 5px;
+}
+
 /* Week dots indicator — vertical column on the LEFT of the cards */
 .week-dots {
   display: flex;

@@ -689,6 +689,32 @@ def _round_2_5(x):
     return round(round(float(x) / 2.5) * 2.5, 2)
 
 
+def _remap_week_days(weeks, training_days):
+    """Ремаппит тренировочные (не-rest) дни снимка плана на выбранные дни недели.
+
+    day_index = 1..7 (Пн..Вс). Берёт непустые дни каждой недели по их текущему
+    порядку и расставляет на выбранные дни. Гарантирует уникальность day_index в
+    неделе (без коллизий): если тренировок больше, чем выбрано дней, лишние
+    занимают ближайшие свободные дни недели. Дни отдыха не хранятся
+    (отсутствующий день недели = отдых)."""
+    td = sorted({int(x) for x in (training_days or []) if 1 <= int(x) <= 7})
+    if not td:
+        return weeks
+    out = copy.deepcopy(weeks)
+    # Слоты: сначала выбранные дни, затем остальные дни недели (для overflow без коллизий)
+    slots = td + [x for x in range(1, 8) if x not in td]
+    for w in out:
+        workout_days = sorted(
+            [d for d in (w.get("days") or []) if not d.get("is_rest")],
+            key=lambda d: d.get("day_index", 0),
+        )
+        for i, d in enumerate(workout_days):
+            d["day_index"] = slots[i] if i < len(slots) else (i + 1)
+        workout_days.sort(key=lambda d: d.get("day_index", 0))
+        w["days"] = workout_days
+    return out
+
+
 def _scale_and_map_weeks(weeks, tpl, maxes, training_days):
     """Масштабирует веса под максимумы спортсмена и ремаппит дни недели.
     Возвращает (weeks_copy, scaled_one_rep_max)."""
@@ -729,17 +755,7 @@ def _scale_and_map_weeks(weeks, tpl, maxes, training_days):
 
     # Ремаппинг дней недели: тренировочные дни шаблона -> выбранные пользователем
     if training_days:
-        td = sorted({int(x) for x in training_days if 1 <= int(x) <= 7})
-        for w in weeks:
-            workout_days = sorted(
-                [d for d in w.get("days", []) if not d.get("is_rest")],
-                key=lambda d: d.get("day_index", 0),
-            )
-            for i, d in enumerate(workout_days):
-                if i < len(td):
-                    d["day_index"] = td[i]
-            # оставляем только тренировочные дни (отсутствующие дни = отдых) — без коллизий
-            w["days"] = workout_days
+        weeks = _remap_week_days(weeks, training_days)
 
     return weeks, scaled_orm
 
@@ -1036,11 +1052,13 @@ async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq):
     if any((not isinstance(d, int)) or d < 1 or d > 7 for d in days):
         raise HTTPException(status_code=400, detail="training_days: числа 1..7")
     norm = sorted(set(int(d) for d in days))
-    await _get_plan_or_404(plan_id)
-    await db.plans.update_one(
-        {"id": plan_id},
-        {"$set": {"training_days": norm, "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
+    plan = await _get_plan_or_404(plan_id)
+    set_fields = {"training_days": norm, "updated_at": datetime.now(timezone.utc).isoformat()}
+    # Ремаппим дни снимка плана, чтобы спортсмен реально увидел изменение в календаре.
+    # Без этого недельный селектор/прогресс берут дни из week.days и не реагируют на training_days.
+    if norm:
+        set_fields["weeks"] = _remap_week_days(plan.get("weeks") or [], norm)
+    await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
     return await _get_plan_or_404(plan_id)
 
 
@@ -1406,11 +1424,11 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
         "is_rest": True, "title": "День отдыха", "exercises": [],
         "group": "", "difficulty": None,
     }
-    week_obj = next((w for w in doc["weeks"] if w["week_index"] == week), None)
+    week_obj = next((w for w in (doc.get("weeks") or []) if w.get("week_index") == week), None)
     if not week_obj:
         return rest_response
-    day_obj = next((d for d in week_obj["days"] if d["day_index"] == day), None)
-    if not day_obj:
+    day_obj = next((d for d in (week_obj.get("days") or []) if d.get("day_index") == day), None)
+    if not day_obj or day_obj.get("is_rest"):
         return rest_response
 
     ordered = sorted(day_obj.get("exercises", []), key=lambda x: x.get("order", 0))
@@ -1431,14 +1449,14 @@ async def get_week_progress(plan_id: str, week: int = 1):
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    week_obj = next((w for w in doc["weeks"] if w["week_index"] == week), None)
+    week_obj = next((w for w in (doc.get("weeks") or []) if w.get("week_index") == week), None)
     days_map = {}
     if week_obj:
-        for d in week_obj["days"]:
+        for d in (week_obj.get("days") or []):
             if d.get("is_rest"):
                 continue
             planned_sets = sum(int(e.get("target_sets", 0) or 0) for e in d.get("exercises", []))
-            days_map[d["day_index"]] = {
+            days_map[d.get("day_index")] = {
                 "title": d.get("title", ""),
                 "exercise_count": len(d.get("exercises", [])),
                 "planned_sets": planned_sets,
@@ -1448,7 +1466,7 @@ async def get_week_progress(plan_id: str, week: int = 1):
     sessions = await db.workout_sessions.find(
         {"plan_id": plan_id, "week_index": week}, {"_id": 0}
     ).sort("created_at", 1).to_list(200)
-    sess_by_day = {s["day_index"]: s for s in sessions}
+    sess_by_day = {s.get("day_index"): s for s in sessions}
 
     days = []
     for di in range(1, 8):
@@ -1507,8 +1525,8 @@ async def start_session(req: SessionStartReq):
             "day_index": active_other.get("day_index"),
         })
 
-    week_obj = next((w for w in plan["weeks"] if w["week_index"] == req.week), None)
-    day_obj = next((d for d in week_obj["days"] if d["day_index"] == req.day), None) if week_obj else None
+    week_obj = next((w for w in (plan.get("weeks") or []) if w.get("week_index") == req.week), None)
+    day_obj = next((d for d in (week_obj.get("days") or []) if d.get("day_index") == req.day), None) if week_obj else None
     if not day_obj or day_obj.get("is_rest"):
         raise HTTPException(status_code=400, detail="No workout scheduled for this day")
 
@@ -1519,7 +1537,8 @@ async def start_session(req: SessionStartReq):
         "plan_id": req.plan_id,
         "athlete_telegram_id": req.athlete_telegram_id,
         "coach_telegram_id": plan.get("coach_telegram_id"),
-        "week_index": req.week, "day_index": req.day, "date": None,
+        "week_index": req.week, "day_index": req.day,
+        "date": datetime.now(timezone.utc).date().isoformat(),
         "title": day_obj.get("title", ""),
         "status": "in_progress", "paused": False,
         "started_at": now, "finished_at": None,
@@ -1719,11 +1738,15 @@ async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(def
 async def get_athlete_stats(telegram_id: int):
     sessions = await db.workout_sessions.find(
         {"athlete_telegram_id": telegram_id, "status": "finished"},
-        {"_id": 0, "finished_at": 1},
+        {"_id": 0, "finished_at": 1, "exercises": 1},
     ).to_list(2000)
 
     dates = set()
     for s in sessions:
+        # Засчитываем тренировку только если реально выполнено хотя бы одно упражнение
+        # (полностью пропущенная сессия не должна формировать серию/счётчик).
+        if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
+            continue
         fa = s.get("finished_at")
         if fa:
             try:

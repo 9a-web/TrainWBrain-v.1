@@ -97,9 +97,6 @@ const MONTH_NAMES = [
   'Июля', 'Августа', 'Сентября', 'Октября', 'Ноября', 'Декабря'
 ];
 
-// Доступные тренировочные недели (смещения относительно текущей, 0 = текущая)
-const WEEK_OFFSETS = [-1, 0, 1];
-
 const DateSelector = () => {
   const { user } = useUser();
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -245,11 +242,28 @@ const DateSelector = () => {
     }
   };
 
-  const handleWeekDotClick = (offset) => {
-    if (offset === weekOffset) return;
+  // Навигация по неделям плана целиком (а не только ±1 неделя)
+  const totalWeeks = (plan?.weeks && plan.weeks.length) || 0;
+  const baseWeek = plan?.current_week || 1;
+  const minOffset = 1 - baseWeek;
+  const maxOffset = totalWeeks ? totalWeeks - baseWeek : 0;
+  const canPrevWeek = weekOffset > minOffset;
+  const canNextWeek = weekOffset < maxOffset;
+
+  const changeWeek = (delta) => {
+    const next = Math.min(maxOffset, Math.max(minOffset, weekOffset + delta));
+    if (next === weekOffset) return;
     hapticSelection();
-    setSlideDir(offset > weekOffset ? 'next' : 'prev');
-    setWeekOffset(offset);
+    setSlideDir(next > weekOffset ? 'next' : 'prev');
+    // Сдвигаем выбранную дату на ту же дельту недель, чтобы выбранный день
+    // оставался подсвеченным в новой неделе.
+    const diff = next - weekOffset;
+    setSelectedDate((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + diff * 7);
+      return d;
+    });
+    setWeekOffset(next);
   };
 
   const isSameDay = (date1, date2) => {
@@ -443,38 +457,37 @@ const DateSelector = () => {
 
   return (
     <div className="date-selector" data-testid="date-selector">
-      <div className="date-selector-row">
-        {/* Индикатор-точки: вертикально, слева от кнопок */}
-        <div
-          className="week-dots"
-          role="tablist"
-          aria-label="Выбор тренировочной недели"
-          data-testid="week-dots"
-        >
-          {WEEK_OFFSETS.map((offset) => {
-            const isActive = weekOffset === offset;
-            const label =
-              offset === 0
-                ? 'Текущая неделя'
-                : offset > 0
-                ? `Через ${offset} нед.`
-                : `${Math.abs(offset)} нед. назад`;
-            return (
-              <button
-                key={offset}
-                type="button"
-                className={`week-dot ${isActive ? 'week-dot-active' : ''}`}
-                onClick={() => handleWeekDotClick(offset)}
-                role="tab"
-                aria-selected={isActive}
-                aria-label={label}
-                data-testid={`week-dot-${offset}`}
-              />
-            );
-          })}
+      {/* Навигация по неделям плана: ‹ Неделя X / N › */}
+      {plan && !isDraft && totalWeeks > 1 ? (
+        <div className="week-nav" data-testid="week-nav">
+          <button
+            type="button"
+            className="week-nav-btn"
+            onClick={() => changeWeek(-1)}
+            disabled={!canPrevWeek}
+            aria-label="Предыдущая неделя"
+            data-testid="week-prev"
+          >
+            <img src="/arrow-left.svg" alt="" width={30} height={30} />
+          </button>
+          <span className="week-nav-label" data-testid="week-nav-label">
+            Неделя {planWeek}<i className="week-nav-sep">/</i>{totalWeeks}
+          </span>
+          <button
+            type="button"
+            className="week-nav-btn"
+            onClick={() => changeWeek(1)}
+            disabled={!canNextWeek}
+            aria-label="Следующая неделя"
+            data-testid="week-next"
+          >
+            <img src="/arrow-right.svg" alt="" width={30} height={30} />
+          </button>
         </div>
+      ) : null}
 
-        {/* Дни недели — горизонтальный скролл (не перекрывает точки) */}
+      <div className="date-selector-row">
+        {/* Дни недели — горизонтальный скролл */}
         <div className="date-selector-scroll" data-testid="date-selector-scroll">
           {weekDays.map((day, index) => (
             <DayCard
