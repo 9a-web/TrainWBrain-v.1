@@ -19,6 +19,7 @@ import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
 import Coach from "@/pages/Coach";
 import CoachClient from "@/pages/CoachClient";
+import CoachPlanEditor from "@/pages/CoachPlanEditor";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -191,6 +192,7 @@ const AppShell = () => {
         <Route path="/profile" element={<Profile />} />
         <Route path="/coach" element={<Coach />} />
         <Route path="/coach/:athleteId" element={<CoachClient />} />
+        <Route path="/coach/:athleteId/edit" element={<CoachPlanEditor />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </UserProvider>

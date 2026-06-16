@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
@@ -322,6 +322,14 @@ export default function CoachClient() {
                 })}
             </div>
           </div>
+
+          <button
+            className="coach-primary-btn is-secondary ed-open-btn"
+            onClick={() => navigate(`/coach/${aid}/edit`)}
+            data-testid="edit-plan-btn"
+          >
+            <Pencil size={16} /> Редактировать план
+          </button>
 
           <button className="coach-text-btn" onClick={openPicker} data-testid="reassign-btn">
             <RefreshCw size={14} /> Сменить программу

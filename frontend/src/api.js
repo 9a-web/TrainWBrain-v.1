@@ -123,4 +123,20 @@ export const setPlanTrainingDays = (planId, training_days) =>
 export const confirmSession = (sessionId, coach_telegram_id) =>
   client.post(`/sessions/${sessionId}/confirm`, { coach_telegram_id }).then((r) => r.data);
 
+// --- Редактор плана (тренер/владелец) ---
+export const updatePlanMeta = (planId, body) =>
+  client.patch(`/plans/${planId}`, body).then((r) => r.data);
+export const upsertPlanDay = (planId, body) =>
+  client.put(`/plans/${planId}/day`, body).then((r) => r.data);
+export const deletePlanDay = (planId, week, day) =>
+  client.delete(`/plans/${planId}/day`, { params: { week, day } }).then((r) => r.data);
+export const upsertPlanExercise = (planId, body) =>
+  client.put(`/plans/${planId}/exercise`, body).then((r) => r.data);
+export const deletePlanExercise = (planId, week, day, order) =>
+  client.delete(`/plans/${planId}/exercise`, { params: { week, day, order } }).then((r) => r.data);
+export const addPlanWeek = (planId) =>
+  client.post(`/plans/${planId}/week`).then((r) => r.data);
+export const deletePlanWeek = (planId, week) =>
+  client.delete(`/plans/${planId}/week`, { params: { week } }).then((r) => r.data);
+
 export default client;

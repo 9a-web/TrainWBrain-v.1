@@ -564,6 +564,20 @@ frontend:
         agent: "main"
         comment: "DateSelector now detects plan.visibility==='draft' (backend returns draft plan with weeks=[]) and shows a 'Ваш тренер готовит для вас программу' card (data-testid plan-preparing-card) instead of rest/workout/no-plan blocks. Once coach publishes, the real weeks/day UI returns. Needs UI testing with a coach-created draft plan."
 
+  - task: "Plan editor Frontend (/coach/:athleteId/edit): weeks/days/exercises CRUD UI"
+    implemented: true
+    working: "NA"
+    file: "pages/CoachPlanEditor.js, pages/CoachClient.js, pages/Coach.css, App.js, api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New route /coach/:athleteId/edit (data-testid plan-editor-page), reachable from CoachClient via edit-plan-btn. Features: rename plan (plan-name -> plan-name-input/plan-name-save -> PATCH /plans/{id}); week pills (week-pill-N) + add-week-btn (POST /week) + delete-week-btn (DELETE /week); per-day cards (day-card-N) with edit-day-N/delete-day-N; add-day-btn opens DayModal (day-pick-N weekday picker, day-title, day-rest, day-save -> PUT /day); exercise rows (ex-row-D-i) with edit-ex/delete-ex; add-ex-D opens ExerciseModal (ex-name, ex-muscle, ex-diff, ex-accessory, set rows set-weight/sets/reps-i, add-set-row, ex-save -> PUT /exercise). Each op persists to backend and updates local plan from full Plan response. Compiles cleanly. Needs UI testing."
+
+
+
 
 metadata:
   created_by: "main_agent"
