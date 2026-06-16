@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "@/index.css";
 import "@/styles/platform.css";
 import App from "@/App";
+import "@/styles/animations.css";
 import { initPlatform } from "@/lib/platform";
 import * as serviceWorkerRegistration from "@/serviceWorkerRegistration";
 
