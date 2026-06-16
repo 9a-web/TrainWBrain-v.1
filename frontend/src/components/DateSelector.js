@@ -97,11 +97,15 @@ const MONTH_NAMES = [
   'Июля', 'Августа', 'Сентября', 'Октября', 'Ноября', 'Декабря'
 ];
 
+// Доступные тренировочные недели (смещения относительно текущей, 0 = текущая)
+const WEEK_OFFSETS = [-1, 0, 1];
+
 const DateSelector = () => {
   const { user } = useUser();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0); // Смещение недели (0 = текущая)
   const [slideDir, setSlideDir] = useState(null); // Направление анимации смены недели
+  const [weekPickerOpen, setWeekPickerOpen] = useState(false); // Модалка «План» — выбор любой недели
 
   const [plan, setPlan] = useState(null);
   const [planLoading, setPlanLoading] = useState(true);
@@ -242,28 +246,31 @@ const DateSelector = () => {
     }
   };
 
-  // Навигация по неделям плана целиком (а не только ±1 неделя)
+  // Неделя плана: точки-индикаторы (прошлая/текущая/следующая) + кнопка «План» для перехода к любой неделе
   const totalWeeks = (plan?.weeks && plan.weeks.length) || 0;
   const baseWeek = plan?.current_week || 1;
-  const minOffset = 1 - baseWeek;
-  const maxOffset = totalWeeks ? totalWeeks - baseWeek : 0;
-  const canPrevWeek = weekOffset > minOffset;
-  const canNextWeek = weekOffset < maxOffset;
 
-  const changeWeek = (delta) => {
-    const next = Math.min(maxOffset, Math.max(minOffset, weekOffset + delta));
-    if (next === weekOffset) return;
+  const goToOffset = (offset) => {
+    if (offset === weekOffset) return;
     hapticSelection();
-    setSlideDir(next > weekOffset ? 'next' : 'prev');
+    setSlideDir(offset > weekOffset ? 'next' : 'prev');
     // Сдвигаем выбранную дату на ту же дельту недель, чтобы выбранный день
     // оставался подсвеченным в новой неделе.
-    const diff = next - weekOffset;
+    const diff = offset - weekOffset;
     setSelectedDate((prev) => {
       const d = new Date(prev);
       d.setDate(d.getDate() + diff * 7);
       return d;
     });
-    setWeekOffset(next);
+    setWeekOffset(offset);
+  };
+
+  const handleWeekDotClick = (offset) => goToOffset(offset);
+
+  const goToWeek = (weekIndex) => {
+    const target = Math.min(Math.max(1, weekIndex), totalWeeks || weekIndex);
+    goToOffset(target - baseWeek);
+    setWeekPickerOpen(false);
   };
 
   const isSameDay = (date1, date2) => {
@@ -457,37 +464,38 @@ const DateSelector = () => {
 
   return (
     <div className="date-selector" data-testid="date-selector">
-      {/* Навигация по неделям плана: ‹ Неделя X / N › */}
-      {plan && !isDraft && totalWeeks > 1 ? (
-        <div className="week-nav" data-testid="week-nav">
-          <button
-            type="button"
-            className="week-nav-btn"
-            onClick={() => changeWeek(-1)}
-            disabled={!canPrevWeek}
-            aria-label="Предыдущая неделя"
-            data-testid="week-prev"
-          >
-            <img src="/arrow-left.svg" alt="" width={30} height={30} />
-          </button>
-          <span className="week-nav-label" data-testid="week-nav-label">
-            Неделя {planWeek}<i className="week-nav-sep">/</i>{totalWeeks}
-          </span>
-          <button
-            type="button"
-            className="week-nav-btn"
-            onClick={() => changeWeek(1)}
-            disabled={!canNextWeek}
-            aria-label="Следующая неделя"
-            data-testid="week-next"
-          >
-            <img src="/arrow-right.svg" alt="" width={30} height={30} />
-          </button>
-        </div>
-      ) : null}
-
       <div className="date-selector-row">
-        {/* Дни недели — горизонтальный скролл */}
+        {/* Индикатор-точки: вертикально, слева от карточек (прошлая/текущая/следующая) */}
+        <div
+          className="week-dots"
+          role="tablist"
+          aria-label="Выбор тренировочной недели"
+          data-testid="week-dots"
+        >
+          {WEEK_OFFSETS.map((offset) => {
+            const isActive = weekOffset === offset;
+            const label =
+              offset === 0
+                ? 'Текущая неделя'
+                : offset > 0
+                ? `Через ${offset} нед.`
+                : `${Math.abs(offset)} нед. назад`;
+            return (
+              <button
+                key={offset}
+                type="button"
+                className={`week-dot ${isActive ? 'week-dot-active' : ''}`}
+                onClick={() => handleWeekDotClick(offset)}
+                role="tab"
+                aria-selected={isActive}
+                aria-label={label}
+                data-testid={`week-dot-${offset}`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Дни недели — горизонтальный скролл (не перекрывает точки) */}
         <div className="date-selector-scroll" data-testid="date-selector-scroll">
           {weekDays.map((day, index) => (
             <DayCard
@@ -511,6 +519,20 @@ const DateSelector = () => {
           ))}
         </div>
       </div>
+
+      {/* Кнопка «План» — открыть любую неделю плана */}
+      {plan && !isDraft && totalWeeks > 1 ? (
+        <div className="plan-week-row">
+          <button
+            type="button"
+            className="plan-week-btn"
+            onClick={() => { hapticSelection(); setWeekPickerOpen(true); }}
+            data-testid="plan-week-btn"
+          >
+            План
+          </button>
+        </div>
+      ) : null}
 
       <div className="date-title-row">
         <h2 className="selected-date-title">{formattedDate}</h2>
@@ -613,6 +635,35 @@ const DateSelector = () => {
               </button>
               <button className="confirm-btn-ok" onClick={doStart} data-testid="confirm-start-ok" disabled={starting}>
                 {starting ? 'Запуск…' : 'Начать'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {/* Модалка «План» — выбор любой недели */}
+      {weekPickerOpen ? (
+        <div className="confirm-overlay" onClick={() => setWeekPickerOpen(false)} data-testid="week-picker-modal">
+          <div className="confirm-modal week-picker" onClick={(e) => e.stopPropagation()}>
+            <h3 className="confirm-title">Выберите неделю</h3>
+            <p className="confirm-text">Текущая неделя плана — {baseWeek}.</p>
+            <div className="week-picker-grid" data-testid="week-picker-grid">
+              {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((wk) => (
+                <button
+                  key={wk}
+                  type="button"
+                  className={`week-pick ${wk === planWeek ? 'active' : ''} ${wk === baseWeek ? 'is-current' : ''}`}
+                  onClick={() => goToWeek(wk)}
+                  data-testid={`week-pick-${wk}`}
+                  aria-current={wk === planWeek}
+                >
+                  {wk}
+                  {wk === baseWeek ? <span className="week-pick-cur" aria-hidden="true" /> : null}
+                </button>
+              ))}
+            </div>
+            <div className="confirm-actions">
+              <button className="confirm-btn-cancel" onClick={() => setWeekPickerOpen(false)}>
+                Закрыть
               </button>
             </div>
           </div>
