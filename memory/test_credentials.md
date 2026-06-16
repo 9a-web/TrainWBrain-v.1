@@ -38,5 +38,5 @@
 - Config: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in backend/.env (secret NOT stored here).
 - Public config endpoint: GET /api/auth/google/config -> {client_id}.
 - Flow: frontend redirects to accounts.google.com -> back to <origin>/auth/google?code=... -> POST /api/auth/google/oauth {code, redirect_uri} -> {token, user}.
-- Registered redirect URI (Google Console): https://ea220423-ac6a-48fa-9c5a-5a9fc43dfbfb.preview.emergentagent.com/auth/google
+- Registered redirect URI (Google Console): https://brainjam-1.preview.emergentagent.com/auth/google
 - No app-managed password for Google accounts. On deploy, the deployed domain's origin + /auth/google must also be added in Google Console.
