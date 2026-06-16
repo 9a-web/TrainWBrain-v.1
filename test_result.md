@@ -512,6 +512,43 @@ frontend:
         agent: "main"
         comment: "Google button redirects to https://auth.emergentagent.com/?redirect=<origin+'/'>. On return, AuthProvider detects #session_id= in URL fragment FIRST, POSTs to /api/auth/google/session, stores token, cleans hash. Full happy path needs real Google account (cannot fully automate); verify the button redirects to auth.emergentagent.com."
 
+  - task: "P3 Frontend: Profile coach mode (toggle), Подопечные avatars, coach link"
+    implemented: true
+    working: "NA"
+    file: "pages/Profile.js, pages/Profile.css, context/AuthContext.js, api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Profile now has: (1) Режим card with segmented Спортсмен/Тренер buttons (data-testid mode-athlete / mode-coach) — calls PATCH /api/users/{id}/mode via AuthContext.switchMode and refreshes authUser. (2) Подопечные section (data-testid profile-clients) visible when user is coach — shows horizontal avatar list (clients-avatars, each client-ava-<telegram_id>) with name + green ring if is_training_now; tapping an avatar -> /coach/:athleteId; header link open-coach-cabinet -> /coach; empty hint shows invite code. (3) Мой тренер section (profile-mycoach): coach-code-input + link-coach-btn calls POST /api/coach/link; if linked shows coach row + unlink-coach (POST /api/coach/unlink). Compiles cleanly, no runtime errors. Needs UI testing of the full flows."
+
+  - task: "P3 Frontend: Coach dashboard (/coach) + client plan management (/coach/:athleteId)"
+    implemented: true
+    working: "NA"
+    file: "pages/Coach.js, pages/CoachClient.js, pages/Coach.css, App.js, api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New routes /coach (data-testid coach-page) and /coach/:athleteId (coach-client-page). Dashboard: invite code card (copy-code-btn/copy-link-btn), clients list (client-card-<id>) with live badge + plan visibility badge. Client page: if no plan -> assign-program-btn opens template list (assign-choose-<slug>), requires_maxes templates open AssignModal (assign-submit); coach-created plan becomes DRAFT. If plan exists -> visibility block (toggle-visibility-btn publishes/hides), training days (coach-day-<idx> auto-saves PATCH /training-days), weeks list (week-toggle-<n> publishes/hides each week), reassign-btn to change template. Compiles cleanly. Needs UI testing."
+
+  - task: "P3 Frontend: Athlete sees 'plan preparing' for draft plan (DateSelector)"
+    implemented: true
+    working: "NA"
+    file: "components/DateSelector.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "DateSelector now detects plan.visibility==='draft' (backend returns draft plan with weeks=[]) and shows a 'Ваш тренер готовит для вас программу' card (data-testid plan-preparing-card) instead of rest/workout/no-plan blocks. Once coach publishes, the real weeks/day UI returns. Needs UI testing with a coach-created draft plan."
+
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
@@ -559,3 +596,8 @@ agent_communication:
 
   - agent: "testing"
     message: "✅ PHASE 3 COACH MODE BACKEND TESTS COMPLETE - ALL 29 TESTS PASSED: Tested all 5 P3 tasks with comprehensive scenarios covering all 12 flows specified in review_request. Created test users: coach (701001), athlete (701002), unlinked coach (701003). (1) MODE SWITCH (4 tests): PATCH /api/users/{telegram_id}/mode switches to coach (roles include athlete+coach, active_mode=coach, invite_code generated 8 chars), invalid mode returns 400, unknown user returns 404, switch back to athlete keeps coach role. (2) INVITE+LINK+UNLINK (11 tests): POST /api/coach/invite generates stable invite_code+deep_link+bot_username. POST /api/coach/link links athlete to coach (status=active, coach brief returned), unknown code returns 404, self-link returns 400. GET /api/athlete/701002/coach returns coach 701001. GET /api/athlete/701001/coach returns null. GET /api/coach/701001/clients includes athlete 701002 with plan summary, is_training_now, last_workout_at, linked_at. POST /api/coach/unlink removes link, athlete coach becomes null, clients list no longer includes athlete. (3) PLAN VISIBILITY (7 tests): Coach creates plan with coach_telegram_id -> visibility=draft, prepared_by_coach=true. GET /api/plans/active/701002 returns draft with weeks=[] (hidden). GET /api/coach/701001/clients/701002/plan returns full weeks (coach sees draft). Unlinked coach 701003 returns 403. PATCH /api/plans/{id}/visibility {visibility:published} sets published_at, athlete now sees full weeks. Invalid visibility returns 400. Self-created plan (no coach) has visibility=published (backward compatible). (4) WEEK PUBLISH + TRAINING DAYS (4 tests): PATCH /api/plans/{id}/weeks/1/publish {published:false} sets week1.published=false. Non-existent week returns 404. PATCH /api/plans/{id}/training-days {training_days:[1,3,5]} stores sorted [1,3,5]. Out-of-range days return 400. (5) CONFIRM SESSION (3 tests): POST /api/sessions/{id}/confirm {coach_telegram_id:701001} sets coach_confirmed=true, confirmed_by=701001, confirmed_at timestamp. Non-linked coach returns 403. Missing session returns 404. All responses valid JSON, UUIDs only (36 chars, 4 hyphens), ISO datetime strings, NO MongoDB _id leaks. All conventions verified across multiple endpoints. Backend API fully functional for Phase 3 Coach mode."
+  - agent: "testing"
+    message: "✅ PHASE 3 COACH MODE BACKEND — ALL 29 TESTS PASSED across all 5 P3 tasks (mode switch, invite/link/unlink/clients/client-plan/athlete-coach, plan visibility draft/published, week publish + training-days, coach confirm session). Verified: coach-created plan -> draft + prepared_by_coach; athlete active plan hides weeks for draft; publish reveals; week.published toggles; training_days validated; unlinked coach -> 403; UUIDs/ISO/no _id leaks. Backend P3 fully functional."
+  - agent: "main"
+    message: "P3 FRONTEND implemented (coach mode UI). Per user request, added a 'Подопечные' section in Profile showing a horizontal list of client avatars. Full P3 frontend: (A) Profile.js — Режим toggle (mode-athlete/mode-coach), Подопечные avatars (clients-avatars, client-ava-<id>) + open-coach-cabinet link, Мой тренер (coach-code-input/link-coach-btn/unlink-coach). (B) New /coach dashboard (Coach.js) with invite code + clients list. (C) New /coach/:athleteId (CoachClient.js) — assign template (draft), toggle-visibility-btn, training days, per-week publish toggles. (D) DateSelector shows plan-preparing-card for draft plans. Frontend compiles cleanly, no runtime errors; backend all green. AWAITING USER PERMISSION to run auto_frontend_testing_agent. Suggested test (athlete-A registers email, becomes coach in /profile, copies invite code; athlete-B registers, enters code in Мой тренер; A sees B in Подопечные avatars + /coach; A opens B, assigns a non-maxes template -> draft; B sees 'план готовится'; A publishes -> B sees weeks; A sets training days + hides week 1)."
+

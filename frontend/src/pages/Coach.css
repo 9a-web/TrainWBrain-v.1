@@ -1,0 +1,334 @@
+/* P3 — Режим тренера: дашборд и карточка подопечного */
+.coach-page {
+  min-height: 100vh;
+  background: #1C1C1C;
+  color: #fff;
+  padding: 40px 20px 60px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.coach-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.coach-back {
+  background: #2a2a2a;
+  border: none;
+  color: #fff;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.coach-back:active { transform: scale(0.94); }
+.coach-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Приглашение */
+.coach-invite-card {
+  background: linear-gradient(150deg, #2b2b2b, #232323);
+  border: 1px solid rgba(255, 107, 0, 0.25);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+.coach-invite-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #FF8A24;
+}
+.coach-invite-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 8px 0 12px;
+  line-height: 1.4;
+}
+.coach-invite-code {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-align: center;
+  background: #1C1C1C;
+  border-radius: 12px;
+  padding: 14px;
+  color: #fff;
+  user-select: all;
+}
+.coach-invite-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.coach-chip-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.coach-chip-btn:active { transform: scale(0.97); background: #3d3d3d; }
+
+.coach-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 12px;
+}
+.coach-empty {
+  background: #2a2a2a;
+  border-radius: 14px;
+  padding: 24px 18px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Список подопечных */
+.coach-clients { display: flex; flex-direction: column; gap: 10px; }
+.client-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #2a2a2a;
+  border: none;
+  border-radius: 16px;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.15s, background 0.15s;
+  width: 100%;
+}
+.client-card:active { transform: scale(0.99); background: #303030; }
+.client-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #FF6B00;
+  flex-shrink: 0;
+}
+.client-main { flex: 1; min-width: 0; }
+.client-name-row { display: flex; align-items: center; gap: 8px; }
+.client-name { font-size: 16px; font-weight: 600; }
+.client-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  padding: 2px 7px;
+  border-radius: 8px;
+}
+.client-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.client-plan-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.client-noplan { color: rgba(255, 255, 255, 0.4); font-style: italic; }
+.client-meta { font-size: 12px; color: rgba(255, 255, 255, 0.4); margin-top: 4px; }
+.client-chevron { color: rgba(255, 255, 255, 0.3); flex-shrink: 0; }
+
+.vis-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.vis-draft { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.6); }
+.vis-published { background: rgba(255, 138, 36, 0.18); color: #FF8A24; }
+
+/* Карточка подопечного: блоки управления */
+.coach-noplan {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 28px 18px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.coach-block {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.coach-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.coach-block-title { font-size: 16px; font-weight: 600; }
+.coach-block-sub { font-size: 13px; color: rgba(255, 255, 255, 0.55); margin-top: 3px; }
+
+.coach-primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1C1C1C;
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.coach-primary-btn:active { transform: scale(0.98); }
+.coach-primary-btn:disabled { opacity: 0.5; cursor: default; }
+.coach-primary-btn.is-secondary {
+  background: #333;
+  color: #fff;
+}
+.coach-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #FF8A24;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 0;
+  margin-top: 6px;
+}
+
+/* Дни (переиспользуем стиль из Programs) */
+.cfg-days { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.cfg-day {
+  flex: 1;
+  min-width: 38px;
+  background: #333;
+  color: rgba(255, 255, 255, 0.7);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cfg-day.active {
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  color: #1C1C1C;
+  border-color: transparent;
+}
+
+/* Недели */
+.weeks-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1f1f1f;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.week-info { display: flex; align-items: baseline; gap: 10px; }
+.week-name { font-size: 15px; font-weight: 600; }
+.week-days { font-size: 12px; color: rgba(255, 255, 255, 0.45); }
+.week-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.week-toggle.on { background: rgba(255, 138, 36, 0.18); color: #FF8A24; }
+.week-toggle.off { background: #333; color: rgba(255, 255, 255, 0.5); }
+
+/* Список шаблонов (минимальная версия стилей Programs) */
+.programs-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.program-card { background: #2a2a2a; border-radius: 16px; padding: 16px; border: 2px solid transparent; }
+.program-card-head { display: flex; gap: 12px; align-items: center; }
+.program-card-icon {
+  width: 40px; height: 40px; border-radius: 12px; background: #333;
+  display: flex; align-items: center; justify-content: center; color: #FF8A24; flex-shrink: 0;
+}
+.program-card-titles { flex: 1; min-width: 0; }
+.program-card-name { font-size: 16px; font-weight: 600; margin: 0; }
+.program-card-desc { font-size: 13px; color: rgba(255, 255, 255, 0.6); margin: 10px 0; line-height: 1.4; }
+.program-card-meta { display: flex; gap: 6px; font-size: 13px; color: rgba(255, 255, 255, 0.5); margin-bottom: 12px; }
+.program-card-button {
+  width: 100%; border: none; border-radius: 12px; padding: 12px;
+  font-size: 15px; font-weight: 600; color: #1C1C1C;
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.program-card-button:disabled { opacity: 0.6; }
+
+/* Модалка настройки */
+.cfg-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+}
+.cfg-modal {
+  background: #232323; border-radius: 20px; padding: 22px; width: 100%; max-width: 380px;
+}
+.cfg-title { font-size: 19px; font-weight: 700; margin: 0; }
+.cfg-sub { font-size: 13px; color: rgba(255, 255, 255, 0.55); margin: 6px 0 16px; }
+.cfg-section { margin-bottom: 18px; }
+.cfg-section-title { font-size: 14px; font-weight: 600; }
+.cfg-hint { font-size: 12px; color: rgba(255, 255, 255, 0.45); font-weight: 400; }
+.cfg-maxes { display: flex; gap: 8px; margin-top: 10px; }
+.cfg-max { flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+.cfg-max input {
+  background: #1C1C1C; border: 1px solid #3a3a3a; border-radius: 10px;
+  padding: 10px; color: #fff; font-size: 15px; text-align: center;
+}
+.cfg-actions { display: flex; gap: 10px; margin-top: 8px; }
+.cfg-btn-cancel {
+  flex: 1; background: #333; color: #fff; border: none; border-radius: 12px; padding: 12px; font-weight: 600; cursor: pointer;
+}
+.cfg-btn-save {
+  flex: 2; background: linear-gradient(-34deg, #FF8A24, #FFDA24); color: #1C1C1C;
+  border: none; border-radius: 12px; padding: 12px; font-weight: 700; cursor: pointer;
+}
+.cfg-btn-save:disabled { opacity: 0.5; cursor: default; }

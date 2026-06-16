@@ -95,4 +95,32 @@ export const getStats = (telegramId) =>
 export const getTelegramAvatar = (userId) =>
   client.get(`/telegram/avatar/${userId}`).then((r) => r.data);
 
+// --- Пользователь по telegram_id (для режима тренера) ---
+export const getUserById = (telegramId) =>
+  client.get(`/users/${telegramId}`).then((r) => r.data);
+
+// --- P3: Режим тренера ---
+export const switchMode = (telegramId, mode) =>
+  client.patch(`/users/${telegramId}/mode`, { mode }).then((r) => r.data);
+export const coachInvite = (coach_telegram_id) =>
+  client.post(`/coach/invite`, { coach_telegram_id }).then((r) => r.data);
+export const coachLink = (code, athlete_telegram_id) =>
+  client.post(`/coach/link`, { code, athlete_telegram_id }).then((r) => r.data);
+export const coachUnlink = (athlete_telegram_id) =>
+  client.post(`/coach/unlink`, { athlete_telegram_id }).then((r) => r.data);
+export const getCoachClients = (telegramId) =>
+  client.get(`/coach/${telegramId}/clients`).then((r) => r.data);
+export const getCoachClientPlan = (coachId, athleteId) =>
+  client.get(`/coach/${coachId}/clients/${athleteId}/plan`).then((r) => r.data);
+export const getAthleteCoach = (telegramId) =>
+  client.get(`/athlete/${telegramId}/coach`).then((r) => r.data);
+export const setPlanVisibility = (planId, visibility) =>
+  client.patch(`/plans/${planId}/visibility`, { visibility }).then((r) => r.data);
+export const publishPlanWeek = (planId, week, published) =>
+  client.patch(`/plans/${planId}/weeks/${week}/publish`, { published }).then((r) => r.data);
+export const setPlanTrainingDays = (planId, training_days) =>
+  client.patch(`/plans/${planId}/training-days`, { training_days }).then((r) => r.data);
+export const confirmSession = (sessionId, coach_telegram_id) =>
+  client.post(`/sessions/${sessionId}/confirm`, { coach_telegram_id }).then((r) => r.data);
+
 export default client;

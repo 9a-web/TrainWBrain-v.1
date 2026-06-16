@@ -131,3 +131,192 @@
 .profile-logout:hover {
   background: rgba(255, 107, 107, 0.2);
 }
+
+
+/* ===== P3: Режим, Подопечные, Мой тренер ===== */
+.profile-section {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.profile-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.profile-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.profile-count {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c1c1c;
+  background: #FF8A24;
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-left: 6px;
+}
+.profile-section-link {
+  background: none;
+  border: none;
+  color: #FF8A24;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.profile-hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+.invite-inline {
+  letter-spacing: 2px;
+  color: #FF8A24;
+  user-select: all;
+}
+
+/* Переключатель режима */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  background: #1f1f1f;
+  border-radius: 12px;
+  padding: 4px;
+}
+.mode-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mode-btn.active {
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  color: #1c1c1c;
+}
+.mode-btn:disabled { opacity: 0.7; cursor: default; }
+
+/* Аватарки подопечных */
+.clients-avatars {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 4px 2px 6px;
+  -webkit-overflow-scrolling: touch;
+}
+.clients-avatars::-webkit-scrollbar { display: none; }
+.client-ava {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 64px;
+}
+.client-ava-imgwrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  padding: 2px;
+  border: 2px solid #FF6B00;
+  display: block;
+}
+.client-ava-imgwrap.live {
+  border-color: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+}
+.client-ava-imgwrap img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.client-ava-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Мой тренер */
+.mycoach-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.mycoach-ava {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #FF6B00;
+}
+.mycoach-name { flex: 1; font-size: 15px; font-weight: 500; color: #fff; }
+.mycoach-unlink {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff6b6b;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mycoach-link {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.mycoach-input {
+  flex: 1;
+  background: #1f1f1f;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  padding: 11px 14px;
+  color: #fff;
+  font-size: 15px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.mycoach-input::placeholder { color: rgba(255, 255, 255, 0.35); letter-spacing: 0; text-transform: none; }
+.mycoach-btn {
+  background: linear-gradient(-34deg, #FF8A24, #FFDA24);
+  color: #1c1c1c;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mycoach-btn:disabled { opacity: 0.5; cursor: default; }

@@ -14,6 +14,7 @@ import {
   getGoogleConfig,
   authLogout,
   setAuthToken,
+  switchMode as apiSwitchMode,
 } from "@/api";
 import { getTelegram, isTelegram } from "@/lib/platform";
 
@@ -126,6 +127,14 @@ export function AuthProvider({ children }) {
     setAuthUser(null);
   }, []);
 
+  // P3 — переключение активного режима (athlete/coach); обновляет authUser
+  const switchMode = async (mode) => {
+    if (!authUser?.telegram_id) return null;
+    const updated = await apiSwitchMode(authUser.telegram_id, mode);
+    setAuthUser((prev) => ({ ...(prev || {}), ...updated }));
+    return updated;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -140,6 +149,7 @@ export function AuthProvider({ children }) {
         handleGoogleCode,
         logout,
         refresh,
+        switchMode,
       }}
     >
       {children}

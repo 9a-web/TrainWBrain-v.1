@@ -17,6 +17,8 @@ import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
 import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
+import Coach from "@/pages/Coach";
+import CoachClient from "@/pages/CoachClient";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -187,6 +189,8 @@ const AppShell = () => {
         <Route path="/" element={<Home />} />
         <Route path="/programs" element={<Programs />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/coach" element={<Coach />} />
+        <Route path="/coach/:athleteId" element={<CoachClient />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </UserProvider>

@@ -263,6 +263,8 @@ const DateSelector = () => {
 
   const isRestSelected = !dayDetail || dayDetail.is_rest;
   const selectedDayIndex = toDayIndex(selectedDate.getDay());
+  // Тренер ещё не опубликовал план — содержимое скрыто
+  const isDraft = !!plan && plan.visibility === "draft";
 
   // Тренировочная сессия выбранного дня
   const [session, setSession] = useState(null);
@@ -554,15 +556,24 @@ const DateSelector = () => {
         </div>
       ) : null}
 
+      {/* Тренер готовит план (черновик) */}
+      {isDraft ? (
+        <div className="no-plan-card" data-testid="plan-preparing-card">
+          <p className="no-plan-text">
+            Ваш тренер готовит для вас программу. Она появится здесь, как только тренер её опубликует. 💪
+          </p>
+        </div>
+      ) : null}
+
       {/* День отдыха */}
-      {plan && isRestSelected ? (
+      {plan && !isDraft && isRestSelected ? (
         <div className="rest-day-note" data-testid="rest-day-note">
           День отдыха — восстановление 💤
         </div>
       ) : null}
 
       {/* Тренировка дня */}
-      {plan && !isRestSelected && view ? (
+      {plan && !isDraft && !isRestSelected && view ? (
         <WorkoutView
           view={view}
           isPreview={!session}
