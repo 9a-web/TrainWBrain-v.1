@@ -180,6 +180,22 @@ backend:
         agent: "testing"
         comment: "✅ TESTED: All 3 scenarios passed. (1) COACH CONFIRMS: POST /api/sessions/{id}/confirm {coach_telegram_id:701001} on linked athlete's session sets coach_confirmed=true, confirmed_by=701001, confirmed_at timestamp. (2) NONLINKED COACH: Coach 701003 (not linked to athlete) returns 403. (3) MISSING SESSION: Invalid session_id returns 404. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
 
+  - task: "Plan editor (coach): meta/day/exercise/week CRUD endpoints"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New plan-editor endpoints (snapshot weeks editing; %1RM/tonnage computed on read via GET /plans/{id}/day): (1) PATCH /api/plans/{id} {name?, current_week?, start_date?} renames/updates plan meta. (2) PUT /api/plans/{id}/day {week,day(1..7),title?,is_rest?} upserts a weekday in a week (creates if missing, else edits title/is_rest); 404 if week missing; 400 if day out of 1..7. (3) DELETE /api/plans/{id}/day?week=&day= removes a day (404 if not found). (4) PUT /api/plans/{id}/exercise {week,day,order?,exercise_name,muscle_group,difficulty,is_accessory,weight_type,target_reps,target_rpe,rest_seconds,notes,sets_scheme:[{weight,sets,reps}],exercise_slug,lift_group}: order given -> edit at that index; order omitted -> append; reindexes orders; normalizes sets (sets>=1,reps>=0); target_sets=sum(sets), target_weight=first set weight; 404 if week/day missing. (5) DELETE /api/plans/{id}/exercise?week=&day=&order= removes + reindexes (404 if order out of range). (6) POST /api/plans/{id}/week appends empty week with next week_index (published=true). (7) DELETE /api/plans/{id}/week?week= removes week, REINDEXES remaining week_index to 1..N, clamps current_week. Smoke-tested via curl: rename, add week (idx5), add day2, add/edit exercise (tonnage 1880 = 160*1*3+140*2*5 on day view), delete exercise/day/week+reindex all OK. NOTE: known limitation — deleting a middle week reindexes later weeks, which may shift week_index of past sessions (acceptable; editing is pre-start usually)."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All 18 plan editor endpoint tests passed. Created plan from template (4 weeks) for athlete 734001. (1) PATCH /api/plans/{id}: Successfully updated name to 'Custom' and current_week to 2. (2) POST /api/plans/{id}/week: Added week, weeks count increased from 4 to 5, new week has week_index=5, published=true, days=[]. (3) PUT /api/plans/{id}/day: Added day (week=1, day=2, title='День тяги', is_rest=false). Repeated call updated title in place (no duplicate). Invalid day=8 returns 400. Nonexistent week=99 returns 404. (4) PUT /api/plans/{id}/exercise: Added exercise 'Становая' with sets_scheme [{weight:150, sets:3, reps:5}], target_sets=3, target_weight=150. Edited at order=0 with 2 sets [{160,1,3},{140,2,5}], target_sets=3 (1+2). GET /api/plans/{id}/day?week=1&day=2 returns exercises[0].tonnage=1880 (160*1*3+140*2*5), sets_scheme entries have percent_1rm key. Missing week/day returns 404. (5) DELETE /api/plans/{id}/exercise: Removed exercise at order=0. Out-of-range order returns 404. (6) DELETE /api/plans/{id}/day: Removed day (week=1, day=2). Missing day returns 404. (7) DELETE /api/plans/{id}/week: Deleted week 5, weeks count decreased from 5 to 4, remaining weeks reindexed contiguously 1..4. Nonexistent week returns 404. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks."
+
+
 
   - task: "Auth: Email register/login (JWT-less session tokens, bcrypt)"
     implemented: true
@@ -557,11 +573,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "P3 Coach: role/mode switch (PATCH /api/users/{telegram_id}/mode)"
-    - "P3 Coach: invite + link + unlink + clients + client plan + athlete coach"
-    - "P3 Plan visibility draft/published (+ active plan draft hiding)"
-    - "P3 Plan: week publish toggle + training-days (coach controls)"
-    - "P3 Coach: confirm workout session (POST /api/sessions/{id}/confirm)"
+    - "Plan editor (coach): meta/day/exercise/week CRUD endpoints"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -600,4 +612,10 @@ agent_communication:
     message: "✅ PHASE 3 COACH MODE BACKEND — ALL 29 TESTS PASSED across all 5 P3 tasks (mode switch, invite/link/unlink/clients/client-plan/athlete-coach, plan visibility draft/published, week publish + training-days, coach confirm session). Verified: coach-created plan -> draft + prepared_by_coach; athlete active plan hides weeks for draft; publish reveals; week.published toggles; training_days validated; unlinked coach -> 403; UUIDs/ISO/no _id leaks. Backend P3 fully functional."
   - agent: "main"
     message: "P3 FRONTEND implemented (coach mode UI). Per user request, added a 'Подопечные' section in Profile showing a horizontal list of client avatars. Full P3 frontend: (A) Profile.js — Режим toggle (mode-athlete/mode-coach), Подопечные avatars (clients-avatars, client-ava-<id>) + open-coach-cabinet link, Мой тренер (coach-code-input/link-coach-btn/unlink-coach). (B) New /coach dashboard (Coach.js) with invite code + clients list. (C) New /coach/:athleteId (CoachClient.js) — assign template (draft), toggle-visibility-btn, training days, per-week publish toggles. (D) DateSelector shows plan-preparing-card for draft plans. Frontend compiles cleanly, no runtime errors; backend all green. AWAITING USER PERMISSION to run auto_frontend_testing_agent. Suggested test (athlete-A registers email, becomes coach in /profile, copies invite code; athlete-B registers, enters code in Мой тренер; A sees B in Подопечные avatars + /coach; A opens B, assigns a non-maxes template -> draft; B sees 'план готовится'; A publishes -> B sees weeks; A sets training days + hides week 1)."
+
+  - agent: "testing"
+    message: "✅ PLAN EDITOR ENDPOINTS TESTS COMPLETE - ALL 18 TESTS PASSED: Tested all 7 plan editor CRUD endpoints for coach mode. Created plan from template (4 weeks) for athlete 734001. (1) PATCH /api/plans/{id}: Successfully updated name to 'Custom' and current_week to 2. (2) POST /api/plans/{id}/week: Added week, weeks count increased from 4 to 5, new week has week_index=5, published=true, days=[]. (3) PUT /api/plans/{id}/day: Added day (week=1, day=2, title='День тяги', is_rest=false). Repeated call updated title in place (no duplicate). Invalid day=8 returns 400. Nonexistent week=99 returns 404. (4) PUT /api/plans/{id}/exercise: Added exercise 'Становая' with sets_scheme [{weight:150, sets:3, reps:5}], target_sets=3, target_weight=150. Edited at order=0 with 2 sets [{160,1,3},{140,2,5}], target_sets=3 (1+2). GET /api/plans/{id}/day?week=1&day=2 returns exercises[0].tonnage=1880 (160*1*3+140*2*5), sets_scheme entries have percent_1rm key. Missing week/day returns 404. (5) DELETE /api/plans/{id}/exercise: Removed exercise at order=0. Out-of-range order returns 404. (6) DELETE /api/plans/{id}/day: Removed day (week=1, day=2). Missing day returns 404. (7) DELETE /api/plans/{id}/week: Deleted week 5, weeks count decreased from 5 to 4, remaining weeks reindexed contiguously 1..4. Nonexistent week returns 404. All responses valid JSON, UUIDs only, ISO datetimes, no _id leaks. Backend plan editor fully functional."
+
+  - agent: "main"
+    message: "NEW: PLAN EDITOR backend ready for testing. Test ONLY the new plan-editor endpoints (do NOT re-test prior phases). Setup: create plan via POST /api/plans {athlete_telegram_id:734001, template_id:<first template id from GET /api/programs/templates>} -> capture plan_id; it has 4 weeks. SCENARIOS: (1) PATCH /api/plans/{id} {\"name\":\"Custom\"} -> name updated; {\"current_week\":2} -> current_week=2. (2) POST /api/plans/{id}/week -> weeks length +1, last week_index is max+1 (e.g. 5), published=true, days=[]. (3) PUT /api/plans/{id}/day {\"week\":1,\"day\":2,\"title\":\"День тяги\",\"is_rest\":false} -> week1 gains day_index 2; repeat with title change -> updates same day (no duplicate). day=8 -> 400; week=99 -> 404. (4) PUT /api/plans/{id}/exercise {\"week\":1,\"day\":2,\"exercise_name\":\"Становая\",\"muscle_group\":\"back\",\"difficulty\":\"Тяжело\",\"sets_scheme\":[{\"weight\":150,\"sets\":3,\"reps\":5}],\"rest_seconds\":180} -> appends exercise; target_sets=3 (sum of sets), target_weight=150. Then with \"order\":0 and sets_scheme [{160,1,3},{140,2,5}] -> edits in place, 2 sets, target_sets=3. Verify GET /api/plans/{id}/day?week=1&day=2 -> exercises[0].tonnage=1880, sets_scheme have percent_1rm keys, group letter present. week/day missing -> 404. (5) DELETE /api/plans/{id}/exercise?week=1&day=2&order=0 -> exercise removed; out-of-range order -> 404. (6) DELETE /api/plans/{id}/day?week=1&day=2 -> day removed; missing -> 404. (7) DELETE /api/plans/{id}/week?week=5 -> week removed AND remaining week_index reindexed contiguous 1..N; deleting nonexistent week -> 404. Verify all responses are full Plan JSON, UUIDs only, ISO datetimes, no _id leaks. Use athlete telegram_id 734001 (clean up not required)."
 

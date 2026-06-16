@@ -1045,6 +1045,235 @@ async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq):
 
 
 # ===========================================================================
+# P4 (pre) — Редактор плана подопечного: недели / дни / упражнения
+# Тренер (или владелец) правит снимок плана. %1ПМ/тоннаж считаются при чтении.
+# ===========================================================================
+class PlanMetaReq(BaseModel):
+    name: Optional[str] = None
+    current_week: Optional[int] = None
+    start_date: Optional[str] = None
+
+
+class PlanDayUpsertReq(BaseModel):
+    week: int
+    day: int
+    title: Optional[str] = None
+    is_rest: Optional[bool] = None
+
+
+class PlanExerciseReq(BaseModel):
+    week: int
+    day: int
+    order: Optional[int] = None           # задан → редактируем; иначе добавляем
+    exercise_name: str
+    exercise_slug: Optional[str] = None
+    exercise_id: Optional[str] = None
+    muscle_group: Optional[str] = None
+    difficulty: Optional[str] = None
+    lift_group: Optional[str] = None
+    is_accessory: bool = False
+    weight_type: str = "kg"
+    target_reps: Optional[str] = None
+    target_rpe: Optional[float] = None
+    rest_seconds: Optional[int] = None
+    notes: Optional[str] = None
+    sets_scheme: Optional[List[dict]] = None
+
+
+def _norm_sets_scheme(scheme):
+    out = []
+    for s in scheme or []:
+        try:
+            w = s.get("weight")
+            w = float(w) if w not in (None, "") else None
+        except Exception:
+            w = None
+        try:
+            sets = int(s.get("sets") or 1)
+        except Exception:
+            sets = 1
+        try:
+            reps = int(s.get("reps") or 0)
+        except Exception:
+            reps = 0
+        out.append({"weight": w, "sets": max(1, sets), "reps": max(0, reps)})
+    return out
+
+
+def _normalize_plan_exercise(payload: "PlanExerciseReq", order: int) -> dict:
+    scheme = _norm_sets_scheme(payload.sets_scheme)
+    if scheme:
+        target_sets = sum(s["sets"] for s in scheme)
+        target_reps = payload.target_reps or str(scheme[0]["reps"])
+        target_weight = scheme[0]["weight"]
+    else:
+        target_sets = 4 if payload.is_accessory else 3
+        target_reps = payload.target_reps or "10"
+        target_weight = None
+    return {
+        "exercise_id": payload.exercise_id,
+        "exercise_slug": payload.exercise_slug,
+        "exercise_name": (payload.exercise_name or "").strip() or "Упражнение",
+        "muscle_group": payload.muscle_group,
+        "difficulty": payload.difficulty,
+        "order": order,
+        "target_sets": target_sets,
+        "target_reps": str(target_reps),
+        "target_weight": target_weight,
+        "weight_type": payload.weight_type or "kg",
+        "target_rpe": payload.target_rpe,
+        "rest_seconds": payload.rest_seconds,
+        "notes": (payload.notes or None),
+        "sets_scheme": scheme,
+        "lift_group": payload.lift_group,
+        "is_accessory": bool(payload.is_accessory),
+    }
+
+
+def _find_week(plan: dict, week: int):
+    return next((w for w in plan.get("weeks", []) if w.get("week_index") == week), None)
+
+
+def _find_day(week_obj: dict, day: int):
+    return next((d for d in (week_obj.get("days") or []) if d.get("day_index") == day), None)
+
+
+async def _save_plan_weeks(plan_id: str, weeks: list):
+    await db.plans.update_one(
+        {"id": plan_id},
+        {"$set": {"weeks": weeks, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return await _get_plan_or_404(plan_id)
+
+
+@api_router.patch("/plans/{plan_id}", response_model=Plan)
+async def update_plan_meta(plan_id: str, payload: PlanMetaReq):
+    """Переименовать план / задать текущую неделю / дату старта."""
+    await _get_plan_or_404(plan_id)
+    set_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.name is not None and payload.name.strip():
+        set_fields["name"] = payload.name.strip()
+    if payload.current_week is not None:
+        set_fields["current_week"] = max(1, int(payload.current_week))
+    if payload.start_date is not None:
+        set_fields["start_date"] = payload.start_date
+    await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
+    return await _get_plan_or_404(plan_id)
+
+
+@api_router.put("/plans/{plan_id}/day", response_model=Plan)
+async def upsert_plan_day(plan_id: str, payload: PlanDayUpsertReq):
+    """Создать/изменить день недели (день = слот дня недели 1..7)."""
+    if payload.day < 1 or payload.day > 7:
+        raise HTTPException(status_code=400, detail="day: 1..7")
+    plan = await _get_plan_or_404(plan_id)
+    week_obj = _find_week(plan, payload.week)
+    if not week_obj:
+        raise HTTPException(status_code=404, detail="Week not found")
+    day_obj = _find_day(week_obj, payload.day)
+    if day_obj:
+        if payload.title is not None:
+            day_obj["title"] = payload.title
+        if payload.is_rest is not None:
+            day_obj["is_rest"] = bool(payload.is_rest)
+    else:
+        week_obj.setdefault("days", []).append({
+            "day_index": payload.day,
+            "title": payload.title or f"День {payload.day}",
+            "is_rest": bool(payload.is_rest) if payload.is_rest is not None else False,
+            "exercises": [],
+        })
+        week_obj["days"].sort(key=lambda d: d.get("day_index", 0))
+    return await _save_plan_weeks(plan_id, plan["weeks"])
+
+
+@api_router.delete("/plans/{plan_id}/day", response_model=Plan)
+async def delete_plan_day(plan_id: str, week: int, day: int):
+    plan = await _get_plan_or_404(plan_id)
+    week_obj = _find_week(plan, week)
+    if not week_obj:
+        raise HTTPException(status_code=404, detail="Week not found")
+    days = week_obj.get("days") or []
+    new_days = [d for d in days if d.get("day_index") != day]
+    if len(new_days) == len(days):
+        raise HTTPException(status_code=404, detail="Day not found")
+    week_obj["days"] = new_days
+    return await _save_plan_weeks(plan_id, plan["weeks"])
+
+
+@api_router.put("/plans/{plan_id}/exercise", response_model=Plan)
+async def upsert_plan_exercise(plan_id: str, payload: PlanExerciseReq):
+    """Добавить (order=None) или изменить (order задан) упражнение в дне."""
+    plan = await _get_plan_or_404(plan_id)
+    week_obj = _find_week(plan, payload.week)
+    if not week_obj:
+        raise HTTPException(status_code=404, detail="Week not found")
+    day_obj = _find_day(week_obj, payload.day)
+    if not day_obj:
+        raise HTTPException(status_code=404, detail="Day not found (создайте день сначала)")
+    exs = sorted(day_obj.get("exercises") or [], key=lambda x: x.get("order", 0))
+    if payload.order is not None and 0 <= int(payload.order) < len(exs):
+        exs[int(payload.order)] = _normalize_plan_exercise(payload, int(payload.order))
+    else:
+        exs.append(_normalize_plan_exercise(payload, len(exs)))
+    for i, e in enumerate(exs):
+        e["order"] = i
+    day_obj["exercises"] = exs
+    return await _save_plan_weeks(plan_id, plan["weeks"])
+
+
+@api_router.delete("/plans/{plan_id}/exercise", response_model=Plan)
+async def delete_plan_exercise(plan_id: str, week: int, day: int, order: int):
+    plan = await _get_plan_or_404(plan_id)
+    week_obj = _find_week(plan, week)
+    if not week_obj:
+        raise HTTPException(status_code=404, detail="Week not found")
+    day_obj = _find_day(week_obj, day)
+    if not day_obj:
+        raise HTTPException(status_code=404, detail="Day not found")
+    exs = sorted(day_obj.get("exercises") or [], key=lambda x: x.get("order", 0))
+    if order < 0 or order >= len(exs):
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    del exs[order]
+    for i, e in enumerate(exs):
+        e["order"] = i
+    day_obj["exercises"] = exs
+    return await _save_plan_weeks(plan_id, plan["weeks"])
+
+
+@api_router.post("/plans/{plan_id}/week", response_model=Plan)
+async def add_plan_week(plan_id: str):
+    """Добавить пустую неделю в конец плана."""
+    plan = await _get_plan_or_404(plan_id)
+    weeks = plan.get("weeks") or []
+    next_index = (max((w.get("week_index", 0) for w in weeks), default=0)) + 1
+    weeks.append({"week_index": next_index, "published": True, "days": []})
+    return await _save_plan_weeks(plan_id, weeks)
+
+
+@api_router.delete("/plans/{plan_id}/week", response_model=Plan)
+async def delete_plan_week(plan_id: str, week: int):
+    """Удалить неделю и пере-нумеровать оставшиеся (1..N)."""
+    plan = await _get_plan_or_404(plan_id)
+    weeks = sorted(plan.get("weeks") or [], key=lambda w: w.get("week_index", 0))
+    new_weeks = [w for w in weeks if w.get("week_index") != week]
+    if len(new_weeks) == len(weeks):
+        raise HTTPException(status_code=404, detail="Week not found")
+    for i, w in enumerate(new_weeks):
+        w["week_index"] = i + 1
+    now = datetime.now(timezone.utc).isoformat()
+    cur = plan.get("current_week", 1)
+    new_cur = min(max(1, cur), len(new_weeks)) if new_weeks else 1
+    await db.plans.update_one(
+        {"id": plan_id},
+        {"$set": {"weeks": new_weeks, "current_week": new_cur, "updated_at": now}},
+    )
+    return await _get_plan_or_404(plan_id)
+
+
+
+
+# ===========================================================================
 # Хелперы Фазы 2 (расчёт %1ПМ, схемы подходов, статистика сессии)
 # ===========================================================================
 _DIFF_RANK = {"Легко": 1, "Средне": 2, "Тяжело": 3}
