@@ -15,16 +15,16 @@
 /* Кнопка «План» — открыть любую неделю плана (под списком карточек дат) */
 .plan-week-row {
   display: flex;
-  justify-content: flex-start;
-  margin: 12px 0 0 20px;
+  justify-content: center;
+  margin: 12px 0 0;
 }
 
 .plan-week-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
-  padding: 0 18px;
+  height: 21px;
+  padding: 0 23px;
   border: none;
   border-radius: 999px;
   background: #333333;
