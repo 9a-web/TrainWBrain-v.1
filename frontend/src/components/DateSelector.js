@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Pause, Play, Square, Bolt, WandSparkles, Lock } from 'lucide-react';
+import { Zap, Pause, Play, Square, Bolt, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
@@ -197,7 +197,7 @@ const DateSelector = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [plan?.id, planWeek]);
+  }, [plan?.id, planWeek, user?.telegram_id]);
 
   // Генерируем дни недели с учётом смещения
   const weekDays = useMemo(() => {
@@ -240,7 +240,7 @@ const DateSelector = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [plan?.id, planWeek, selectedDate]);
+  }, [plan?.id, planWeek, selectedDate, user?.telegram_id]);
 
   const handleDayClick = (date, event) => {
     hapticSelection();
@@ -308,13 +308,13 @@ const DateSelector = () => {
   const refreshProgress = useCallback(async () => {
     if (!plan?.id) return;
     try {
-      const data = await getWeekProgress(plan.id, planWeek);
+      const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id);
       const map = {};
       (data.days || []).forEach((d) => { map[d.day_index] = d; });
       setProgressByDay(map);
       window.dispatchEvent(new Event('twb:progress'));
     } catch (e) { /* no-op */ }
-  }, [plan?.id, planWeek]);
+  }, [plan?.id, planWeek, user?.telegram_id]);
 
   // Перезагрузка активного плана (когда тренер опубликовал/изменил недели/дни)
   const reloadPlan = useCallback(async () => {
@@ -635,23 +635,16 @@ const DateSelector = () => {
               </button>
             </>
           ) : sessionStatus === 'finished' ? (
-            <>
-              <button
-                className="launch-button launch-button-restart"
-                type="button"
-                data-testid="resume-button"
-                onClick={handleResume}
-                disabled={starting}
-              >
-                <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
-                <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
-              </button>
-              <button className="icon-btn" type="button"
-                onClick={() => toast.info('Нажмите ✨ на упражнении, чтобы изменить его')}
-                aria-label="Изменить" data-testid="btn-edit">
-                <WandSparkles size={18} />
-              </button>
-            </>
+            <button
+              className="launch-button launch-button-restart"
+              type="button"
+              data-testid="resume-button"
+              onClick={handleResume}
+              disabled={starting}
+            >
+              <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
+              <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
+            </button>
           ) : !isRestSelected ? (
             <button
               className="launch-button"

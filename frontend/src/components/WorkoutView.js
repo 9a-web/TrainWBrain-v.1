@@ -163,7 +163,7 @@ const PlanRows = ({ sets, planSets }) => (
 );
 
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", forecast, currentWeek, planSets }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", finished = false, forecast, currentWeek, planSets }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
@@ -173,8 +173,9 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", forec
   // По умолчанию карточки свёрнуты
   const [open, setOpen] = useState(false);
 
-  // Кнопки действий спортсмена: у основных — только у активного; у подсобных — пока не выполнено
-  const showActions = !isCoach && (isActive || (isAcc && !isPreview && ex.status === "pending"));
+  // Кнопки действий спортсмена: у основных — только у активного; у подсобных — пока не выполнено.
+  // Когда тренировка завершена — действия скрыты (вернутся после «Продолжить»).
+  const showActions = !isCoach && !finished && (isActive || (isAcc && !isPreview && ex.status === "pending"));
 
   return (
     <div className={`ex-card ${isActive ? "ex-card-active" : ""} ${ex.status === "done" ? "ex-card-done" : ""}`} data-testid={`exercise-card-${ex.order}`}>
@@ -203,7 +204,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", forec
           </span>
         </div>
         <div className="ex-head-right">
-          {isFinishedCard && !isCoach ? (
+          {isFinishedCard && !isCoach && !finished ? (
             <span
               className="ex-btn ex-btn-magic-sm"
               role="button"
@@ -251,8 +252,8 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", forec
         </div>
       ) : null}
 
-      {/* Действия тренера (co-scribe): отметить / сбросить / изменить / подтвердить */}
-      {isCoach && !isPreview ? (
+      {/* Действия тренера (co-scribe): отметить / сбросить / изменить — скрыты после завершения */}
+      {isCoach && !isPreview && !finished ? (
         <div className="ex-actions ex-actions-coach" data-testid={`coach-actions-${ex.order}`}>
           {ex.status !== "done" ? (
             <span className="ex-btn ex-btn-done" role="button" tabIndex={0}
@@ -513,6 +514,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
             ex={ex}
             isPreview={isPreview}
             mode={mode}
+            finished={isFinished}
             onAction={onAction}
             onEdit={(e) => setEditing(e)}
             forecast={forecastBySlug[ex.exercise_slug]}
@@ -546,6 +548,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
                   ex={ex}
                   isPreview={isPreview}
                   mode={mode}
+                  finished={isFinished}
                   onAction={onAction}
                   onEdit={(e) => setEditing(e)}
                   planSets={planSetsByOrder[ex.order]}
