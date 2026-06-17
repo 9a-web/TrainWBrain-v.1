@@ -6,7 +6,7 @@ import { useUser } from '@/context/UserContext';
 import {
   getActivePlan, getWeekProgress, getPlanDay,
   startSession, getActiveSession, sessionExerciseAction,
-  editSessionExercise, finishSession, pauseSession,
+  editSessionExercise, finishSession, resumeSession, pauseSession,
 } from '@/api';
 import WorkoutView from '@/components/WorkoutView';
 import Portal from '@/components/Portal';
@@ -494,20 +494,53 @@ const DateSelector = () => {
     } catch (e) { /* no-op */ }
   };
 
+  const handleResume = async () => {
+    if (!session) return;
+    haptic('medium');
+    setStarting(true);
+    try {
+      const s = await resumeSession(session.id);
+      setSession(s);
+      hapticNotify('success');
+      refreshProgress();
+      toast.success('Тренировка возобновлена');
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        const msg = e.response.data?.detail?.message
+          || 'У вас уже есть активная тренировка. Завершите её, чтобы продолжить эту.';
+        toast.error(msg);
+      } else {
+        toast.error('Не удалось продолжить тренировку');
+      }
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const sessionStatus = session?.status;
 
   // Telegram native MainButton mirrors the primary CTA (no-op off-Telegram).
   const tgMainVisible =
     !!plan &&
     !isRestSelected &&
-    (sessionStatus === 'in_progress' || (!session && !!previewView));
+    (sessionStatus === 'in_progress' || sessionStatus === 'finished' || (!session && !!previewView));
   useMainButton({
     enabled: true,
     visible: tgMainVisible,
-    text: sessionStatus === 'in_progress' ? 'Завершить тренировку' : 'Начать тренировку',
+    text:
+      sessionStatus === 'in_progress'
+        ? 'Завершить тренировку'
+        : sessionStatus === 'finished'
+        ? 'Продолжить тренировку'
+        : 'Начать тренировку',
     disabled: starting || !plan,
     progress: starting,
-    onClick: sessionStatus === 'in_progress' ? handleStop : handleStart,
+    onClick:
+      sessionStatus === 'in_progress'
+        ? handleStop
+        : sessionStatus === 'finished'
+        ? handleResume
+        : handleStart,
   });
 
   return (
@@ -603,10 +636,15 @@ const DateSelector = () => {
             </>
           ) : sessionStatus === 'finished' ? (
             <>
-              <button className="icon-btn" type="button"
-                onClick={() => toast.info('Настройки тренировки скоро')}
-                aria-label="Настройки" data-testid="btn-settings">
-                <Bolt size={18} strokeWidth={2.2} color="#CACACA" />
+              <button
+                className="launch-button launch-button-restart"
+                type="button"
+                data-testid="resume-button"
+                onClick={handleResume}
+                disabled={starting}
+              >
+                <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
+                <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
               </button>
               <button className="icon-btn" type="button"
                 onClick={() => toast.info('Нажмите ✨ на упражнении, чтобы изменить его')}

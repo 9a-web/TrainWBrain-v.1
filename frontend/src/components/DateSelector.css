@@ -242,6 +242,15 @@
   transform: scale(0.96);
 }
 
+/* Кнопка перезапуска тренировки (после завершения) */
+.launch-button-restart {
+  color: #FFB36B;
+}
+.launch-button-restart:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Workout stats row (значение сверху + подпись снизу) */
 .workout-stats {
   display: flex;

@@ -2000,6 +2000,59 @@ async def finish_session(session_id: str):
     return _serialize_session(s)
 
 
+@api_router.post("/sessions/{session_id}/resume")
+async def resume_session(session_id: str):
+    """Продолжить ранее завершённую тренировку, СОХРАНИВ отметки о выполненных
+    упражнениях. Сессия снова становится активной (in_progress); следующее
+    невыполненное упражнение делается текущим. Запрещаем, если у спортсмена уже
+    есть ДРУГАЯ активная тренировка (409)."""
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    active_other = await db.workout_sessions.find_one(
+        {"athlete_telegram_id": s["athlete_telegram_id"], "status": "in_progress",
+         "id": {"$ne": session_id}},
+        {"_id": 0},
+    )
+    if active_other:
+        raise HTTPException(status_code=409, detail={
+            "error": "active_session_exists",
+            "message": "У вас уже есть активная тренировка. Завершите её, чтобы продолжить эту.",
+            "session_id": active_other["id"],
+            "plan_id": active_other.get("plan_id"),
+            "week_index": active_other.get("week_index"),
+            "day_index": active_other.get("day_index"),
+        })
+
+    now = datetime.now(timezone.utc).isoformat()
+    exs = s.get("exercises") or []
+    # Сохраняем все отметки (done/skipped/filled_by/coach_confirmed). Просто
+    # реактивируем следующее невыполненное упражнение, если активного нет.
+    if not any(e.get("status") == "in_progress" for e in exs):
+        nxt = next((e for e in exs if e.get("status") == "pending"), None)
+        if nxt:
+            nxt["status"] = "in_progress"
+
+    set_fields = {
+        "exercises": exs,
+        "status": "in_progress",
+        "paused": False,
+        "finished_at": None,
+        "last_event_at": now,
+        "updated_at": now,
+    }
+    await db.workout_sessions.update_one({"id": session_id}, {"$set": set_fields})
+    s2 = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    logger.info(f"Session resumed: {session_id}")
+    await _rt_session(s2.get("plan_id"), "session.updated", s2)
+    await _notify_user(s2.get("coach_telegram_id"), "session.updated", {
+        "session_id": s2["id"], "plan_id": s2.get("plan_id"),
+        "athlete_telegram_id": s2["athlete_telegram_id"],
+    })
+    return _serialize_session(s2)
+
+
 @api_router.post("/sessions/{session_id}/pause")
 async def pause_session(session_id: str, resume: bool = False):
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})

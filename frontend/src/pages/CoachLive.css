@@ -142,3 +142,8 @@
   border-radius: 14px;
   padding: 12px;
 }
+.cl-finished-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

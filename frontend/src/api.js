@@ -107,6 +107,8 @@ export const confirmSessionExercise = (id, order, coach_telegram_id) =>
     .then((r) => r.data);
 export const finishSession = (id) =>
   client.post(`/sessions/${id}/finish`).then((r) => r.data);
+export const resumeSession = (id) =>
+  client.post(`/sessions/${id}/resume`).then((r) => r.data);
 export const pauseSession = (id, resume) =>
   client.post(`/sessions/${id}/pause`, null, { params: { resume } }).then((r) => r.data);
 

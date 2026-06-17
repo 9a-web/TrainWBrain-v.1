@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Wifi, WifiOff, CheckCircle2, Dumbbell, Radio, Square } from "lucide-react";
+import { ArrowLeft, Wifi, WifiOff, CheckCircle2, Dumbbell, Radio, Square, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
   getUserById, getCoachClientPlan, getCoachClientSession,
-  sessionExerciseAction, editSessionExercise, finishSession,
+  sessionExerciseAction, editSessionExercise, finishSession, resumeSession,
 } from "@/api";
 import WorkoutView from "@/components/WorkoutView";
 import { useRealtime } from "@/hooks/useRealtime";
@@ -191,6 +191,25 @@ export default function CoachLiveSession() {
     }
   };
 
+  const handleResumeSession = async () => {
+    if (!session) return;
+    setBusy(true);
+    try {
+      const s = await resumeSession(session.id);
+      setSession(s);
+      hapticNotify("success");
+      toast.success("Тренировка возобновлена");
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail?.message || "У спортсмена уже есть активная тренировка");
+      } else {
+        toast.error("Не удалось продолжить тренировку");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const athleteName = athlete?.first_name || "Спортсмен";
   const status = session?.status;
   const isLive = status === "in_progress";
@@ -257,11 +276,21 @@ export default function CoachLiveSession() {
         </div>
       ) : (
         <>
-          {/* Завершение тренировки */}
+          {/* Завершение / продолжение тренировки */}
           <div className="cl-confirm-bar" data-testid="cl-confirm-bar">
             {isFinished ? (
-              <div className="cl-confirmed" data-testid="cl-finished">
-                <CheckCircle2 size={18} /> Тренировка завершена
+              <div className="cl-finished-bar">
+                <div className="cl-confirmed" data-testid="cl-finished">
+                  <CheckCircle2 size={18} /> Тренировка завершена
+                </div>
+                <button
+                  className="coach-primary-btn is-secondary"
+                  onClick={handleResumeSession}
+                  disabled={busy}
+                  data-testid="cl-resume-session-btn"
+                >
+                  <Play size={16} /> Продолжить тренировку
+                </button>
               </div>
             ) : (
               <button
