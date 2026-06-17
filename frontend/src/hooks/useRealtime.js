@@ -145,9 +145,20 @@ export function useRealtime({ planId = null, enabled = true, onEvent } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
-  // (Пере)подписка при смене planId уже после установки соединения
+  // (Пере)подписка при смене planId; при смене/размонтировании — отписка от старой комнаты (I5)
   useEffect(() => {
-    if (planId && connected) subscribe(planId);
+    if (!connected) return undefined;
+    if (planId) subscribe(planId);
+    return () => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN && planId) {
+        try {
+          ws.send(JSON.stringify({ type: "unsubscribe", plan_id: planId }));
+        } catch (e) {
+          /* no-op */
+        }
+      }
+    };
   }, [planId, connected, subscribe]);
 
   return { connected, online, subscribe };

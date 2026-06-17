@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Pause, Play, Square, Bolt, WandSparkles } from 'lucide-react';
+import { Zap, Pause, Play, Square, Bolt, WandSparkles, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
@@ -121,6 +121,13 @@ const DateSelector = () => {
     return Math.min(Math.max(1, base + weekOffset), total);
   }, [plan, weekOffset]);
 
+  // Недели, ещё не открытые тренером (published === false) — спортсмен их не видит
+  const isWeekLocked = useCallback((wk) => {
+    if (!plan?.weeks) return false;
+    const w = plan.weeks.find((x) => x.week_index === wk);
+    return !!w && w.published === false;
+  }, [plan]);
+
   // Динамика топового веса каждого упражнения по неделям плана (для графика)
   const forecastBySlug = useMemo(() => {
     if (!plan?.weeks) return {};
@@ -179,7 +186,7 @@ const DateSelector = () => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await getWeekProgress(plan.id, planWeek);
+        const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id);
         if (cancelled) return;
         const map = {};
         (data.days || []).forEach((d) => { map[d.day_index] = d; });
@@ -225,7 +232,7 @@ const DateSelector = () => {
     let cancelled = false;
     (async () => {
       try {
-        const d = await getPlanDay(plan.id, planWeek, di);
+        const d = await getPlanDay(plan.id, planWeek, di, user?.telegram_id);
         if (!cancelled) setDayDetail(d);
       } catch (e) {
         if (!cancelled) setDayDetail(null);
@@ -269,6 +276,10 @@ const DateSelector = () => {
   const handleWeekDotClick = (offset) => goToOffset(offset);
 
   const goToWeek = (weekIndex) => {
+    if (isWeekLocked(weekIndex)) {
+      toast.message('Эта неделя ещё не открыта тренером');
+      return;
+    }
     const target = Math.min(Math.max(1, weekIndex), totalWeeks || weekIndex);
     goToOffset(target - baseWeek);
     setWeekPickerOpen(false);
@@ -695,19 +706,24 @@ const DateSelector = () => {
             <h3 className="confirm-title">Выберите неделю</h3>
             <p className="confirm-text">Текущая неделя плана — {baseWeek}.</p>
             <div className="week-picker-grid" data-testid="week-picker-grid">
-              {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((wk) => (
-                <button
-                  key={wk}
-                  type="button"
-                  className={`week-pick ${wk === planWeek ? 'active' : ''} ${wk === baseWeek ? 'is-current' : ''}`}
-                  onClick={() => goToWeek(wk)}
-                  data-testid={`week-pick-${wk}`}
-                  aria-current={wk === planWeek}
-                >
-                  {wk}
-                  {wk === baseWeek ? <span className="week-pick-cur" aria-hidden="true" /> : null}
-                </button>
-              ))}
+              {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((wk) => {
+                const locked = isWeekLocked(wk);
+                return (
+                  <button
+                    key={wk}
+                    type="button"
+                    className={`week-pick ${wk === planWeek ? 'active' : ''} ${wk === baseWeek ? 'is-current' : ''} ${locked ? 'is-locked' : ''}`}
+                    onClick={() => goToWeek(wk)}
+                    disabled={locked}
+                    data-testid={`week-pick-${wk}`}
+                    aria-current={wk === planWeek}
+                    title={locked ? 'Неделя ещё не открыта тренером' : undefined}
+                  >
+                    {locked ? <Lock size={12} aria-hidden="true" /> : wk}
+                    {wk === baseWeek && !locked ? <span className="week-pick-cur" aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
             </div>
             <div className="confirm-actions">
               <button className="confirm-btn-cancel" onClick={() => setWeekPickerOpen(false)}>

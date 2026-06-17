@@ -77,10 +77,10 @@ export const getActivePlan = (telegramId) =>
   client.get(`/plans/active/${telegramId}`).then((r) => r.data);
 export const getPlan = (id) =>
   client.get(`/plans/${id}`).then((r) => r.data);
-export const getPlanDay = (id, week, day) =>
-  client.get(`/plans/${id}/day`, { params: { week, day } }).then((r) => r.data);
-export const getWeekProgress = (id, week) =>
-  client.get(`/plans/${id}/week-progress`, { params: { week } }).then((r) => r.data);
+export const getPlanDay = (id, week, day, viewer) =>
+  client.get(`/plans/${id}/day`, { params: { week, day, ...(viewer != null ? { viewer } : {}) } }).then((r) => r.data);
+export const getWeekProgress = (id, week, viewer) =>
+  client.get(`/plans/${id}/week-progress`, { params: { week, ...(viewer != null ? { viewer } : {}) } }).then((r) => r.data);
 
 // --- Тренировочные сессии (Phase 2) ---
 export const startSession = (payload) =>

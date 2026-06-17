@@ -102,6 +102,18 @@
   background: #1C1C1C;
 }
 
+.week-pick.is-locked {
+  background: #232323;
+  border-color: #333333;
+  color: #6A6A6A;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.week-pick.is-locked:active {
+  transform: none;
+}
+
 /* Week dots indicator — vertical column on the LEFT of the cards */
 .week-dots {
   display: flex;

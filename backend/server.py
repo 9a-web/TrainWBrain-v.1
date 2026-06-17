@@ -763,7 +763,12 @@ def _scale_and_map_weeks(weeks, tpl, maxes, training_days):
 
 
 @api_router.post("/plans", response_model=Plan)
-async def create_plan(payload: PlanCreate):
+async def create_plan(payload: PlanCreate, current: dict = Depends(get_current_user)):
+    # Авторизация: план можно создавать себе (self-coached) или своему подопечному
+    caller = current.get("telegram_id")
+    if caller != payload.athlete_telegram_id and not await _is_coach_of(caller, payload.athlete_telegram_id):
+        raise HTTPException(status_code=403, detail="Создавать план можно только себе или своему подопечному")
+
     weeks = payload.weeks
     name = payload.name
     source_template_id = payload.template_id
@@ -790,10 +795,7 @@ async def create_plan(payload: PlanCreate):
         raise HTTPException(status_code=400, detail="Either template_id or weeks must be provided")
 
     # Один активный план: прежние активные планы спортсмена помечаем завершёнными
-    await db.plans.update_many(
-        {"athlete_telegram_id": payload.athlete_telegram_id, "status": "active"},
-        {"$set": {"status": "completed", "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
+    # (перенесено ниже — зависит от вычисленного статуса: черновик не замещает план)
 
     # Видимость: тренер, готовящий план другому спортсмену → по умолчанию черновик
     coach_id = payload.coach_telegram_id
@@ -805,11 +807,22 @@ async def create_plan(payload: PlanCreate):
     prepared_by_coach = payload.prepared_by_coach or is_coach_prepared
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    # Статус: опубликованный план становится единственным «живым» планом спортсмена;
+    # черновик тренера НЕ замещает и НЕ гасит текущий рабочий план спортсмена (B2).
+    status = "active" if visibility == "published" else "draft"
+    if status == "active":
+        await db.plans.update_many(
+            {"athlete_telegram_id": payload.athlete_telegram_id,
+             "status": {"$in": ["active", "draft"]}},
+            {"$set": {"status": "completed", "updated_at": now_iso}},
+        )
+
     plan = Plan(
         athlete_telegram_id=payload.athlete_telegram_id,
         coach_telegram_id=payload.coach_telegram_id,
         source_template_id=source_template_id,
         name=name or "Мой план",
+        status=status,
         start_date=payload.start_date,
         weeks=weeks,
         one_rep_max=one_rep_max,
@@ -834,10 +847,25 @@ async def get_active_plan(telegram_id: int):
         {"_id": 0},
     )
     if not doc:
+        # Активного плана нет, но тренер мог готовить черновик «заранее» —
+        # показываем спортсмену «план готовится» без содержимого (B2).
+        draft = await db.plans.find_one(
+            {"athlete_telegram_id": telegram_id, "status": "draft"},
+            {"_id": 0}, sort=[("updated_at", -1)],
+        )
+        if draft:
+            draft["weeks"] = []
+            return draft
         return None
     # Черновик тренера: спортсмену не показываем содержимое («план готовится»)
     if doc.get("visibility") == "draft":
         doc["weeks"] = []
+        return doc
+    # Опубликованный план: скрываем содержимое ещё не открытых недель (B3),
+    # сохраняя сами недели (с флагом published) для корректной навигации.
+    for w in doc.get("weeks", []) or []:
+        if w.get("published") is False:
+            w["days"] = []
     return doc  # может быть None → вернётся null
 
 
@@ -906,7 +934,12 @@ async def coach_link(payload: CoachLinkReq):
         doc["updated_at"] = doc["updated_at"].isoformat()
         await db.coach_links.insert_one(doc)
 
-    # У спортсмена один активный тренер
+    # У спортсмена один активный тренер: ревокируем прочие активные связи (B1)
+    await db.coach_links.update_many(
+        {"athlete_telegram_id": payload.athlete_telegram_id,
+         "coach_telegram_id": {"$ne": coach_tgid}, "status": "active"},
+        {"$set": {"status": "revoked", "updated_at": now}},
+    )
     await db.users.update_one(
         {"telegram_id": payload.athlete_telegram_id},
         {"$set": {"coach_telegram_id": coach_tgid, "updated_at": now}},
@@ -958,8 +991,12 @@ async def coach_clients(telegram_id: int):
     for link in links:
         a_id = link["athlete_telegram_id"]
         user = await db.users.find_one({"telegram_id": a_id}, {"_id": 0})
+        # План, которым управляет тренер: приоритет черновику (готовится), иначе активный (B2)
         plan = await db.plans.find_one(
-            {"athlete_telegram_id": a_id, "status": "active"}, {"_id": 0}
+            {"athlete_telegram_id": a_id, "status": "draft"}, {"_id": 0},
+            sort=[("updated_at", -1)],
+        ) or await db.plans.find_one(
+            {"athlete_telegram_id": a_id, "status": "active"}, {"_id": 0},
         )
         active_session = await db.workout_sessions.find_one(
             {"athlete_telegram_id": a_id, "status": "in_progress"}, {"_id": 0}
@@ -995,12 +1032,48 @@ async def _assert_coach_of(coach_tgid: int, athlete_tgid: int):
         raise HTTPException(status_code=403, detail="Вы не тренер этого спортсмена")
 
 
+async def _is_coach_of(coach_tgid: int, athlete_tgid: int) -> bool:
+    link = await db.coach_links.find_one(
+        {"coach_telegram_id": coach_tgid, "athlete_telegram_id": athlete_tgid, "status": "active"},
+        {"_id": 0},
+    )
+    return bool(link)
+
+
+async def _assert_can_edit_plan(current: dict, plan: dict):
+    """Право на изменение плана: владелец-спортсмен ИЛИ активный тренер спортсмена
+    (привязанный или указанный в plan.coach_telegram_id). Иначе 403."""
+    tgid = current.get("telegram_id")
+    athlete = plan.get("athlete_telegram_id")
+    if tgid == athlete:
+        return
+    if plan.get("coach_telegram_id") == tgid and await _is_coach_of(tgid, athlete):
+        return
+    if await _is_coach_of(tgid, athlete):
+        return
+    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения этого плана")
+
+
+async def _resolve_athlete_coach(athlete_tgid: int) -> Optional[int]:
+    """Текущий активный тренер спортсмена (по coach_links). None, если нет."""
+    link = await db.coach_links.find_one(
+        {"athlete_telegram_id": athlete_tgid, "status": "active"},
+        {"_id": 0, "coach_telegram_id": 1},
+        sort=[("updated_at", -1)],
+    )
+    return link.get("coach_telegram_id") if link else None
+
+
 @api_router.get("/coach/{telegram_id}/clients/{athlete_id}/plan", response_model=Optional[Plan])
 async def coach_client_plan(telegram_id: int, athlete_id: int):
-    """Активный план подопечного (полный, в т.ч. черновик — тренер видит всегда)."""
+    """План подопечного, которым управляет тренер (полный, в т.ч. черновик).
+    Приоритет — черновик (готовится тренером), иначе активный план (B2)."""
     await _assert_coach_of(telegram_id, athlete_id)
     doc = await db.plans.find_one(
-        {"athlete_telegram_id": athlete_id, "status": "active"}, {"_id": 0}
+        {"athlete_telegram_id": athlete_id, "status": "draft"}, {"_id": 0},
+        sort=[("updated_at", -1)],
+    ) or await db.plans.find_one(
+        {"athlete_telegram_id": athlete_id, "status": "active"}, {"_id": 0},
     )
     return doc
 
@@ -1040,15 +1113,26 @@ async def _get_plan_or_404(plan_id: str) -> dict:
 
 
 @api_router.patch("/plans/{plan_id}/visibility", response_model=Plan)
-async def set_plan_visibility(plan_id: str, payload: VisibilityReq):
+async def set_plan_visibility(plan_id: str, payload: VisibilityReq,
+                             current: dict = Depends(get_current_user)):
     vis = (payload.visibility or "").strip().lower()
     if vis not in ("draft", "published"):
         raise HTTPException(status_code=400, detail="visibility должен быть draft или published")
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     now = datetime.now(timezone.utc).isoformat()
     set_fields = {"visibility": vis, "updated_at": now}
-    if vis == "published" and not plan.get("published_at"):
-        set_fields["published_at"] = now
+    if vis == "published":
+        # Публикация делает план единственным «живым»: промоутим в active и
+        # завершаем прочие планы спортсмена (старый рабочий план уступает место).
+        set_fields["status"] = "active"
+        if not plan.get("published_at"):
+            set_fields["published_at"] = now
+        await db.plans.update_many(
+            {"athlete_telegram_id": plan.get("athlete_telegram_id"),
+             "status": {"$in": ["active", "draft"]}, "id": {"$ne": plan_id}},
+            {"$set": {"status": "completed", "updated_at": now}},
+        )
     await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
     updated = await _get_plan_or_404(plan_id)
     await _rt_plan(plan_id, "plan.published", {"visibility": vis})
@@ -1058,8 +1142,10 @@ async def set_plan_visibility(plan_id: str, payload: VisibilityReq):
 
 
 @api_router.patch("/plans/{plan_id}/weeks/{week}/publish", response_model=Plan)
-async def publish_plan_week(plan_id: str, week: int, payload: WeekPublishReq):
+async def publish_plan_week(plan_id: str, week: int, payload: WeekPublishReq,
+                            current: dict = Depends(get_current_user)):
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     weeks = plan.get("weeks", [])
     found = False
     for w in weeks:
@@ -1081,12 +1167,14 @@ async def publish_plan_week(plan_id: str, week: int, payload: WeekPublishReq):
 
 
 @api_router.patch("/plans/{plan_id}/training-days", response_model=Plan)
-async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq):
+async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq,
+                                 current: dict = Depends(get_current_user)):
     days = payload.training_days or []
     if any((not isinstance(d, int)) or d < 1 or d > 7 for d in days):
         raise HTTPException(status_code=400, detail="training_days: числа 1..7")
     norm = sorted(set(int(d) for d in days))
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     set_fields = {"training_days": norm, "updated_at": datetime.now(timezone.utc).isoformat()}
     # Ремаппим дни снимка плана, чтобы спортсмен реально увидел изменение в календаре.
     # Без этого недельный селектор/прогресс берут дни из week.days и не реагируют на training_days.
@@ -1199,13 +1287,19 @@ async def _save_plan_weeks(plan_id: str, weeks: list):
         {"id": plan_id},
         {"$set": {"weeks": weeks, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    # Real-time: правки структуры плана доходят до спортсмена «вживую» (B5)
+    await _rt_plan(plan_id, "plan.updated", {})
+    await _notify_user(updated.get("athlete_telegram_id"), "plan.updated", {"plan_id": plan_id})
+    return updated
 
 
 @api_router.patch("/plans/{plan_id}", response_model=Plan)
-async def update_plan_meta(plan_id: str, payload: PlanMetaReq):
+async def update_plan_meta(plan_id: str, payload: PlanMetaReq,
+                           current: dict = Depends(get_current_user)):
     """Переименовать план / задать текущую неделю / дату старта."""
-    await _get_plan_or_404(plan_id)
+    plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     set_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if payload.name is not None and payload.name.strip():
         set_fields["name"] = payload.name.strip()
@@ -1214,15 +1308,20 @@ async def update_plan_meta(plan_id: str, payload: PlanMetaReq):
     if payload.start_date is not None:
         set_fields["start_date"] = payload.start_date
     await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    await _rt_plan(plan_id, "plan.updated", {})
+    await _notify_user(updated.get("athlete_telegram_id"), "plan.updated", {"plan_id": plan_id})
+    return updated
 
 
 @api_router.put("/plans/{plan_id}/day", response_model=Plan)
-async def upsert_plan_day(plan_id: str, payload: PlanDayUpsertReq):
+async def upsert_plan_day(plan_id: str, payload: PlanDayUpsertReq,
+                          current: dict = Depends(get_current_user)):
     """Создать/изменить день недели (день = слот дня недели 1..7)."""
     if payload.day < 1 or payload.day > 7:
         raise HTTPException(status_code=400, detail="day: 1..7")
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     week_obj = _find_week(plan, payload.week)
     if not week_obj:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -1244,8 +1343,10 @@ async def upsert_plan_day(plan_id: str, payload: PlanDayUpsertReq):
 
 
 @api_router.delete("/plans/{plan_id}/day", response_model=Plan)
-async def delete_plan_day(plan_id: str, week: int, day: int):
+async def delete_plan_day(plan_id: str, week: int, day: int,
+                          current: dict = Depends(get_current_user)):
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     week_obj = _find_week(plan, week)
     if not week_obj:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -1258,9 +1359,11 @@ async def delete_plan_day(plan_id: str, week: int, day: int):
 
 
 @api_router.put("/plans/{plan_id}/exercise", response_model=Plan)
-async def upsert_plan_exercise(plan_id: str, payload: PlanExerciseReq):
+async def upsert_plan_exercise(plan_id: str, payload: PlanExerciseReq,
+                               current: dict = Depends(get_current_user)):
     """Добавить (order=None) или изменить (order задан) упражнение в дне."""
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     week_obj = _find_week(plan, payload.week)
     if not week_obj:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -1279,8 +1382,10 @@ async def upsert_plan_exercise(plan_id: str, payload: PlanExerciseReq):
 
 
 @api_router.delete("/plans/{plan_id}/exercise", response_model=Plan)
-async def delete_plan_exercise(plan_id: str, week: int, day: int, order: int):
+async def delete_plan_exercise(plan_id: str, week: int, day: int, order: int,
+                               current: dict = Depends(get_current_user)):
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     week_obj = _find_week(plan, week)
     if not week_obj:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -1298,9 +1403,10 @@ async def delete_plan_exercise(plan_id: str, week: int, day: int, order: int):
 
 
 @api_router.post("/plans/{plan_id}/week", response_model=Plan)
-async def add_plan_week(plan_id: str):
+async def add_plan_week(plan_id: str, current: dict = Depends(get_current_user)):
     """Добавить пустую неделю в конец плана."""
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     weeks = plan.get("weeks") or []
     next_index = (max((w.get("week_index", 0) for w in weeks), default=0)) + 1
     weeks.append({"week_index": next_index, "published": True, "days": []})
@@ -1308,9 +1414,11 @@ async def add_plan_week(plan_id: str):
 
 
 @api_router.delete("/plans/{plan_id}/week", response_model=Plan)
-async def delete_plan_week(plan_id: str, week: int):
+async def delete_plan_week(plan_id: str, week: int,
+                           current: dict = Depends(get_current_user)):
     """Удалить неделю и пере-нумеровать оставшиеся (1..N)."""
     plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
     weeks = sorted(plan.get("weeks") or [], key=lambda w: w.get("week_index", 0))
     new_weeks = [w for w in weeks if w.get("week_index") != week]
     if len(new_weeks) == len(weeks):
@@ -1324,7 +1432,10 @@ async def delete_plan_week(plan_id: str, week: int):
         {"id": plan_id},
         {"$set": {"weeks": new_weeks, "current_week": new_cur, "updated_at": now}},
     )
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    await _rt_plan(plan_id, "plan.updated", {})
+    await _notify_user(updated.get("athlete_telegram_id"), "plan.updated", {"plan_id": plan_id})
+    return updated
 
 
 
@@ -1522,8 +1633,13 @@ async def _touch_session_event(session_id: str) -> str:
 
 # ---- День плана (превью перед стартом) ----
 @api_router.get("/plans/{plan_id}/day")
-async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
-    """День плана: упражнения + мета. day = 1..7 (Пн..Вс)."""
+async def get_plan_day(plan_id: str, week: int = 1, day: int = 1,
+                       viewer: Optional[int] = None):
+    """День плана: упражнения + мета. day = 1..7 (Пн..Вс).
+
+    viewer — telegram_id смотрящего. Если смотрит сам спортсмен (владелец), а
+    неделя ещё не опубликована тренером (`published=false`) — содержимое скрыто
+    (locked), чтобы работала выдача недель «по одной» (B3)."""
     doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -1537,6 +1653,11 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
     week_obj = next((w for w in (doc.get("weeks") or []) if w.get("week_index") == week), None)
     if not week_obj:
         return rest_response
+    # Неделя скрыта от самого спортсмена — отдаём «заблокировано»
+    is_owner = viewer is not None and viewer == doc.get("athlete_telegram_id")
+    if is_owner and week_obj.get("published") is False:
+        return {**rest_response, "is_rest": True, "locked": True,
+                "title": "Неделя ещё не открыта тренером"}
     day_obj = next((d for d in (week_obj.get("days") or []) if d.get("day_index") == day), None)
     if not day_obj or day_obj.get("is_rest"):
         return rest_response
@@ -1553,15 +1674,20 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1):
 
 
 @api_router.get("/plans/{plan_id}/week-progress")
-async def get_week_progress(plan_id: str, week: int = 1):
-    """Прогресс/расписание по дням недели (для колец в селекторе)."""
+async def get_week_progress(plan_id: str, week: int = 1, viewer: Optional[int] = None):
+    """Прогресс/расписание по дням недели (для колец в селекторе).
+
+    viewer — telegram_id смотрящего; для владельца скрытая неделя возвращается
+    как заблокированная (7 дней отдыха + locked) — выдача недель «по одной» (B3)."""
     doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
 
     week_obj = next((w for w in (doc.get("weeks") or []) if w.get("week_index") == week), None)
+    is_owner = viewer is not None and viewer == doc.get("athlete_telegram_id")
+    locked = bool(week_obj and is_owner and week_obj.get("published") is False)
     days_map = {}
-    if week_obj:
+    if week_obj and not locked:
         for d in (week_obj.get("days") or []):
             if d.get("is_rest"):
                 continue
@@ -1600,7 +1726,7 @@ async def get_week_progress(plan_id: str, week: int = 1):
                 "exercise_count": 0, "planned_sets": 0,
                 "progress_pct": 0, "is_done": False, "has_session": False,
             })
-    return {"plan_id": plan_id, "week_index": week, "days": days}
+    return {"plan_id": plan_id, "week_index": week, "days": days, "locked": locked}
 
 
 # ===========================================================================
@@ -1636,9 +1762,16 @@ async def start_session(req: SessionStartReq):
         })
 
     week_obj = next((w for w in (plan.get("weeks") or []) if w.get("week_index") == req.week), None)
+    # Нельзя начать тренировку в скрытой (неопубликованной) тренером неделе
+    if week_obj and week_obj.get("published") is False and plan.get("athlete_telegram_id") == req.athlete_telegram_id:
+        raise HTTPException(status_code=400, detail="Эта неделя ещё не открыта тренером")
     day_obj = next((d for d in (week_obj.get("days") or []) if d.get("day_index") == req.day), None) if week_obj else None
     if not day_obj or day_obj.get("is_rest"):
         raise HTTPException(status_code=400, detail="No workout scheduled for this day")
+
+    # Тренер сессии: из плана, иначе из активной связи спортсмена (план мог быть self-made,
+    # а тренер привязался позже — он всё равно должен видеть тренировку в real-time) (I3)
+    coach_for_session = plan.get("coach_telegram_id") or await _resolve_athlete_coach(req.athlete_telegram_id)
 
     orm = plan.get("one_rep_max") or {}
     now = datetime.now(timezone.utc).isoformat()
@@ -1646,7 +1779,7 @@ async def start_session(req: SessionStartReq):
         "id": str(uuid.uuid4()),
         "plan_id": req.plan_id,
         "athlete_telegram_id": req.athlete_telegram_id,
-        "coach_telegram_id": plan.get("coach_telegram_id"),
+        "coach_telegram_id": coach_for_session,
         "week_index": req.week, "day_index": req.day,
         "date": datetime.now(timezone.utc).date().isoformat(),
         "title": day_obj.get("title", ""),
@@ -1661,7 +1794,7 @@ async def start_session(req: SessionStartReq):
     logger.info(f"Session started: {session['id']} plan={req.plan_id} day={req.day}")
     # Real-time: оповестить комнату плана и лично тренера
     await _rt_session(req.plan_id, "session.started", session)
-    await _notify_user(plan.get("coach_telegram_id"), "session.started", {
+    await _notify_user(coach_for_session, "session.started", {
         "session_id": session["id"], "plan_id": req.plan_id,
         "athlete_telegram_id": req.athlete_telegram_id,
         "week_index": req.week, "day_index": req.day, "title": session["title"],
@@ -1893,8 +2026,9 @@ async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(def
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
     coach_tgid = payload.coach_telegram_id if payload else None
-    if coach_tgid is not None:
-        await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
+    if coach_tgid is None:
+        raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
+    await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
         {"id": session_id},
