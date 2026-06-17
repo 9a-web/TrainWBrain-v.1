@@ -740,3 +740,32 @@
   flex-shrink: 0;
 }
 
+
+/* P4: индикатор «тренер на связи» */
+.coach-watching {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #9ED0FF;
+  background: rgba(80, 150, 255, 0.1);
+  border: 1px solid rgba(80, 150, 255, 0.28);
+  border-radius: 12px;
+}
+.coach-watching-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5096ff;
+  box-shadow: 0 0 0 0 rgba(80, 150, 255, 0.7);
+  animation: coach-watch-pulse 1.8s infinite;
+}
+@keyframes coach-watch-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(80, 150, 255, 0.6); }
+  70% { box-shadow: 0 0 0 7px rgba(80, 150, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(80, 150, 255, 0); }
+}
+

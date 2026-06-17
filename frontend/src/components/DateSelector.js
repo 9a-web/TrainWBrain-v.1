@@ -11,6 +11,7 @@ import {
 import WorkoutView from '@/components/WorkoutView';
 import { haptic, hapticNotify, hapticSelection } from '@/lib/platform';
 import { useMainButton } from '@/hooks/useTelegramUI';
+import { useRealtime } from '@/hooks/useRealtime';
 import './DateSelector.css';
 
 // Сокращённые названия дней недели (index = JS getDay(): 0=Вс..6=Сб)
@@ -302,6 +303,45 @@ const DateSelector = () => {
       window.dispatchEvent(new Event('twb:progress'));
     } catch (e) { /* no-op */ }
   }, [plan?.id, planWeek]);
+
+  // Перезагрузка активного плана (когда тренер опубликовал/изменил недели/дни)
+  const reloadPlan = useCallback(async () => {
+    if (!user?.telegram_id) return;
+    try {
+      const p = await getActivePlan(user.telegram_id);
+      setPlan(p);
+    } catch (e) { /* no-op */ }
+  }, [user?.telegram_id]);
+
+  // Real-time: ход тренировки и правки тренера приходят вживую
+  const onRtEvent = useCallback((evt) => {
+    const t = evt.type || '';
+    if (t.startsWith('session.')) {
+      const sess = evt.payload?.session;
+      if (!sess) return;
+      // Применяем снимок только если это та же сессия, что открыта у спортсмена
+      setSession((cur) => (cur && cur.id === sess.id ? sess : cur));
+      refreshProgress();
+      if (t === 'session.confirmed') {
+        hapticNotify('success');
+        toast.success('Тренер подтвердил тренировку 👏');
+      }
+    } else if (t.startsWith('plan') || t.startsWith('week') || t.startsWith('training_days')) {
+      reloadPlan();
+      refreshProgress();
+      if (t === 'plan.published') toast.message('Тренер открыл вам программу 💪');
+    }
+  }, [refreshProgress, reloadPlan]);
+
+  const { online: rtOnline } = useRealtime({
+    planId: plan?.id || null,
+    enabled: !!plan?.id,
+    onEvent: onRtEvent,
+  });
+  // Тренер на связи, если в комнате плана есть кто-то кроме самого спортсмена
+  const coachWatching = (rtOnline || []).some(
+    (o) => Number(o.telegram_id) !== Number(user?.telegram_id)
+  );
 
   // Загрузка активной сессии выбранного дня
   useEffect(() => {
@@ -604,6 +644,14 @@ const DateSelector = () => {
       {plan && !isDraft && isRestSelected ? (
         <div className="rest-day-note" data-testid="rest-day-note">
           День отдыха — восстановление 💤
+        </div>
+      ) : null}
+
+      {/* Тренер на связи (real-time) */}
+      {plan && !isDraft && !isRestSelected && session && coachWatching ? (
+        <div className="coach-watching" data-testid="coach-watching">
+          <span className="coach-watching-dot" />
+          Тренер на связи и видит вашу тренировку
         </div>
       ) : null}
 

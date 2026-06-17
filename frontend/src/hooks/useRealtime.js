@@ -1,0 +1,156 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { WS_BASE, getAuthToken } from "@/api";
+
+/**
+ * useRealtime — единое WebSocket-соединение к /api/ws.
+ *
+ * Возможности:
+ *  - аутентификация по session-token (?token=) из localStorage;
+ *  - подписка на комнату плана (plan:{planId});
+ *  - автопереподключение с экспоненциальным backoff;
+ *  - keepalive ping каждые ~25с;
+ *  - presence (кто онлайн в комнате) обновляется автоматически;
+ *  - события доставляются в колбэк onEvent({ type, room, payload, ts }).
+ *
+ * Источник истины — БД: на (ре)коннекте потребитель должен сделать REST-«догон».
+ *
+ * @param {object} opts
+ * @param {string|null} opts.planId — комната плана для подписки
+ * @param {boolean} opts.enabled — включить соединение
+ * @param {(event:object)=>void} opts.onEvent — обработчик событий
+ * @returns {{connected:boolean, online:Array, subscribe:Function}}
+ */
+export function useRealtime({ planId = null, enabled = true, onEvent } = {}) {
+  const [connected, setConnected] = useState(false);
+  const [online, setOnline] = useState([]);
+
+  const wsRef = useRef(null);
+  const retryRef = useRef(0);
+  const pingRef = useRef(null);
+  const stoppedRef = useRef(false);
+  const onEventRef = useRef(onEvent);
+  const planRef = useRef(planId);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+  useEffect(() => {
+    planRef.current = planId;
+  }, [planId]);
+
+  const subscribe = useCallback((pid) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN && pid) {
+      ws.send(JSON.stringify({ type: "subscribe", plan_id: pid }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    stoppedRef.current = false;
+
+    let reconnectTimer = null;
+
+    const scheduleReconnect = () => {
+      if (stoppedRef.current) return;
+      const attempt = retryRef.current;
+      retryRef.current += 1;
+      const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5)); // 1s..32s
+      reconnectTimer = setTimeout(connect, delay);
+    };
+
+    const connect = () => {
+      if (stoppedRef.current) return;
+      const token = getAuthToken();
+      if (!token) {
+        scheduleReconnect();
+        return;
+      }
+      let ws;
+      try {
+        ws = new WebSocket(`${WS_BASE}?token=${encodeURIComponent(token)}`);
+      } catch (e) {
+        scheduleReconnect();
+        return;
+      }
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryRef.current = 0;
+        setConnected(true);
+        if (planRef.current) {
+          ws.send(JSON.stringify({ type: "subscribe", plan_id: planRef.current }));
+        }
+        if (pingRef.current) clearInterval(pingRef.current);
+        pingRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 25000);
+      };
+
+      ws.onmessage = (e) => {
+        let msg;
+        try {
+          msg = JSON.parse(e.data);
+        } catch (err) {
+          return;
+        }
+        if (msg.type === "pong" || msg.type === "connected") return;
+        if (msg.type === "presence") {
+          setOnline(msg.payload?.online || []);
+          return;
+        }
+        if (onEventRef.current) onEventRef.current(msg);
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        if (pingRef.current) {
+          clearInterval(pingRef.current);
+          pingRef.current = null;
+        }
+        if (!stoppedRef.current) scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch (err) {
+          /* no-op */
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      stoppedRef.current = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (pingRef.current) {
+        clearInterval(pingRef.current);
+        pingRef.current = null;
+      }
+      const ws = wsRef.current;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (err) {
+          /* no-op */
+        }
+      }
+      wsRef.current = null;
+      setConnected(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
+
+  // (Пере)подписка при смене planId уже после установки соединения
+  useEffect(() => {
+    if (planId && connected) subscribe(planId);
+  }, [planId, connected, subscribe]);
+
+  return { connected, online, subscribe };
+}
+
+export default useRealtime;

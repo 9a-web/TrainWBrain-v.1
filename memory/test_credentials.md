@@ -21,9 +21,9 @@
 - **username**: `testtg`
 
 ## URLs
-- Внешний URL контейнера (frontend + `/api`): `https://ea220423-ac6a-48fa-9c5a-5a9fc43dfbfb.preview.emergentagent.com`
+- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://trainbrain-2.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
-- `frontend/.env` → `REACT_APP_BACKEND_URL` выровнен с `preview_endpoint` контейнера (исправлен устаревший URL из импортированного с GitHub репозитория).
+- `frontend/.env` → `REACT_APP_BACKEND_URL=https://trainbrain-2.preview.emergentagent.com` (задан пользователем; ранее в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
 
 ## Cross-platform (реализовано)
 - Website-first + Telegram WebApp (telegram-web-app.js) + PWA (manifest + service-worker + иконки).

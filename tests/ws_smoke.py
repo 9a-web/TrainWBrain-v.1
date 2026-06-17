@@ -8,7 +8,7 @@ import requests
 import websockets
 
 LOCAL_HTTP = "http://localhost:8001"
-EXT = "https://7a622ce5-aeb3-47f5-8ae8-f67a42b004f6.preview.emergentagent.com"
+EXT = "https://trainbrain-2.preview.emergentagent.com"
 
 
 def register():

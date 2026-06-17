@@ -3,6 +3,9 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// WebSocket-база (http(s) -> ws(s)), тот же хост/префикс, что и REST (через ingress).
+export const WS_BASE = `${BACKEND_URL.replace(/^http/, "ws")}/api/ws`;
+
 // Bearer-token auth (works across web, Telegram WebView and PWA). We deliberately
 // do NOT use withCredentials so that CORS "*" stays valid (cannot combine "*"
 // with credentials). The session cookie set by the backend is an unused bonus.
@@ -10,6 +13,13 @@ const client = axios.create({ baseURL: API });
 
 // --- Auth token (Bearer) ---
 const TOKEN_KEY = "twb_token";
+export function getAuthToken() {
+  try {
+    return (typeof window !== "undefined" && window.localStorage.getItem(TOKEN_KEY)) || null;
+  } catch (e) {
+    return null;
+  }
+}
 export function setAuthToken(token) {
   if (token) {
     client.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -79,10 +89,22 @@ export const getSession = (id) =>
   client.get(`/sessions/${id}`).then((r) => r.data);
 export const getActiveSession = (params) =>
   client.get(`/sessions/active`, { params }).then((r) => r.data);
-export const sessionExerciseAction = (id, order, action) =>
-  client.patch(`/sessions/${id}/exercise/${order}`, null, { params: { action } }).then((r) => r.data);
-export const editSessionExercise = (id, order, body) =>
-  client.patch(`/sessions/${id}/exercise/${order}/edit`, body).then((r) => r.data);
+export const sessionExerciseAction = (id, order, action, actor, by) =>
+  client
+    .patch(`/sessions/${id}/exercise/${order}`, null, {
+      params: { action, ...(actor ? { actor } : {}), ...(by != null ? { by } : {}) },
+    })
+    .then((r) => r.data);
+export const editSessionExercise = (id, order, body, actor, by) =>
+  client
+    .patch(`/sessions/${id}/exercise/${order}/edit`, body, {
+      params: { ...(actor ? { actor } : {}), ...(by != null ? { by } : {}) },
+    })
+    .then((r) => r.data);
+export const confirmSessionExercise = (id, order, coach_telegram_id) =>
+  client
+    .patch(`/sessions/${id}/exercise/${order}/confirm`, { coach_telegram_id })
+    .then((r) => r.data);
 export const finishSession = (id) =>
   client.post(`/sessions/${id}/finish`).then((r) => r.data);
 export const pauseSession = (id, resume) =>
@@ -112,6 +134,8 @@ export const getCoachClients = (telegramId) =>
   client.get(`/coach/${telegramId}/clients`).then((r) => r.data);
 export const getCoachClientPlan = (coachId, athleteId) =>
   client.get(`/coach/${coachId}/clients/${athleteId}/plan`).then((r) => r.data);
+export const getCoachClientSession = (coachId, athleteId) =>
+  client.get(`/coach/${coachId}/clients/${athleteId}/session`).then((r) => r.data);
 export const getAthleteCoach = (telegramId) =>
   client.get(`/athlete/${telegramId}/coach`).then((r) => r.data);
 export const setPlanVisibility = (planId, visibility) =>

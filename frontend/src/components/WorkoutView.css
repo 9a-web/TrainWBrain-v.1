@@ -588,3 +588,77 @@
   .forecast-svg { width: 130px; height: 58px; }
   .wv-stats { gap: 12px; }
 }
+
+/* ===================== P4: режим тренера (co-scribe) ===================== */
+/* Бейдж «заполнил тренер» */
+.ex-by-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ED0FF;
+  background: rgba(80, 150, 255, 0.14);
+  border: 1px solid rgba(80, 150, 255, 0.32);
+  border-radius: 999px;
+  padding: 2px 7px 2px 5px;
+}
+/* Бейдж «подтверждено тренером» */
+.ex-confirmed-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #59E08A;
+  background: rgba(59, 209, 111, 0.14);
+  border: 1px solid rgba(59, 209, 111, 0.34);
+  border-radius: 999px;
+  padding: 2px 7px 2px 5px;
+}
+/* Подсветка подтверждённой карточки */
+.ex-card-confirmed {
+  box-shadow: inset 3px 0 0 0 #3BD16F;
+}
+
+/* Панель действий тренера */
+.ex-actions-coach {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ex-actions-coach .ex-btn-done {
+  flex: 0 1 auto;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+.ex-actions-coach .ex-btn-skip,
+.ex-actions-coach .ex-btn-magic {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+}
+.ex-btn-reset {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #3a3a3a;
+  color: #cfcfcf;
+  flex: 0 0 auto;
+}
+/* Кнопка подтверждения упражнения тренером */
+.ex-btn-confirm {
+  margin-left: auto;
+  padding: 8px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(59, 209, 111, 0.14);
+  border: 1px solid rgba(59, 209, 111, 0.4);
+  color: #59E08A;
+}
+.ex-btn-confirm.is-on {
+  background: linear-gradient(-20deg, #2FBF66, #3BD16F);
+  border-color: transparent;
+  color: #0f2417;
+}
+

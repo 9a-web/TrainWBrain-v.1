@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw, Pencil } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw, Pencil, Radio, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
   getCoachClientPlan, getUserById, getTemplates, createPlan,
-  setPlanVisibility, publishPlanWeek, setPlanTrainingDays,
+  setPlanVisibility, publishPlanWeek, setPlanTrainingDays, getCoachClientSession,
 } from "@/api";
+import { useRealtime } from "@/hooks/useRealtime";
 import { haptic, hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import "./Coach.css";
@@ -97,6 +98,28 @@ export default function CoachClient() {
   const [picking, setPicking] = useState(false);
   const [assignTpl, setAssignTpl] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [liveSession, setLiveSession] = useState(null);
+
+  const refetchLive = useCallback(async () => {
+    if (!coachId || !aid) return;
+    try {
+      const s = await getCoachClientSession(coachId, aid);
+      setLiveSession(s || null);
+    } catch (e) {
+      /* no-op */
+    }
+  }, [coachId, aid]);
+
+  // Real-time: обновляем индикатор «идёт тренировка» вживую
+  const onRtEvent = useCallback((evt) => {
+    const t = evt.type || "";
+    if (t.startsWith("session.")) {
+      const sess = evt.payload?.session;
+      if (sess && Number(sess.athlete_telegram_id) === aid) setLiveSession(sess);
+      else refetchLive();
+    }
+  }, [aid, refetchLive]);
+  useRealtime({ planId: plan?.id || null, enabled: !!plan?.id, onEvent: onRtEvent });
 
   const loadPlan = useCallback(async () => {
     if (!coachId || !aid) return;
@@ -116,7 +139,8 @@ export default function CoachClient() {
 
   useEffect(() => {
     loadPlan();
-  }, [loadPlan]);
+    refetchLive();
+  }, [loadPlan, refetchLive]);
 
   const openPicker = async () => {
     haptic("light");
@@ -251,6 +275,33 @@ export default function CoachClient() {
         </>
       ) : (
         <>
+          {/* Тренировка вживую (real-time наблюдение + co-scribe) */}
+          {(() => {
+            const live = liveSession && liveSession.status === "in_progress";
+            return (
+              <button
+                className={`cl-live-entry ${live ? "is-live" : ""}`}
+                onClick={() => { haptic("medium"); navigate(`/coach/${aid}/live`); }}
+                data-testid="open-live-btn"
+              >
+                <span className="cl-live-entry-left">
+                  {live ? <span className="live-dot" /> : <Radio size={18} />}
+                  <span className="cl-live-entry-text">
+                    <span className="cl-live-entry-title">
+                      {live ? "Идёт тренировка — смотреть" : "Тренировка вживую"}
+                    </span>
+                    <span className="cl-live-entry-sub">
+                      {live
+                        ? (liveSession.title || "Открыть живой просмотр")
+                        : "Наблюдать и заполнять в реальном времени"}
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight size={20} className="client-chevron" />
+              </button>
+            );
+          })()}
+
           {/* Видимость плана */}
           <div className="coach-block" data-testid="visibility-block">
             <div className="coach-block-head">

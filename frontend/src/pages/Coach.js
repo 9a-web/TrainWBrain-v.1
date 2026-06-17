@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Copy, Link2, Users, Activity, ChevronRight, Dumbbell } from "lucide-react";
+import { ArrowLeft, Copy, Link2, Users, ChevronRight, Dumbbell } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import { getCoachClients, coachInvite } from "@/api";
@@ -113,12 +113,17 @@ export default function Coach() {
             const a = c.athlete || {};
             const last = fmtDate(c.last_workout_at);
             return (
-              <button
+              <div
                 key={a.telegram_id}
                 className="client-card"
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   haptic("light");
                   navigate(`/coach/${a.telegram_id}`);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") navigate(`/coach/${a.telegram_id}`);
                 }}
                 data-testid={`client-card-${a.telegram_id}`}
               >
@@ -127,8 +132,18 @@ export default function Coach() {
                   <div className="client-name-row">
                     <span className="client-name">{a.first_name || "Спортсмен"}</span>
                     {c.is_training_now ? (
-                      <span className="client-live" data-testid="client-live">
-                        <Activity size={12} /> тренируется
+                      <span
+                        className="client-live client-live-btn"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          haptic("medium");
+                          navigate(`/coach/${a.telegram_id}/live`);
+                        }}
+                        data-testid={`client-live-${a.telegram_id}`}
+                      >
+                        <span className="live-dot" /> смотреть вживую
                       </span>
                     ) : null}
                   </div>
@@ -150,7 +165,7 @@ export default function Coach() {
                   </div>
                 </div>
                 <ChevronRight size={20} className="client-chevron" />
-              </button>
+              </div>
             );
           })}
         </div>
