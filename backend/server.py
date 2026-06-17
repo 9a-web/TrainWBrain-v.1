@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Body, Depends, Header, Cookie, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Body, Depends, Header, Cookie, Response, WebSocket, WebSocketDisconnect, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,6 +6,7 @@ import os
 import logging
 import re
 import copy
+import json
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
@@ -30,6 +31,7 @@ from auth import (
     synthetic_telegram_id, validate_telegram_init_data, parse_telegram_user,
     exchange_emergent_session, exchange_google_code, ensure_auth_indexes,
 )
+from realtime import manager, now_iso as rt_now
 
 
 ROOT_DIR = Path(__file__).parent
@@ -1003,6 +1005,30 @@ async def coach_client_plan(telegram_id: int, athlete_id: int):
     return doc
 
 
+@api_router.get("/coach/{telegram_id}/clients/{athlete_id}/session")
+async def coach_client_session(telegram_id: int, athlete_id: int):
+    """Живая (или последняя) тренировка подопочного для экрана наблюдения тренера.
+
+    Возвращает текущую активную (in_progress) сессию, либо последнюю сессию за
+    сегодня. Если активной/сегодняшней сессии нет — `null` (тренировка не идёт).
+    Coach-gated: 403, если тренер не привязан к спортсмену.
+    """
+    await _assert_coach_of(telegram_id, athlete_id)
+    s = await db.workout_sessions.find_one(
+        {"athlete_telegram_id": athlete_id, "status": "in_progress"},
+        {"_id": 0}, sort=[("created_at", -1)],
+    )
+    if not s:
+        today = datetime.now(timezone.utc).date().isoformat()
+        s = await db.workout_sessions.find_one(
+            {"athlete_telegram_id": athlete_id, "date": today},
+            {"_id": 0}, sort=[("created_at", -1)],
+        )
+    if not s:
+        return None
+    return _serialize_session(s)
+
+
 # ===========================================================================
 # P3 — Видимость плана, публикация недель, тренировочные дни
 # ===========================================================================
@@ -1024,7 +1050,11 @@ async def set_plan_visibility(plan_id: str, payload: VisibilityReq):
     if vis == "published" and not plan.get("published_at"):
         set_fields["published_at"] = now
     await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    await _rt_plan(plan_id, "plan.published", {"visibility": vis})
+    await _notify_user(updated.get("athlete_telegram_id"), "plan.published",
+                       {"plan_id": plan_id, "visibility": vis})
+    return updated
 
 
 @api_router.patch("/plans/{plan_id}/weeks/{week}/publish", response_model=Plan)
@@ -1043,7 +1073,11 @@ async def publish_plan_week(plan_id: str, week: int, payload: WeekPublishReq):
         {"id": plan_id},
         {"$set": {"weeks": weeks, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    await _rt_plan(plan_id, "week.published", {"week_index": week, "published": bool(payload.published)})
+    await _notify_user(updated.get("athlete_telegram_id"), "week.published",
+                       {"plan_id": plan_id, "week_index": week, "published": bool(payload.published)})
+    return updated
 
 
 @api_router.patch("/plans/{plan_id}/training-days", response_model=Plan)
@@ -1059,7 +1093,11 @@ async def set_plan_training_days(plan_id: str, payload: TrainingDaysReq):
     if norm:
         set_fields["weeks"] = _remap_week_days(plan.get("weeks") or [], norm)
     await db.plans.update_one({"id": plan_id}, {"$set": set_fields})
-    return await _get_plan_or_404(plan_id)
+    updated = await _get_plan_or_404(plan_id)
+    await _rt_plan(plan_id, "training_days.updated", {"training_days": norm})
+    await _notify_user(updated.get("athlete_telegram_id"), "training_days.updated",
+                       {"plan_id": plan_id, "training_days": norm})
+    return updated
 
 
 # ===========================================================================
@@ -1348,6 +1386,10 @@ def _view_exercise(pe, orm, order, status="pending"):
         "edited": pe.get("edited", False),
         "lift_group": pe.get("lift_group"),
         "is_accessory": is_acc,
+        "filled_by": None,
+        "coach_confirmed": False,
+        "confirmed_by": None,
+        "confirmed_at": None,
     }
 
 
@@ -1408,6 +1450,74 @@ def _serialize_session(session):
     out.pop("_id", None)
     out["stats"] = _session_stats(session)
     return out
+
+
+# ===========================================================================
+# P4 — Real-time helpers (persist-then-broadcast)
+# ===========================================================================
+async def _can_access_plan(tgid: int, plan_id: str) -> bool:
+    """Имеет ли пользователь доступ к комнате плана: владелец-спортсмен,
+    привязанный тренер или указанный coach_telegram_id плана."""
+    plan = await db.plans.find_one(
+        {"id": plan_id},
+        {"_id": 0, "athlete_telegram_id": 1, "coach_telegram_id": 1},
+    )
+    if not plan:
+        return False
+    athlete = plan.get("athlete_telegram_id")
+    if athlete == tgid or plan.get("coach_telegram_id") == tgid:
+        return True
+    link = await db.coach_links.find_one(
+        {"coach_telegram_id": tgid, "athlete_telegram_id": athlete, "status": "active"},
+        {"_id": 0},
+    )
+    return bool(link)
+
+
+async def _rt_session(plan_id: Optional[str], event_type: str, session: dict):
+    """Broadcast события сессии в комнату плана. Payload содержит готовый
+    снимок сессии — клиент применяет его без дополнительного REST-запроса."""
+    if not plan_id:
+        return
+    try:
+        await manager.broadcast(
+            f"plan:{plan_id}",
+            event_type,
+            {"session_id": session.get("id"), "plan_id": plan_id, "session": _serialize_session(session)},
+        )
+    except Exception as e:
+        logger.warning(f"rt_session broadcast failed: {e}")
+
+
+async def _rt_plan(plan_id: Optional[str], event_type: str, extra: Optional[dict] = None):
+    """Broadcast события плана (видимость/недели/дни) в комнату плана."""
+    if not plan_id:
+        return
+    try:
+        payload = {"plan_id": plan_id}
+        if extra:
+            payload.update(extra)
+        await manager.broadcast(f"plan:{plan_id}", event_type, payload)
+    except Exception as e:
+        logger.warning(f"rt_plan broadcast failed: {e}")
+
+
+async def _notify_user(telegram_id: Optional[int], event_type: str, payload: dict):
+    """Личное уведомление пользователю (комната user:{telegram_id})."""
+    if telegram_id is None:
+        return
+    try:
+        await manager.broadcast(f"user:{telegram_id}", event_type, payload)
+    except Exception as e:
+        logger.warning(f"notify_user broadcast failed: {e}")
+
+
+async def _touch_session_event(session_id: str) -> str:
+    ts = datetime.now(timezone.utc).isoformat()
+    await db.workout_sessions.update_one(
+        {"id": session_id}, {"$set": {"last_event_at": ts}}
+    )
+    return ts
 
 
 # ---- День плана (превью перед стартом) ----
@@ -1543,10 +1653,19 @@ async def start_session(req: SessionStartReq):
         "status": "in_progress", "paused": False,
         "started_at": now, "finished_at": None,
         "exercises": _build_session_exercises(day_obj, orm),
+        "coach_confirmed": False, "confirmed_by": None, "confirmed_at": None,
+        "last_event_at": now,
         "created_at": now, "updated_at": now,
     }
     await db.workout_sessions.insert_one(dict(session))
     logger.info(f"Session started: {session['id']} plan={req.plan_id} day={req.day}")
+    # Real-time: оповестить комнату плана и лично тренера
+    await _rt_session(req.plan_id, "session.started", session)
+    await _notify_user(plan.get("coach_telegram_id"), "session.started", {
+        "session_id": session["id"], "plan_id": req.plan_id,
+        "athlete_telegram_id": req.athlete_telegram_id,
+        "week_index": req.week, "day_index": req.day, "title": session["title"],
+    })
     return _serialize_session(session)
 
 
@@ -1570,10 +1689,27 @@ async def get_session(session_id: str):
 
 
 @api_router.patch("/sessions/{session_id}/exercise/{order}")
-async def update_session_exercise(session_id: str, order: int, action: str):
+async def update_session_exercise(
+    session_id: str,
+    order: int,
+    action: str,
+    actor: str = "athlete",
+    by: Optional[int] = None,
+):
+    """Отметка упражнения (done/skip/reset).
+
+    actor: "athlete" (по умолчанию) или "coach" — кто отмечает. Если actor=="coach",
+    проверяем, что `by` (telegram_id тренера) действительно тренер этого спортсмена.
+    Заполняется поле `filled_by` для real-time co-scribe.
+    """
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    if actor == "coach":
+        if by is None:
+            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+        await _assert_coach_of(by, s["athlete_telegram_id"])
 
     exs = s["exercises"]
     target = next((e for e in exs if e["order"] == order), None)
@@ -1582,10 +1718,17 @@ async def update_session_exercise(session_id: str, order: int, action: str):
 
     if action == "done":
         target["status"] = "done"
+        target["filled_by"] = actor
     elif action == "skip":
         target["status"] = "skipped"
+        target["filled_by"] = actor
     elif action == "reset":
         target["status"] = "pending"
+        target["filled_by"] = None
+        # Сброс отметки снимает и подтверждение тренера
+        target["coach_confirmed"] = False
+        target["confirmed_by"] = None
+        target["confirmed_at"] = None
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
@@ -1598,26 +1741,51 @@ async def update_session_exercise(session_id: str, order: int, action: str):
     now = datetime.now(timezone.utc).isoformat()
     status = s.get("status", "in_progress")
     finished_at = s.get("finished_at")
+    just_finished = False
     if exs and all(e["status"] in ("done", "skipped") for e in exs):
+        if status != "finished":
+            just_finished = True
         status = "finished"
         finished_at = finished_at or now
 
     await db.workout_sessions.update_one(
         {"id": session_id},
-        {"$set": {"exercises": exs, "status": status, "finished_at": finished_at, "updated_at": now}},
+        {"$set": {"exercises": exs, "status": status, "finished_at": finished_at,
+                  "updated_at": now, "last_event_at": now}},
     )
     s["exercises"] = exs
     s["status"] = status
     s["finished_at"] = finished_at
+    s["last_event_at"] = now
+    # Real-time broadcast: либо обновление, либо завершение
+    await _rt_session(s.get("plan_id"), "session.finished" if just_finished else "session.updated", s)
+    if just_finished:
+        await _notify_user(s.get("coach_telegram_id"), "session.finished", {
+            "session_id": s["id"], "plan_id": s.get("plan_id"),
+            "athlete_telegram_id": s["athlete_telegram_id"],
+        })
     return _serialize_session(s)
 
 
 @api_router.patch("/sessions/{session_id}/exercise/{order}/edit")
-async def edit_session_exercise(session_id: str, order: int, payload: dict = Body(...)):
-    """Редактирование упражнения сессии (кнопка ✨): имя и/или схема подходов."""
+async def edit_session_exercise(
+    session_id: str,
+    order: int,
+    payload: dict = Body(...),
+    actor: str = "athlete",
+    by: Optional[int] = None,
+):
+    """Редактирование упражнения сессии (кнопка ✨): имя и/или схема подходов.
+
+    actor: "athlete" | "coach". Тренер (actor=="coach", by=telegram_id тренера)
+    может править упражнение подопечного в реальном времени (co-scribe)."""
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    if actor == "coach":
+        if by is None:
+            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+        await _assert_coach_of(by, s["athlete_telegram_id"])
     plan = await db.plans.find_one({"id": s["plan_id"]}, {"_id": 0})
     orm = (plan or {}).get("one_rep_max") or {}
 
@@ -1669,9 +1837,11 @@ async def edit_session_exercise(session_id: str, order: int, payload: dict = Bod
 
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
-        {"id": session_id}, {"$set": {"exercises": exs, "updated_at": now}}
+        {"id": session_id}, {"$set": {"exercises": exs, "updated_at": now, "last_event_at": now}}
     )
     s["exercises"] = exs
+    s["last_event_at"] = now
+    await _rt_session(s.get("plan_id"), "session.updated", s)
     return _serialize_session(s)
 
 
@@ -1684,10 +1854,16 @@ async def finish_session(session_id: str):
     finished_at = s.get("finished_at") or now
     await db.workout_sessions.update_one(
         {"id": session_id},
-        {"$set": {"status": "finished", "finished_at": finished_at, "updated_at": now}},
+        {"$set": {"status": "finished", "finished_at": finished_at, "updated_at": now, "last_event_at": now}},
     )
     s["status"] = "finished"
     s["finished_at"] = finished_at
+    s["last_event_at"] = now
+    await _rt_session(s.get("plan_id"), "session.finished", s)
+    await _notify_user(s.get("coach_telegram_id"), "session.finished", {
+        "session_id": s["id"], "plan_id": s.get("plan_id"),
+        "athlete_telegram_id": s["athlete_telegram_id"],
+    })
     return _serialize_session(s)
 
 
@@ -1698,9 +1874,11 @@ async def pause_session(session_id: str, resume: bool = False):
         raise HTTPException(status_code=404, detail="Session not found")
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
-        {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now}}
+        {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now, "last_event_at": now}}
     )
     s["paused"] = (not resume)
+    s["last_event_at"] = now
+    await _rt_session(s.get("plan_id"), "session.updated", s)
     return _serialize_session(s)
 
 
@@ -1730,6 +1908,47 @@ async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(def
     s["coach_confirmed"] = True
     s["confirmed_by"] = coach_tgid
     s["confirmed_at"] = now
+    s["last_event_at"] = now
+    await db.workout_sessions.update_one({"id": session_id}, {"$set": {"last_event_at": now}})
+    await _rt_session(s.get("plan_id"), "session.confirmed", s)
+    await _notify_user(s.get("athlete_telegram_id"), "session.confirmed", {
+        "session_id": s["id"], "plan_id": s.get("plan_id"),
+    })
+    return _serialize_session(s)
+
+
+@api_router.patch("/sessions/{session_id}/exercise/{order}/confirm")
+async def confirm_session_exercise(
+    session_id: str, order: int, payload: SessionConfirmReq = Body(default=None)
+):
+    """Тренер подтверждает выполнение отдельного упражнения подопечного."""
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    coach_tgid = payload.coach_telegram_id if payload else None
+    if coach_tgid is None:
+        raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
+    await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
+
+    exs = s["exercises"]
+    target = next((e for e in exs if e["order"] == order), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Переключатель: повторное подтверждение снимает отметку тренера
+    new_state = not bool(target.get("coach_confirmed"))
+    target["coach_confirmed"] = new_state
+    target["confirmed_by"] = coach_tgid if new_state else None
+    target["confirmed_at"] = now if new_state else None
+
+    await db.workout_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"exercises": exs, "updated_at": now, "last_event_at": now}},
+    )
+    s["exercises"] = exs
+    s["last_event_at"] = now
+    await _rt_session(s.get("plan_id"), "session.updated", s)
     return _serialize_session(s)
 
 
@@ -1767,6 +1986,100 @@ async def get_athlete_stats(telegram_id: int):
 
 # Include the router in the main app
 app.include_router(api_router)
+
+
+# ===========================================================================
+# P4 — WebSocket endpoint (/api/ws). Префикс /api обязателен для ingress.
+# ===========================================================================
+async def _authenticate_ws_token(token: Optional[str]) -> Optional[dict]:
+    """Валидация session-token (как Bearer) для WebSocket-хендшейка."""
+    if not token:
+        return None
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        return None
+    exp = sess.get("expires_at")
+    if isinstance(exp, str):
+        try:
+            exp = datetime.fromisoformat(exp)
+        except Exception:
+            exp = None
+    if exp and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp and exp < datetime.now(timezone.utc):
+        return None
+    return await db.users.find_one(
+        {"telegram_id": sess["telegram_id"]}, {"_id": 0, "password_hash": 0}
+    )
+
+
+@app.websocket("/api/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: Optional[str] = Query(default=None),
+    init_data: Optional[str] = Query(default=None),
+):
+    # 1. Аутентификация: session-token (web/PWA/Telegram) или Telegram initData
+    user = await _authenticate_ws_token(token)
+    if not user and init_data:
+        parsed = validate_telegram_init_data(init_data, TELEGRAM_BOT_TOKEN)
+        if parsed:
+            tu = parse_telegram_user(parsed)
+            if tu and tu.get("id"):
+                user = await db.users.find_one(
+                    {"telegram_id": tu["id"]}, {"_id": 0, "password_hash": 0}
+                )
+    if not user:
+        await websocket.close(code=4401)  # 4401 — неавторизован
+        return
+
+    await websocket.accept()
+    tgid = user["telegram_id"]
+    name = user.get("first_name") or "Пользователь"
+    await manager.register(websocket, tgid, name)
+    await manager.join(websocket, f"user:{tgid}")
+    await manager.send_personal(websocket, {
+        "type": "connected", "room": f"user:{tgid}",
+        "payload": {"telegram_id": tgid, "name": name}, "ts": rt_now(),
+    })
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except Exception:
+                continue
+            mtype = msg.get("type")
+            if mtype == "ping":
+                await manager.send_personal(websocket, {"type": "pong", "ts": rt_now()})
+            elif mtype == "subscribe":
+                plan_id = msg.get("plan_id")
+                if plan_id and await _can_access_plan(tgid, plan_id):
+                    room = f"plan:{plan_id}"
+                    await manager.join(websocket, room)
+                    online = manager.presence(room)
+                    await manager.send_personal(websocket, {
+                        "type": "presence", "room": room,
+                        "payload": {"online": online}, "ts": rt_now(),
+                    })
+                    await manager.broadcast(room, "presence", {"online": online}, exclude=websocket)
+            elif mtype == "unsubscribe":
+                plan_id = msg.get("plan_id")
+                if plan_id:
+                    room = f"plan:{plan_id}"
+                    await manager.leave(websocket, room)
+                    await manager.broadcast(room, "presence", {"online": manager.presence(room)})
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"websocket loop error: {e}")
+    finally:
+        rooms = await manager.disconnect(websocket)
+        for room in rooms:
+            if room.startswith("plan:"):
+                await manager.broadcast(room, "presence", {"online": manager.presence(room)})
+
 
 app.add_middleware(
     CORSMiddleware,
