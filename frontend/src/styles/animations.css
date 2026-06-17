@@ -115,7 +115,6 @@
   transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 .login-btn-primary:hover,
-.launch-button:hover:not(:disabled),
 .no-plan-button:hover,
 .program-card-button:hover:not(:disabled),
 .confirm-btn-ok:hover,
@@ -126,10 +125,7 @@
   box-shadow: 0 10px 26px rgba(255, 107, 0, 0.35);
 }
 
-/* "Начать" button — green glow on hover (#24FF7F) */
-.launch-button:hover:not(:disabled) {
-  box-shadow: 0 10px 28px rgba(36, 255, 127, 0.5);
-}
+/* Кнопка «Начать» — без свечения при наведении (есть свой мягкий ховер в DateSelector.css) */
 
 /* ---------- Header avatar: inviting hover ---------- */
 .profile-avatar {
