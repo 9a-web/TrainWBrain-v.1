@@ -344,15 +344,11 @@ const DateSelector = () => {
     }
   }, [refreshProgress, reloadPlan]);
 
-  const { online: rtOnline } = useRealtime({
+  useRealtime({
     planId: plan?.id || null,
     enabled: !!plan?.id,
     onEvent: onRtEvent,
   });
-  // Тренер на связи, если в комнате плана есть кто-то кроме самого спортсмена
-  const coachWatching = (rtOnline || []).some(
-    (o) => Number(o.telegram_id) !== Number(user?.telegram_id)
-  );
 
   // Загрузка активной сессии выбранного дня
   useEffect(() => {
@@ -655,14 +651,6 @@ const DateSelector = () => {
       {plan && !isDraft && isRestSelected ? (
         <div className="rest-day-note" data-testid="rest-day-note">
           День отдыха — восстановление 💤
-        </div>
-      ) : null}
-
-      {/* Тренер на связи (real-time) */}
-      {plan && !isDraft && !isRestSelected && session && coachWatching ? (
-        <div className="coach-watching" data-testid="coach-watching">
-          <span className="coach-watching-dot" />
-          Тренер на связи и видит вашу тренировку
         </div>
       ) : null}
 

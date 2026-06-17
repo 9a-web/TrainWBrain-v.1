@@ -621,6 +621,11 @@
   box-shadow: inset 3px 0 0 0 #3BD16F;
 }
 
+/* Зелёная полоска слева у выполненного упражнения (кем бы ни было отмечено) */
+.ex-card-done {
+  box-shadow: inset 4px 0 0 0 #3BD16F;
+}
+
 /* Панель действий тренера */
 .ex-actions-coach {
   flex-wrap: wrap;

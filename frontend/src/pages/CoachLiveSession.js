@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Wifi, WifiOff, CheckCircle2, Dumbbell, Radio } from "lucide-react";
+import { ArrowLeft, Wifi, WifiOff, CheckCircle2, Dumbbell, Radio, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
   getUserById, getCoachClientPlan, getCoachClientSession,
-  sessionExerciseAction, editSessionExercise, confirmSessionExercise, confirmSession,
+  sessionExerciseAction, editSessionExercise, finishSession,
 } from "@/api";
 import WorkoutView from "@/components/WorkoutView";
 import { useRealtime } from "@/hooks/useRealtime";
@@ -176,27 +176,16 @@ export default function CoachLiveSession() {
     }
   };
 
-  const handleConfirmExercise = async (order) => {
-    if (!session) return;
-    haptic("medium");
-    try {
-      const s = await confirmSessionExercise(session.id, order, coachId);
-      setSession(s);
-    } catch (e) {
-      toast.error("Не удалось подтвердить упражнение");
-    }
-  };
-
-  const handleConfirmSession = async () => {
+  const handleFinishSession = async () => {
     if (!session) return;
     setBusy(true);
     try {
-      const s = await confirmSession(session.id, coachId);
+      const s = await finishSession(session.id);
       setSession(s);
       hapticNotify("success");
-      toast.success("Тренировка подтверждена");
+      toast.success("Тренировка завершена");
     } catch (e) {
-      toast.error("Не удалось подтвердить тренировку");
+      toast.error("Не удалось завершить тренировку");
     } finally {
       setBusy(false);
     }
@@ -268,20 +257,20 @@ export default function CoachLiveSession() {
         </div>
       ) : (
         <>
-          {/* Подтверждение всей тренировки */}
+          {/* Завершение тренировки */}
           <div className="cl-confirm-bar" data-testid="cl-confirm-bar">
-            {session.coach_confirmed ? (
-              <div className="cl-confirmed" data-testid="cl-confirmed">
-                <CheckCircle2 size={18} /> Тренировка подтверждена
+            {isFinished ? (
+              <div className="cl-confirmed" data-testid="cl-finished">
+                <CheckCircle2 size={18} /> Тренировка завершена
               </div>
             ) : (
               <button
                 className="coach-primary-btn"
-                onClick={handleConfirmSession}
+                onClick={handleFinishSession}
                 disabled={busy}
-                data-testid="cl-confirm-session-btn"
+                data-testid="cl-finish-session-btn"
               >
-                <CheckCircle2 size={16} /> Подтвердить тренировку
+                <Square size={16} /> Завершить тренировку
               </button>
             )}
           </div>
@@ -293,7 +282,6 @@ export default function CoachLiveSession() {
             paused={!!session.paused}
             onAction={handleAction}
             onEditSave={handleEditSave}
-            onConfirm={handleConfirmExercise}
             forecastBySlug={forecastBySlug}
             currentWeek={session.week_index}
             planSetsByOrder={planSetsByOrder}

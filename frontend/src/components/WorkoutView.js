@@ -162,7 +162,7 @@ const PlanRows = ({ sets, planSets }) => (
 );
 
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onConfirm, mode = "athlete", forecast, currentWeek, planSets }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", forecast, currentWeek, planSets }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
@@ -176,7 +176,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onConfirm, mode = "athl
   const showActions = !isCoach && (isActive || (isAcc && !isPreview && ex.status === "pending"));
 
   return (
-    <div className={`ex-card ${isActive ? "ex-card-active" : ""} ${ex.coach_confirmed ? "ex-card-confirmed" : ""}`} data-testid={`exercise-card-${ex.order}`}>
+    <div className={`ex-card ${isActive ? "ex-card-active" : ""} ${ex.status === "done" ? "ex-card-done" : ""}`} data-testid={`exercise-card-${ex.order}`}>
       <button type="button" className="ex-head" onClick={() => setOpen((o) => !o)}>
         <div className="ex-head-left">
           <span className="ex-name">{ex.exercise_name}</span>
@@ -187,11 +187,6 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onConfirm, mode = "athl
             {ex.filled_by === "coach" ? (
               <span className="ex-by-flag" title="Отметил тренер" data-testid={`filled-coach-${ex.order}`}>
                 <UserCog size={12} /> тренер
-              </span>
-            ) : null}
-            {ex.coach_confirmed ? (
-              <span className="ex-confirmed-flag" title="Подтверждено тренером" data-testid={`confirmed-flag-${ex.order}`}>
-                <CheckCircle2 size={12} /> подтв.
               </span>
             ) : null}
             {ex.edited ? (
@@ -279,10 +274,6 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onConfirm, mode = "athl
           <span className="ex-btn ex-btn-magic" role="button" tabIndex={0}
             data-testid={`coach-edit-${ex.order}`} onClick={() => onEdit(ex)} aria-label="Изменить">
             <WandSparkles size={15} />
-          </span>
-          <span className={`ex-btn ex-btn-confirm ${ex.coach_confirmed ? "is-on" : ""}`} role="button" tabIndex={0}
-            data-testid={`coach-confirm-${ex.order}`} onClick={() => onConfirm && onConfirm(ex.order)}>
-            <CheckCircle2 size={15} /> {ex.coach_confirmed ? "Подтверждено" : "Подтвердить"}
           </span>
         </div>
       ) : null}
@@ -446,7 +437,7 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
 };
 
 // ---------- основной вид тренировки ----------
-const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, onConfirm, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
+const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
   const [now, setNow] = useState(() => Date.now());
   const [editing, setEditing] = useState(null);
   const [accOpen, setAccOpen] = useState(false);
@@ -521,7 +512,6 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
             mode={mode}
             onAction={onAction}
             onEdit={(e) => setEditing(e)}
-            onConfirm={onConfirm}
             forecast={forecastBySlug[ex.exercise_slug]}
             currentWeek={currentWeek}
             planSets={planSetsByOrder[ex.order]}
@@ -555,7 +545,6 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
                   mode={mode}
                   onAction={onAction}
                   onEdit={(e) => setEditing(e)}
-                  onConfirm={onConfirm}
                   planSets={planSetsByOrder[ex.order]}
                 />
               ))}
