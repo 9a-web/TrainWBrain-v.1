@@ -21,9 +21,10 @@
 - **username**: `testtg`
 
 ## URLs
-- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://trainbrain-2.preview.emergentagent.com`
+- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://c76fc4a8-6957-4dda-a785-3be43face2d7.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
-- `frontend/.env` → `REACT_APP_BACKEND_URL=https://trainbrain-2.preview.emergentagent.com` (задан пользователем; ранее в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
+- `frontend/.env` → `REACT_APP_BACKEND_URL=https://c76fc4a8-6957-4dda-a785-3be43face2d7.preview.emergentagent.com` (обновлён под текущий контейнер; в склонированном репо был устаревший `avatar-loader-1`, ещё раньше — `trainbrain-2`). Менять не нужно.
+- ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
 
 ## Cross-platform (реализовано)
 - Website-first + Telegram WebApp (telegram-web-app.js) + PWA (manifest + service-worker + иконки).
