@@ -8,6 +8,7 @@ import {
   setPlanVisibility, publishPlanWeek, setPlanTrainingDays, getCoachClientSession,
 } from "@/api";
 import { useRealtime } from "@/hooks/useRealtime";
+import Portal from "@/components/Portal";
 import { haptic, hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import "./Coach.css";
@@ -45,6 +46,7 @@ function AssignModal({ tpl, onClose, onSubmit, submitting }) {
   };
 
   return (
+    <Portal>
     <div className="cfg-overlay" onClick={onClose} data-testid="assign-config-modal">
       <div className="cfg-modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="cfg-title">{tpl.name}</h3>
@@ -80,6 +82,7 @@ function AssignModal({ tpl, onClose, onSubmit, submitting }) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -226,6 +229,11 @@ export default function CoachClient() {
     }
   };
 
+  const editWeek = (weekIndex) => {
+    haptic("light");
+    navigate(`/coach/${aid}/edit`, { state: { week: weekIndex } });
+  };
+
   const athleteName = athlete?.first_name || "Спортсмен";
   const isPublished = plan?.visibility === "published";
 
@@ -347,7 +355,7 @@ export default function CoachClient() {
           {/* Недели плана */}
           <div className="coach-block" data-testid="weeks-block">
             <div className="coach-block-title">Недели плана</div>
-            <div className="coach-block-sub">Открывайте недели спортсмену по одной</div>
+            <div className="coach-block-sub">Нажмите на неделю, чтобы изменить тренировки. Глаз — открыть/скрыть неделю спортсмену.</div>
             <div className="weeks-list">
               {[...(plan.weeks || [])]
                 .sort((a, b) => (a.week_index || 0) - (b.week_index || 0))
@@ -355,19 +363,30 @@ export default function CoachClient() {
                   const wkPublished = wk.published !== false;
                   const workoutDays = (wk.days || []).filter((d) => !d.is_rest).length;
                   return (
-                    <div className="week-row" key={wk.week_index} data-testid={`week-row-${wk.week_index}`}>
+                    <div
+                      className="week-row week-row-click"
+                      key={wk.week_index}
+                      data-testid={`week-row-${wk.week_index}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => editWeek(wk.week_index)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") editWeek(wk.week_index); }}
+                    >
                       <div className="week-info">
                         <span className="week-name">Неделя {wk.week_index}</span>
                         <span className="week-days">{workoutDays} трен.</span>
                       </div>
-                      <button
-                        className={`week-toggle ${wkPublished ? "on" : "off"}`}
-                        onClick={() => toggleWeek(wk)}
-                        data-testid={`week-toggle-${wk.week_index}`}
-                        aria-pressed={wkPublished}
-                      >
-                        {wkPublished ? (<><Eye size={14} /> видна</>) : (<><EyeOff size={14} /> скрыта</>)}
-                      </button>
+                      <div className="week-row-right">
+                        <button
+                          className={`week-toggle ${wkPublished ? "on" : "off"}`}
+                          onClick={(e) => { e.stopPropagation(); toggleWeek(wk); }}
+                          data-testid={`week-toggle-${wk.week_index}`}
+                          aria-pressed={wkPublished}
+                        >
+                          {wkPublished ? (<><Eye size={14} /> видна</>) : (<><EyeOff size={14} /> скрыта</>)}
+                        </button>
+                        <Pencil size={15} className="week-edit-ico" aria-hidden="true" />
+                      </div>
                     </div>
                   );
                 })}
@@ -379,7 +398,7 @@ export default function CoachClient() {
             onClick={() => navigate(`/coach/${aid}/edit`)}
             data-testid="edit-plan-btn"
           >
-            <Pencil size={16} /> Редактировать план
+            <Pencil size={16} /> Редактировать весь план
           </button>
 
           <button className="coach-text-btn" onClick={openPicker} data-testid="reassign-btn">

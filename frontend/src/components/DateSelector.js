@@ -9,6 +9,7 @@ import {
   editSessionExercise, finishSession, pauseSession,
 } from '@/api';
 import WorkoutView from '@/components/WorkoutView';
+import Portal from '@/components/Portal';
 import { haptic, hapticNotify, hapticSelection } from '@/lib/platform';
 import { useMainButton } from '@/hooks/useTelegramUI';
 import { useRealtime } from '@/hooks/useRealtime';
@@ -670,6 +671,7 @@ const DateSelector = () => {
 
       {/* Подтверждение старта тренировки не на сегодня */}
       {confirmStartOpen ? (
+        <Portal>
         <div className="confirm-overlay" onClick={() => setConfirmStartOpen(false)} data-testid="confirm-start-modal">
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="confirm-title">Тренировка не на сегодня</h3>
@@ -686,9 +688,11 @@ const DateSelector = () => {
             </div>
           </div>
         </div>
+        </Portal>
       ) : null}
       {/* Модалка «План» — выбор любой недели */}
       {weekPickerOpen ? (
+        <Portal>
         <div className="confirm-overlay" onClick={() => setWeekPickerOpen(false)} data-testid="week-picker-modal">
           <div className="confirm-modal week-picker" onClick={(e) => e.stopPropagation()}>
             <h3 className="confirm-title">Выберите неделю</h3>
@@ -720,6 +724,7 @@ const DateSelector = () => {
             </div>
           </div>
         </div>
+        </Portal>
       ) : null}
     </div>
   );

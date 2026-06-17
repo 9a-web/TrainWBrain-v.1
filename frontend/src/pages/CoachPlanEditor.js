@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   ArrowLeft, Plus, Trash2, Pencil, X, Check, CalendarPlus, Dumbbell,
 } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   updatePlanMeta, upsertPlanDay, deletePlanDay,
   upsertPlanExercise, deletePlanExercise, addPlanWeek, deletePlanWeek,
 } from "@/api";
+import Portal from "@/components/Portal";
 import { haptic, hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import "./Coach.css";
@@ -102,6 +103,7 @@ function ExerciseModal({ initial, onClose, onSave, saving }) {
   };
 
   return (
+    <Portal>
     <div className="cfg-overlay" onClick={onClose} data-testid="exercise-modal">
       <div className="cfg-modal ed-modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="cfg-title">{ex.exercise_name ? "Изменить упражнение" : "Новое упражнение"}</h3>
@@ -172,6 +174,7 @@ function ExerciseModal({ initial, onClose, onSave, saving }) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -188,6 +191,7 @@ function DayModal({ mode, used, initial, onClose, onSave, saving }) {
   };
 
   return (
+    <Portal>
     <div className="cfg-overlay" onClick={onClose} data-testid="day-modal">
       <div className="cfg-modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="cfg-title">{isEdit ? "Изменить день" : "Новый день"}</h3>
@@ -234,6 +238,7 @@ function DayModal({ mode, used, initial, onClose, onSave, saving }) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -244,12 +249,14 @@ export default function CoachPlanEditor() {
   const { user } = useUser();
   const coachId = user?.telegram_id;
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedWeek = location.state?.week;  // открыть редактор сразу на этой неделе
   useBackButton(true, () => navigate(`/coach/${aid}`));
 
   const [athlete, setAthlete] = useState(null);
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [selectedWeek, setSelectedWeek] = useState(requestedWeek || 1);
   const [saving, setSaving] = useState(false);
 
   const [exModal, setExModal] = useState(null); // {week, day, order|null, data}
@@ -268,11 +275,15 @@ export default function CoachPlanEditor() {
         return null;
       });
       setPlan(p);
-      if (p) setSelectedWeek((w) => Math.min(Math.max(1, w), (p.weeks || []).length || 1));
+      if (p) {
+        const total = (p.weeks || []).length || 1;
+        const want = requestedWeek || selectedWeek;
+        setSelectedWeek(Math.min(Math.max(1, want), total));
+      }
     } finally {
       setLoading(false);
     }
-  }, [coachId, aid]);
+  }, [coachId, aid, requestedWeek]);
 
   useEffect(() => {
     load();

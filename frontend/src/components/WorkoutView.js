@@ -3,6 +3,7 @@ import {
   Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers, RotateCcw, UserCog,
 } from "lucide-react";
 import "./WorkoutView.css";
+import Portal from "./Portal";
 
 // ---------- helpers ----------
 export const fmtWeight = (w) => {
@@ -370,6 +371,7 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
   };
 
   return (
+    <Portal>
     <div className="edit-overlay" onClick={onClose} data-testid="edit-modal">
       <div className="edit-modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="edit-title">Изменить упражнение</h3>
@@ -433,6 +435,7 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
         </div>
       </div>
     </div>
+    </Portal>
   );
 };
 
