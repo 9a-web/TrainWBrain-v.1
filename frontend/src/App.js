@@ -22,6 +22,7 @@ import CoachClient from "@/pages/CoachClient";
 import CoachPlanEditor from "@/pages/CoachPlanEditor";
 import CoachLiveSession from "@/pages/CoachLiveSession";
 import { StatsPage, CoachClientStatsPage } from "@/pages/Stats";
+import StreakPage from "@/pages/Streak";
 import { ChevronRight } from "lucide-react";
 
 const pluralize = (n, forms) => {
@@ -131,13 +132,13 @@ const Home = () => {
             />
           </div>
           
-          {/* Training Streak — ведёт к подробной статистике */}
+          {/* Training Streak — ведёт к экрану тренировочной серии */}
           <button
             type="button"
             className="streak-row streak-row-link"
             data-testid="streak-row"
-            onClick={() => navigate("/stats")}
-            aria-label="Открыть статистику"
+            onClick={() => navigate("/streak")}
+            aria-label="Открыть тренировочную серию"
           >
             <img 
               src="/fire_strike.svg" 
@@ -202,6 +203,7 @@ const AppShell = () => {
         <Route path="/programs" element={<Programs />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/stats" element={<StatsPage />} />
+        <Route path="/streak" element={<StreakPage />} />
         <Route path="/coach" element={<Coach />} />
         <Route path="/coach/:athleteId" element={<CoachClient />} />
         <Route path="/coach/:athleteId/live" element={<CoachLiveSession />} />

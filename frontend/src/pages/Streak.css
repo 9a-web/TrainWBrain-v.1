@@ -1,0 +1,306 @@
+/* =========================================================================
+   TrainWithBrain — экран тренировочной серии (streak). Тёмная тема.
+   ========================================================================= */
+.sk-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #1c1c1c;
+  padding: 0 20px 40px;
+  animation: twb-fade-in 0.4s ease both;
+}
+@media (min-width: 768px) {
+  .sk-page { max-width: 560px; margin-left: auto; margin-right: auto; }
+}
+
+.sk-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0 12px;
+}
+.sk-back {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  background: #2b2b2b;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.15s ease;
+}
+.sk-back:hover { background: #333; }
+.sk-title {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sk-loading { display: flex; justify-content: center; padding: 80px 0; }
+.sk-spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #ff8a24;
+  animation: stats-spin 0.8s linear infinite;
+}
+
+/* ---------- Hero ---------- */
+.sk-hero {
+  position: relative;
+  background: radial-gradient(120% 120% at 50% 0%, #2f2a22 0%, #232323 55%);
+  border: 1px solid rgba(255, 138, 36, 0.18);
+  border-radius: 24px;
+  padding: 26px 20px 22px;
+  text-align: center;
+  overflow: hidden;
+  margin-bottom: 14px;
+  animation: twb-scale-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.sk-hero-glow {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(255, 138, 36, 0.35), transparent 70%);
+  filter: blur(20px);
+  pointer-events: none;
+}
+.sk-flame {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+}
+.sk-flame.lit {
+  color: #ff8a24;
+  background: rgba(255, 138, 36, 0.14);
+  box-shadow: 0 0 0 6px rgba(255, 138, 36, 0.08);
+  animation: twb-flicker 3.2s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+.sk-num {
+  position: relative;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1px;
+  background: linear-gradient(-20deg, #ff8a24, #ffda24);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.sk-num-label {
+  position: relative;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 2px;
+}
+.sk-substats {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+.sk-sub {
+  flex: 1;
+  max-width: 120px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.sk-sub svg { color: rgba(255, 255, 255, 0.45); margin-bottom: 2px; }
+.sk-sub b { font-size: 17px; font-weight: 700; color: #fff; }
+.sk-sub span { font-size: 11px; }
+
+/* ---------- Card ---------- */
+.sk-card {
+  background: #232323;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 16px;
+  margin-bottom: 14px;
+  animation: twb-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.sk-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.sk-card-title { font-size: 15px; font-weight: 700; color: #fff; }
+.sk-card-hint { font-size: 12px; color: rgba(255, 255, 255, 0.42); }
+
+/* ---------- Week tracker ---------- */
+.sk-week {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+.sk-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.sk-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sk-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  color: #1c1c1c;
+  transition: transform 0.15s ease;
+}
+.sk-circle.is-done {
+  background: linear-gradient(-34deg, #ff8a24, #ffda24);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(255, 138, 36, 0.3);
+}
+.sk-circle.is-today {
+  border-color: #ff8a24;
+  border-width: 2px;
+}
+.sk-circle.is-future { border-style: dashed; border-color: rgba(255, 255, 255, 0.1); }
+.sk-circle.is-miss { background: rgba(255, 255, 255, 0.03); }
+.sk-today-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff8a24;
+}
+
+/* Награда (подарок) */
+.sk-reward { position: relative; }
+.sk-reward::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 26px;
+  bottom: 0;
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.sk-gift {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.4);
+}
+.sk-gift.active {
+  border: none;
+  background: rgba(163, 230, 53, 0.16);
+  color: #a3e635;
+  box-shadow: 0 0 0 4px rgba(163, 230, 53, 0.1);
+  animation: twb-float 3s ease-in-out infinite;
+}
+.sk-reward-note {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  margin-top: 16px;
+  line-height: 1.4;
+}
+
+/* ---------- Heatmap ---------- */
+.sk-heatmap-wrap {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.sk-heatmap-wrap::-webkit-scrollbar { height: 0; }
+.sk-hm-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding-top: 0;
+}
+.sk-hm-label {
+  height: 14px;
+  font-size: 9px;
+  line-height: 14px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: right;
+  width: 18px;
+}
+.sk-heatmap {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.sk-hm-week {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 13px;
+}
+.sk-hm-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-width: 13px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  display: inline-block;
+}
+.sk-hm-cell.done {
+  background: linear-gradient(-34deg, #ff8a24, #ffda24);
+}
+.sk-hm-cell.done.dim { background: rgba(255, 138, 36, 0.4); }
+.sk-hm-cell.today { box-shadow: inset 0 0 0 1.5px #ff8a24; }
+.sk-hm-cell.future { background: rgba(255, 255, 255, 0.02); }
+
+.sk-hm-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.sk-hm-legend .sk-hm-cell { width: 13px; height: 13px; aspect-ratio: auto; }
+
+.sk-empty-note {
+  text-align: center;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 0 0;
+}
+.sk-foot { height: 8px; }

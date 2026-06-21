@@ -121,6 +121,8 @@ export const getDetailedStats = (telegramId, params) =>
   client.get(`/stats/${telegramId}/detailed`, { params }).then((r) => r.data);
 export const getExerciseProgress = (telegramId, params) =>
   client.get(`/stats/${telegramId}/exercise-progress`, { params }).then((r) => r.data);
+export const getStreakData = (telegramId, params) =>
+  client.get(`/stats/${telegramId}/streak`, { params }).then((r) => r.data);
 export const getSessionDeviation = (sessionId) =>
   client.get(`/sessions/${sessionId}/deviation`).then((r) => r.data);
 export const getPlanMissed = (planId) =>

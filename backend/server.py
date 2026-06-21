@@ -2860,6 +2860,80 @@ async def stats_exercise_progress(telegram_id: int, slug: Optional[str] = None,
     return await _athlete_exercise_progress(telegram_id, slug, plan_id)
 
 
+# ---- P7: данные для экрана тренировочной серии (streak) ----
+async def _athlete_streak_data(tg, weeks=12):
+    sessions = await db.workout_sessions.find(
+        {"athlete_telegram_id": tg, "status": "finished"},
+        {"_id": 0, "finished_at": 1, "date": 1, "exercises": 1},
+    ).to_list(3000)
+    dates = set()
+    for s in sessions:
+        if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
+            continue
+        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+        if d:
+            dates.add(d)
+
+    today = datetime.now(timezone.utc).date()
+    # текущая серия (подряд идущие дни до сегодня/вчера)
+    cur = 0
+    c = today if today in dates else (today - timedelta(days=1))
+    while c in dates:
+        cur += 1
+        c -= timedelta(days=1)
+    # рекорд
+    best = 0
+    for d in dates:
+        if (d - timedelta(days=1)) not in dates:
+            length = 1
+            n = d + timedelta(days=1)
+            while n in dates:
+                length += 1
+                n += timedelta(days=1)
+            best = max(best, length)
+
+    plan = await db.plans.find_one(
+        {"athlete_telegram_id": tg, "status": "active"}, {"_id": 0, "training_days": 1}
+    )
+    weekly_goal = len((plan or {}).get("training_days") or [])
+
+    monday = today - timedelta(days=today.weekday())
+    trained_this_week = sum(1 for i in range(7) if (monday + timedelta(days=i)) in dates)
+
+    weeks = max(1, min(int(weeks or 12), 26))
+    grid = []
+    cur_m = monday - timedelta(weeks=weeks - 1)
+    while cur_m <= monday:
+        days = []
+        for i in range(7):
+            dd = cur_m + timedelta(days=i)
+            days.append({
+                "date": dd.isoformat(),
+                "weekday": i + 1,            # 1=Пн .. 7=Вс
+                "trained": dd in dates,
+                "is_today": dd == today,
+                "is_future": dd > today,
+            })
+        grid.append({"week_start": cur_m.isoformat(), "days": days})
+        cur_m += timedelta(weeks=1)
+
+    return {
+        "telegram_id": tg,
+        "current_streak": cur,
+        "best_streak": best,
+        "total_workouts": len(dates),
+        "weekly_goal": weekly_goal,
+        "trained_this_week": trained_this_week,
+        "week": grid[-1] if grid else {"days": []},
+        "calendar": grid,
+    }
+
+
+@api_router.get("/stats/{telegram_id}/streak")
+async def stats_streak(telegram_id: int, weeks: int = 12):
+    return await _athlete_streak_data(telegram_id, weeks)
+
+
 @api_router.get("/coach/{coach_id}/clients/{athlete_id}/stats")
 async def coach_client_stats(coach_id: int, athlete_id: int,
                              from_: Optional[str] = Query(default=None, alias="from"),
