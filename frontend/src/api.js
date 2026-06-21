@@ -116,6 +116,32 @@ export const pauseSession = (id, resume) =>
 export const getStats = (telegramId) =>
   client.get(`/stats/${telegramId}`).then((r) => r.data);
 
+// --- P7: подробная статистика (сбор с каждой тренировки) ---
+export const getDetailedStats = (telegramId, params) =>
+  client.get(`/stats/${telegramId}/detailed`, { params }).then((r) => r.data);
+export const getExerciseProgress = (telegramId, params) =>
+  client.get(`/stats/${telegramId}/exercise-progress`, { params }).then((r) => r.data);
+export const getSessionDeviation = (sessionId) =>
+  client.get(`/sessions/${sessionId}/deviation`).then((r) => r.data);
+export const getPlanMissed = (planId) =>
+  client.get(`/plans/${planId}/missed`).then((r) => r.data);
+export const getCoachClientStats = (coachId, athleteId, params) =>
+  client.get(`/coach/${coachId}/clients/${athleteId}/stats`, { params }).then((r) => r.data);
+export const getCoachClientExerciseProgress = (coachId, athleteId, params) =>
+  client.get(`/coach/${coachId}/clients/${athleteId}/exercise-progress`, { params }).then((r) => r.data);
+
+// --- P2.1: пропуски / переносы тренировочных дней ---
+export const skipPlanDay = (planId, body) =>
+  client.post(`/plans/${planId}/day/skip`, body).then((r) => r.data);
+export const reschedulePlanDay = (planId, body) =>
+  client.post(`/plans/${planId}/day/reschedule`, body).then((r) => r.data);
+export const markPlanDay = (planId, week, day, body) =>
+  client.patch(`/plans/${planId}/day/${week}/${day}/mark`, body).then((r) => r.data);
+export const unmarkPlanDay = (planId, week, day) =>
+  client.delete(`/plans/${planId}/day/${week}/${day}/mark`).then((r) => r.data);
+export const updateUserSettings = (telegramId, body) =>
+  client.patch(`/users/${telegramId}/settings`, body).then((r) => r.data);
+
 export const getTelegramAvatar = (userId) =>
   client.get(`/telegram/avatar/${userId}`).then((r) => r.data);
 

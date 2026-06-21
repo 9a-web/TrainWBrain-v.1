@@ -21,6 +21,8 @@ import Coach from "@/pages/Coach";
 import CoachClient from "@/pages/CoachClient";
 import CoachPlanEditor from "@/pages/CoachPlanEditor";
 import CoachLiveSession from "@/pages/CoachLiveSession";
+import { StatsPage, CoachClientStatsPage } from "@/pages/Stats";
+import { ChevronRight } from "lucide-react";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -33,6 +35,7 @@ const pluralize = (n, forms) => {
 
 const Home = () => {
   const { user, avatarUrl } = useUser();
+  const navigate = useNavigate();
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
@@ -128,8 +131,14 @@ const Home = () => {
             />
           </div>
           
-          {/* Training Streak */}
-          <div className="streak-row" data-testid="streak-row">
+          {/* Training Streak — ведёт к подробной статистике */}
+          <button
+            type="button"
+            className="streak-row streak-row-link"
+            data-testid="streak-row"
+            onClick={() => navigate("/stats")}
+            aria-label="Открыть статистику"
+          >
             <img 
               src="/fire_strike.svg" 
               alt="" 
@@ -139,7 +148,8 @@ const Home = () => {
             <span className="streak-text" data-testid="streak-text">
               Тренировочная серия в течение {streak} {pluralize(streak, ['дня', 'дней', 'дней'])}
             </span>
-          </div>
+            <ChevronRight size={18} className="streak-chevron" aria-hidden="true" />
+          </button>
           
           {/* Date Selector */}
           <DateSelector />
@@ -191,10 +201,12 @@ const AppShell = () => {
         <Route path="/" element={<Home />} />
         <Route path="/programs" element={<Programs />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/stats" element={<StatsPage />} />
         <Route path="/coach" element={<Coach />} />
         <Route path="/coach/:athleteId" element={<CoachClient />} />
         <Route path="/coach/:athleteId/live" element={<CoachLiveSession />} />
         <Route path="/coach/:athleteId/edit" element={<CoachPlanEditor />} />
+        <Route path="/coach/:athleteId/stats" element={<CoachClientStatsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </UserProvider>

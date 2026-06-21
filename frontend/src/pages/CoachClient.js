@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw, Pencil, Radio, ChevronRight } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Dumbbell, Check, RefreshCw, Pencil, Radio, ChevronRight, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
@@ -309,6 +309,22 @@ export default function CoachClient() {
               </button>
             );
           })()}
+
+          {/* Подробная статистика подопечного */}
+          <button
+            className="cl-live-entry cl-stats-entry"
+            onClick={() => { haptic("light"); navigate(`/coach/${aid}/stats`); }}
+            data-testid="open-client-stats-btn"
+          >
+            <span className="cl-live-entry-left">
+              <BarChart3 size={18} />
+              <span className="cl-live-entry-text">
+                <span className="cl-live-entry-title">Статистика</span>
+                <span className="cl-live-entry-sub">Тоннаж, прогресс, 1ПМ, соответствие плану</span>
+              </span>
+            </span>
+            <ChevronRight size={20} className="client-chevron" />
+          </button>
 
           {/* Видимость плана */}
           <div className="coach-block" data-testid="visibility-block">

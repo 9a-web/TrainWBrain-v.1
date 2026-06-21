@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, LogOut, Users, UserCog, Dumbbell, Link2, X } from "lucide-react";
+import { ArrowLeft, LogOut, Users, UserCog, Dumbbell, Link2, X, BarChart3, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useUser } from "@/context/UserContext";
@@ -171,6 +171,19 @@ export default function Profile() {
           </div>
         ) : null}
       </div>
+
+      {/* Моя статистика */}
+      <button
+        className="profile-nav"
+        onClick={() => navigate("/stats")}
+        data-testid="open-my-stats"
+      >
+        <span className="profile-nav-left">
+          <span className="profile-nav-ic"><BarChart3 size={18} /></span>
+          Моя статистика
+        </span>
+        <ChevronRight size={18} className="profile-nav-chev" />
+      </button>
 
       {/* Режим: спортсмен / тренер */}
       <div className="profile-section" data-testid="profile-mode">

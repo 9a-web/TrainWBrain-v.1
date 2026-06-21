@@ -21,9 +21,9 @@
 - **username**: `testtg`
 
 ## URLs
-- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://c76fc4a8-6957-4dda-a785-3be43face2d7.preview.emergentagent.com`
+- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://1db6bd65-9d5b-4875-a5d8-adc82ec9d902.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
-- `frontend/.env` → `REACT_APP_BACKEND_URL=https://c76fc4a8-6957-4dda-a785-3be43face2d7.preview.emergentagent.com` (обновлён под текущий контейнер; в склонированном репо был устаревший `avatar-loader-1`, ещё раньше — `trainbrain-2`). Менять не нужно.
+- `frontend/.env` → `REACT_APP_BACKEND_URL=https://1db6bd65-9d5b-4875-a5d8-adc82ec9d902.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`, ещё раньше — `c76fc4a8`/`trainbrain-2`). Менять не нужно.
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
 
 ## Cross-platform (реализовано)
@@ -41,3 +41,8 @@
 - Flow: frontend redirects to accounts.google.com -> back to <origin>/auth/google?code=... -> POST /api/auth/google/oauth {code, redirect_uri} -> {token, user}.
 - Registered redirect URI (Google Console): https://brainjam-1.preview.emergentagent.com/auth/google
 - No app-managed password for Google accounts. On deploy, the deployed domain's origin + /auth/google must also be added in Google Console.
+
+## Stats demo account (P7, has data)
+- Email: `statsdemo1782072251@example.com`  Password: `password123`
+- telegram_id: 950482709876; active plan: pl-autumn-3m (maxes 200/130/230, days [1,3,5]); 9 finished workouts across 3 microcycles.
+- Use for /stats and (after linking a coach) /coach/{coach}/clients/950482709876/stats.

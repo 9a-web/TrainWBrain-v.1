@@ -145,6 +145,26 @@
   color: #959595;
 }
 
+/* Streak row as a button/link to the stats screen */
+.streak-row-link {
+  background: none;
+  border: none;
+  padding: 4px 6px 4px 20px;
+  margin-left: -20px;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.streak-row-link:hover { background: rgba(255, 255, 255, 0.04); }
+.streak-row-link:active { transform: scale(0.99); }
+.streak-chevron {
+  color: #6b6b6b;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.streak-row-link:hover .streak-chevron { color: #FF8A24; transform: translateX(2px); }
+
 /* Typography */
 .text-jakarta-bold {
   font-family: 'Plus Jakarta Sans', sans-serif;

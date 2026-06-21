@@ -230,6 +230,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Вход в статистику подопечного */
+.cl-stats-entry .cl-live-entry-left > svg { color: #36C5F0; }
+.cl-stats-entry:hover {
+  border-color: rgba(54, 197, 240, 0.4);
+  background: linear-gradient(120deg, rgba(54, 197, 240, 0.10), #2a2a2a 60%);
+}
 .cl-live-entry .live-dot {
   width: 9px;
   height: 9px;
