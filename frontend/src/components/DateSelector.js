@@ -21,6 +21,14 @@ const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 // Преобразование JS getDay() (Вс=0..Сб=6) в day_index плана (Пн=1..Вс=7)
 const toDayIndex = (jsDay) => ((jsDay + 6) % 7) + 1;
 
+// Локальная дата -> ISO YYYY-MM-DD (без сдвига часового пояса, как видит пользователь)
+const toISODate = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 // Компонент кругового прогресс-бара
 const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false, isWorkout = false, index = 0 }) => {
   const radius = (size - strokeWidth) / 2;
@@ -122,6 +130,21 @@ const DateSelector = () => {
     return Math.min(Math.max(1, base + weekOffset), total);
   }, [plan, weekOffset]);
 
+  // Реальные календарные даты отображаемой недели (day_index 1..7 = Пн..Вс)
+  const weekDates = useMemo(() => {
+    const today = new Date();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7);
+    const arr = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      arr.push(toISODate(d));
+    }
+    return arr;
+  }, [weekOffset]);
+  const weekDatesStr = useMemo(() => weekDates.join(','), [weekDates]);
+
   // Недели, ещё не открытые тренером (published === false) — спортсмен их не видит
   const isWeekLocked = useCallback((wk) => {
     if (!plan?.weeks) return false;
@@ -187,7 +210,7 @@ const DateSelector = () => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id);
+        const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id, weekDatesStr);
         if (cancelled) return;
         const map = {};
         (data.days || []).forEach((d) => { map[d.day_index] = d; });
@@ -197,7 +220,7 @@ const DateSelector = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [plan?.id, planWeek, user?.telegram_id]);
+  }, [plan?.id, planWeek, user?.telegram_id, weekDatesStr]);
 
   // Генерируем дни недели с учётом смещения
   const weekDays = useMemo(() => {
@@ -308,13 +331,13 @@ const DateSelector = () => {
   const refreshProgress = useCallback(async () => {
     if (!plan?.id) return;
     try {
-      const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id);
+      const data = await getWeekProgress(plan.id, planWeek, user?.telegram_id, weekDatesStr);
       const map = {};
       (data.days || []).forEach((d) => { map[d.day_index] = d; });
       setProgressByDay(map);
       window.dispatchEvent(new Event('twb:progress'));
     } catch (e) { /* no-op */ }
-  }, [plan?.id, planWeek, user?.telegram_id]);
+  }, [plan?.id, planWeek, user?.telegram_id, weekDatesStr]);
 
   // Перезагрузка активного плана (когда тренер опубликовал/изменил недели/дни)
   const reloadPlan = useCallback(async () => {
@@ -358,7 +381,8 @@ const DateSelector = () => {
     (async () => {
       try {
         const s = await getActiveSession({
-          plan_id: plan.id, week: planWeek, day: selectedDayIndex, athlete: user.telegram_id,
+          plan_id: plan.id, week: planWeek, day: selectedDayIndex,
+          athlete: user.telegram_id, date: toISODate(selectedDate),
         });
         if (!cancelled) setSession(s);
       } catch (e) {
@@ -366,7 +390,7 @@ const DateSelector = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [plan?.id, planWeek, selectedDayIndex, isRestSelected, user?.telegram_id]);
+  }, [plan?.id, planWeek, selectedDayIndex, isRestSelected, user?.telegram_id, selectedDate]);
 
   // Превью дня (до старта тренировки)
   const previewView = useMemo(() => {
@@ -415,7 +439,7 @@ const DateSelector = () => {
     try {
       const s = await startSession({
         plan_id: plan.id, athlete_telegram_id: user.telegram_id,
-        week: planWeek, day: selectedDayIndex,
+        week: planWeek, day: selectedDayIndex, date: toISODate(selectedDate),
       });
       setSession(s);
       hapticNotify('success');

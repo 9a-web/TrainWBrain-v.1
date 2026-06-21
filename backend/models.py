@@ -256,6 +256,7 @@ class SessionStartReq(BaseModel):
     athlete_telegram_id: int
     week: int = 1
     day: int = 1
+    date: Optional[str] = None      # ISO YYYY-MM-DD — календарная дата тренировки (по выбранному дню)
 
 
 # ---------------------------------------------------------------------------

@@ -1819,11 +1819,17 @@ async def get_plan_day(plan_id: str, week: int = 1, day: int = 1,
 
 
 @api_router.get("/plans/{plan_id}/week-progress")
-async def get_week_progress(plan_id: str, week: int = 1, viewer: Optional[int] = None):
+async def get_week_progress(plan_id: str, week: int = 1, viewer: Optional[int] = None,
+                            dates: Optional[str] = None):
     """Прогресс/расписание по дням недели (для колец в селекторе).
 
     viewer — telegram_id смотрящего; для владельца скрытая неделя возвращается
-    как заблокированная (7 дней отдыха + locked) — выдача недель «по одной» (B3)."""
+    как заблокированная (7 дней отдыха + locked) — выдача недель «по одной» (B3).
+
+    dates — опц. список из 7 ISO-дат (через запятую) для day_index 1..7 текущей
+    КАЛЕНДАРНОЙ недели. Если задан, прогресс дня берётся из сессии, реально
+    выполненной В ЭТУ дату (session.date), а не просто по (week,day). Это
+    исключает «протекание» прогресса на одинаковые дни недели соседних недель."""
     doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -1843,11 +1849,27 @@ async def get_week_progress(plan_id: str, week: int = 1, viewer: Optional[int] =
                 "planned_sets": planned_sets,
             }
 
+    # Календарные даты дней недели (day_index 1..7), если переданы
+    date_by_day = {}
+    if dates:
+        parts = [p.strip() for p in dates.split(",")]
+        for i, iso in enumerate(parts[:7]):
+            if iso:
+                date_by_day[i + 1] = iso
+
     # Сессии этой недели — для реального прогресса колец
     sessions = await db.workout_sessions.find(
         {"plan_id": plan_id, "week_index": week}, {"_id": 0}
     ).sort("created_at", 1).to_list(200)
-    sess_by_day = {s.get("day_index"): s for s in sessions}
+    sess_by_day = {}
+    for s in sessions:
+        di = s.get("day_index")
+        if date_by_day:
+            # привязка к реальной дате выполнения
+            if s.get("date") and s.get("date") == date_by_day.get(di):
+                sess_by_day[di] = s
+        else:
+            sess_by_day[di] = s
 
     days = []
     for di in range(1, 8):
@@ -1885,7 +1907,8 @@ async def start_session(req: SessionStartReq):
 
     existing = await db.workout_sessions.find_one(
         {"plan_id": req.plan_id, "athlete_telegram_id": req.athlete_telegram_id,
-         "week_index": req.week, "day_index": req.day, "status": {"$ne": "finished"}},
+         "week_index": req.week, "day_index": req.day, "status": {"$ne": "finished"},
+         **({"date": req.date} if req.date else {})},
         {"_id": 0},
     )
     if existing:
@@ -1926,7 +1949,7 @@ async def start_session(req: SessionStartReq):
         "athlete_telegram_id": req.athlete_telegram_id,
         "coach_telegram_id": coach_for_session,
         "week_index": req.week, "day_index": req.day,
-        "date": datetime.now(timezone.utc).date().isoformat(),
+        "date": req.date or datetime.now(timezone.utc).date().isoformat(),
         "title": day_obj.get("title", ""),
         "status": "in_progress", "paused": False,
         "started_at": now, "finished_at": None,
@@ -1948,10 +1971,18 @@ async def start_session(req: SessionStartReq):
 
 
 @api_router.get("/sessions/active")
-async def get_active_session(plan_id: str, week: int, day: int, athlete: int):
+async def get_active_session(plan_id: str, week: int, day: int, athlete: int,
+                             date: Optional[str] = None):
+    """Сессия для дня плана. Если передан date (ISO YYYY-MM-DD) — возвращаем
+    сессию, реально выполненную В ЭТУ календарную дату (иначе последнюю по
+    (plan,week,day)). Это исключает показ одной тренировки на одинаковых днях
+    недели разных календарных недель."""
+    q = {"plan_id": plan_id, "athlete_telegram_id": athlete,
+         "week_index": week, "day_index": day}
+    if date:
+        q["date"] = date
     s = await db.workout_sessions.find_one(
-        {"plan_id": plan_id, "athlete_telegram_id": athlete, "week_index": week, "day_index": day},
-        {"_id": 0}, sort=[("created_at", -1)],
+        q, {"_id": 0}, sort=[("created_at", -1)],
     )
     if not s:
         return None
