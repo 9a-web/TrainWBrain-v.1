@@ -20,6 +20,7 @@ from models import (
     Plan, PlanCreate,
     WorkoutSession, SessionStartReq,
     CoachLink,
+    PlanDayMark, DaySkipReq, DayRescheduleReq, DayMarkReq, UserSettingsReq,
 )
 from seed import (
     seed_builtins, ensure_indexes,
@@ -1519,6 +1520,84 @@ def _build_session_exercises(day_obj, orm):
     return exs
 
 
+def _est_1rm(weight, percent_1rm, reps):
+    """Оценка одноповторного максимума «как в таблице».
+
+    В программе (Excel) вес = % от 1ПМ, поэтому 1ПМ = вес ÷ (% / 100) — это
+    восстанавливает референсный 1ПМ плана. Если % неизвестен (план без
+    максимумов) — запасной вариант по формуле Эпли: вес × (1 + повт/30).
+    """
+    if not weight:
+        return None
+    try:
+        if percent_1rm:
+            return round(weight / (float(percent_1rm) / 100.0), 1)
+        r = int(reps or 1)
+        return round(weight * (1 + r / 30.0), 1)
+    except Exception:
+        return None
+
+
+def _sets_count(scheme):
+    """Суммарное число рабочих подходов в схеме (Σ sets)."""
+    return sum(int(s.get("sets") or 0) for s in (scheme or []))
+
+
+def _top_set(scheme):
+    """Подход с максимальным весом в схеме (или None)."""
+    best = None
+    for s in (scheme or []):
+        w = s.get("weight")
+        if w is None:
+            continue
+        if best is None or w > best.get("weight", -1):
+            best = s
+    return best
+
+
+def _lift_summary(exs):
+    """Сводка по основным движениям (squat/bench/deadlift) из выполненных
+    упражнений: топовый рабочий вес и оценка 1ПМ «по плану» (вес ÷ план%)."""
+    lifts = {}
+    for e in exs:
+        lg = e.get("lift_group")
+        if lg not in ("squat", "bench", "deadlift"):
+            continue
+        if e.get("status") != "done":
+            continue
+        fact_top = _top_set(e.get("sets_scheme"))
+        if not fact_top:
+            continue
+        plan_top = _top_set(e.get("plan_sets_scheme")) or fact_top
+        w = fact_top.get("weight")
+        # 1ПМ «как в таблице»: фактический вес ÷ плановый % (фикс. интенсивность плана)
+        pct = (plan_top or {}).get("percent_1rm") or fact_top.get("percent_1rm")
+        one_rm = _est_1rm(w, pct, fact_top.get("reps"))
+        cur = lifts.get(lg)
+        if not cur or (w or 0) > (cur.get("top_weight") or 0):
+            lifts[lg] = {
+                "top_weight": w,
+                "reps": fact_top.get("reps"),
+                "percent_1rm": pct,
+                "one_rm": one_rm,
+            }
+    return lifts
+
+
+def _muscle_sets(exs):
+    """Распределение выполненных подходов по буквам мышечных групп: {letter: sets}."""
+    dist = {}
+    for e in exs:
+        if e.get("status") != "done":
+            continue
+        ltr = e.get("muscle_letter") or muscle_letter(e.get("muscle_group"))
+        if not ltr:
+            continue
+        n = _sets_count(e.get("sets_scheme")) or (0 if e.get("is_accessory") else 1)
+        dist[ltr] = dist.get(ltr, 0) + n
+    return dist
+
+
 def _session_stats(session):
     exs = session.get("exercises", [])
     total = len(exs)
@@ -1544,8 +1623,18 @@ def _session_stats(session):
             duration_sec = 0
 
     progress_pct = round(len(done) / total * 100) if total else 0
+
+    # --- P7: объём (подходы) план vs факт, тоннаж план vs факт ---
+    sets_done = sum(_sets_count(e.get("sets_scheme")) for e in done)
+    sets_planned = sum(_sets_count(e.get("plan_sets_scheme") or e.get("sets_scheme")) for e in exs)
+    tonnage_planned = round(sum(scheme_tonnage(e.get("plan_sets_scheme") or e.get("sets_scheme")) for e in exs))
+    volume_pct = round(sets_done / sets_planned * 100) if sets_planned else 0
+    tonnage_dev_pct = round((tonnage - tonnage_planned) / tonnage_planned * 100) if tonnage_planned else 0
+
     return {
         "tonnage": tonnage,
+        "tonnage_planned": tonnage_planned,
+        "tonnage_dev_pct": tonnage_dev_pct,
         "group": group,
         "difficulty": difficulty,
         "duration_sec": duration_sec,
@@ -1553,7 +1642,63 @@ def _session_stats(session):
         "skipped_count": len(skipped),
         "total_count": total,
         "progress_pct": progress_pct,
+        "sets_done": sets_done,
+        "sets_planned": sets_planned,
+        "volume_pct": volume_pct,
+        "muscle_sets": _muscle_sets(exs),
+        "lifts": _lift_summary(exs),
     }
+
+
+def _deviation_flags(plan_scheme, fact_scheme, status):
+    """Флаги отклонения упражнения: список строк."""
+    flags = []
+    if status == "skipped":
+        return ["skipped"]
+    p_sets = _sets_count(plan_scheme)
+    f_sets = _sets_count(fact_scheme)
+    if f_sets > p_sets:
+        flags.append("more_volume")
+    elif f_sets < p_sets and p_sets:
+        flags.append("less_volume")
+    p_top = _top_set(plan_scheme)
+    f_top = _top_set(fact_scheme)
+    pw = p_top.get("weight") if p_top else None
+    fw = f_top.get("weight") if f_top else None
+    if pw is not None and fw is not None:
+        if fw > pw:
+            flags.append("weight_up")
+        elif fw < pw:
+            flags.append("weight_down")
+    return flags
+
+
+def _session_deviation(session):
+    """План vs факт по упражнениям одной сессии (для отчёта об отклонениях)."""
+    items = []
+    for e in session.get("exercises", []):
+        plan_scheme = e.get("plan_sets_scheme") or []
+        fact_scheme = e.get("sets_scheme") or []
+        items.append({
+            "order": e.get("order"),
+            "exercise_name": e.get("exercise_name"),
+            "lift_group": e.get("lift_group"),
+            "muscle_group": e.get("muscle_group"),
+            "status": e.get("status"),
+            "edited": bool(e.get("edited")),
+            "planned": {
+                "sets": _sets_count(plan_scheme),
+                "tonnage": scheme_tonnage(plan_scheme),
+                "scheme": plan_scheme,
+            },
+            "actual": {
+                "sets": _sets_count(fact_scheme) if e.get("status") == "done" else 0,
+                "tonnage": e.get("tonnage", 0) if e.get("status") == "done" else 0,
+                "scheme": fact_scheme,
+            },
+            "flags": _deviation_flags(plan_scheme, fact_scheme, e.get("status")),
+        })
+    return items
 
 
 def _serialize_session(session):
@@ -1881,10 +2026,16 @@ async def update_session_exercise(
         status = "finished"
         finished_at = finished_at or now
 
+    set_fields = {"exercises": exs, "status": status, "finished_at": finished_at,
+                  "updated_at": now, "last_event_at": now}
+    # P7: при завершении замораживаем снимок статистики тренировки
+    if status == "finished":
+        s["exercises"] = exs
+        s["finished_at"] = finished_at
+        set_fields["stats"] = _session_stats(s)
     await db.workout_sessions.update_one(
         {"id": session_id},
-        {"$set": {"exercises": exs, "status": status, "finished_at": finished_at,
-                  "updated_at": now, "last_event_at": now}},
+        {"$set": set_fields},
     )
     s["exercises"] = exs
     s["status"] = status
@@ -1985,12 +2136,14 @@ async def finish_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     now = datetime.now(timezone.utc).isoformat()
     finished_at = s.get("finished_at") or now
-    await db.workout_sessions.update_one(
-        {"id": session_id},
-        {"$set": {"status": "finished", "finished_at": finished_at, "updated_at": now, "last_event_at": now}},
-    )
     s["status"] = "finished"
     s["finished_at"] = finished_at
+    frozen = _session_stats(s)
+    await db.workout_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"status": "finished", "finished_at": finished_at, "updated_at": now,
+                  "last_event_at": now, "stats": frozen}},
+    )
     s["last_event_at"] = now
     await _rt_session(s.get("plan_id"), "session.finished", s)
     await _notify_user(s.get("coach_telegram_id"), "session.finished", {
@@ -2169,6 +2322,581 @@ async def get_athlete_stats(telegram_id: int):
             cur = cur - timedelta(days=1)
 
     return {"telegram_id": telegram_id, "streak_days": streak, "total_workouts": len(dates)}
+
+
+# ===========================================================================
+# P7 — Хелперы агрегированной статистики и пропусков
+# ===========================================================================
+from seed import LETTER_ORDER as _LETTER_ORDER  # порядок букв групп мышц
+
+_LETTER_NAMES = {
+    "Н": "Ноги", "Г": "Грудь", "С": "Спина", "П": "Плечи", "Р": "Руки", "К": "Кор",
+}
+_LIFT_NAMES = {"squat": "Присед", "bench": "Жим", "deadlift": "Становая"}
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        if "T" in s:
+            return datetime.fromisoformat(s).date()
+        return date.fromisoformat(s[:10])
+    except Exception:
+        try:
+            return date.fromisoformat(str(s)[:10])
+        except Exception:
+            return None
+
+
+def _iso_week_key(d):
+    if not d:
+        return None
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def _get_session_stats(s):
+    """Берём замороженный снимок статистики, иначе считаем на лету."""
+    st = s.get("stats")
+    if st and isinstance(st, dict) and "tonnage" in st:
+        return st
+    return _session_stats(s)
+
+
+def _plan_planned_days(plan):
+    """Список запланированных (не-rest) тренировочных дней плана с числом подходов."""
+    days = []
+    for w in (plan.get("weeks") or []):
+        wi = w.get("week_index")
+        for d in (w.get("days") or []):
+            if d.get("is_rest"):
+                continue
+            exs = d.get("exercises") or []
+            if not exs:
+                continue
+            sets_planned = 0
+            for e in exs:
+                sc = e.get("sets_scheme") or []
+                sets_planned += _sets_count(sc) if sc else int(e.get("target_sets") or 0)
+            days.append({
+                "week_index": wi,
+                "day_index": d.get("day_index"),
+                "title": d.get("title", ""),
+                "exercise_count": len(exs),
+                "sets_planned": sets_planned,
+            })
+    days.sort(key=lambda x: (x["week_index"] or 0, x["day_index"] or 0))
+    return days
+
+
+async def _collect_day_marks(plan_id):
+    docs = await db.plan_day_marks.find({"plan_id": plan_id}, {"_id": 0}).to_list(2000)
+    return {(d.get("week_index"), d.get("day_index")): d for d in docs}
+
+
+async def _streak_mode(tg):
+    u = await db.users.find_one({"telegram_id": tg}, {"_id": 0, "settings": 1})
+    return ((u or {}).get("settings") or {}).get("streak_mode") or "strict"
+
+
+async def _schedule_and_streak(plan, streak_mode):
+    """Adherence по расписанию + тренировочный streak (с учётом пропусков/переносов).
+
+    Дни без привязки к календарю: «достигнутые» дни — все запланированные дни
+    до самого дальнего (week, day), на котором уже была сессия (фронтир)."""
+    plan_id = plan["id"]
+    planned = _plan_planned_days(plan)
+    sess = await db.workout_sessions.find(
+        {"plan_id": plan_id},
+        {"_id": 0, "week_index": 1, "day_index": 1, "status": 1, "exercises": 1},
+    ).to_list(3000)
+    completed = set()
+    frontier = None
+    for s in sess:
+        t = (s.get("week_index") or 1, s.get("day_index") or 1)
+        if frontier is None or t > frontier:
+            frontier = t
+        if s.get("status") == "finished" and any(
+            e.get("status") == "done" for e in (s.get("exercises") or [])
+        ):
+            completed.add(t)
+    marks = await _collect_day_marks(plan_id)
+    reached = [p for p in planned
+               if frontier and (p["week_index"], p["day_index"]) <= frontier]
+
+    counts = {"completed": 0, "missed": 0, "skipped": 0, "excused": 0, "rescheduled": 0}
+    rows = []
+    num = denom = 0
+    for p in reached:
+        k = (p["week_index"], p["day_index"])
+        if k in completed:
+            status = "completed"
+            num += 1
+            denom += 1
+        elif k in marks:
+            status = marks[k].get("status") or "skipped"
+            if status not in ("excused", "rescheduled"):
+                denom += 1
+        else:
+            status = "missed"
+            denom += 1
+        counts[status] = counts.get(status, 0) + 1
+        rows.append({**p, "status": status, "mark": marks.get(k)})
+
+    schedule_pct = round(num / denom * 100) if denom else 0
+
+    streak = 0
+    for p in reversed(reached):
+        k = (p["week_index"], p["day_index"])
+        if k in completed:
+            streak += 1
+            continue
+        if k in marks:
+            ms = marks[k].get("status")
+            if ms in ("excused", "rescheduled"):
+                continue
+            if ms == "skipped" and streak_mode == "lenient" and marks[k].get("reason"):
+                continue
+        break
+
+    return {
+        "rows": rows, "counts": counts, "schedule_pct": schedule_pct,
+        "workout_streak": streak, "planned_total": len(planned),
+        "reached_total": len(reached), "marks": marks, "frontier": frontier,
+    }
+
+
+def _calendar_streak(sessions):
+    dates = set()
+    for s in sessions:
+        if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
+            continue
+        d = _parse_date(s.get("finished_at")) or _parse_date(s.get("date"))
+        if d:
+            dates.add(d)
+    streak = 0
+    if dates:
+        today = datetime.now(timezone.utc).date()
+        cur = today if today in dates else (today - timedelta(days=1))
+        while cur in dates:
+            streak += 1
+            cur = cur - timedelta(days=1)
+    return streak, len(dates)
+
+
+async def _finished_sessions(tg, plan_id=None, frm=None, to=None):
+    q = {"athlete_telegram_id": tg, "status": "finished"}
+    if plan_id:
+        q["plan_id"] = plan_id
+    docs = await db.workout_sessions.find(q, {"_id": 0}).sort("finished_at", 1).to_list(3000)
+    fr = _parse_date(frm) if frm else None
+    tt = _parse_date(to) if to else None
+    out = []
+    for s in docs:
+        if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
+            continue
+        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+        if fr and d and d < fr:
+            continue
+        if tt and d and d > tt:
+            continue
+        out.append(s)
+    return out
+
+
+async def _resolve_stats_plan(tg, plan_id):
+    if plan_id:
+        p = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+        if p:
+            return p
+    return await db.plans.find_one(
+        {"athlete_telegram_id": tg, "status": "active"}, {"_id": 0}
+    )
+
+
+async def _athlete_detailed_stats(tg, frm=None, to=None, plan_id=None):
+    plan = await _resolve_stats_plan(tg, plan_id)
+    use_plan_week = bool(plan_id and plan)   # по микроциклам только при явном выборе плана
+    sessions = await _finished_sessions(tg, plan_id if plan_id else None, frm, to)
+
+    # Если фильтр по плану ничего не дал, но план есть — оставляем пусто (честно)
+    total_tonnage = total_tonnage_planned = 0
+    total_sets_done = total_sets_planned = 0
+    total_duration = 0
+    progress_acc = 0
+    week_agg = {}
+    muscle_agg = {}
+    lift_best = {}  # lift_group -> {top_weight, one_rm}
+
+    for s in sessions:
+        st = _get_session_stats(s)
+        total_tonnage += st.get("tonnage", 0) or 0
+        total_tonnage_planned += st.get("tonnage_planned", 0) or 0
+        total_sets_done += st.get("sets_done", 0) or 0
+        total_sets_planned += st.get("sets_planned", 0) or 0
+        total_duration += st.get("duration_sec", 0) or 0
+        progress_acc += st.get("progress_pct", 0) or 0
+
+        if use_plan_week:
+            wi = s.get("week_index") or 1
+            key, label, srt = wi, f"Нед {wi}", (wi,)
+        else:
+            d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+            key = _iso_week_key(d) or "—"
+            label, srt = key, (key,)
+        a = week_agg.setdefault(key, {"tonnage": 0, "count": 0, "label": label, "sort": srt})
+        a["tonnage"] += st.get("tonnage", 0) or 0
+        a["count"] += 1
+
+        for ltr, n in (st.get("muscle_sets") or {}).items():
+            muscle_agg[ltr] = muscle_agg.get(ltr, 0) + n
+        for lg, info in (st.get("lifts") or {}).items():
+            cur = lift_best.get(lg)
+            if not cur or (info.get("top_weight") or 0) > (cur.get("top_weight") or 0):
+                lift_best[lg] = info
+
+    n = len(sessions)
+    week_rows = sorted(week_agg.values(), key=lambda x: x["sort"])
+    tonnage_by_week = [{"week": r["label"], "tonnage": round(r["tonnage"])} for r in week_rows]
+    frequency_by_week = [{"week": r["label"], "count": r["count"]} for r in week_rows]
+    muscle_distribution = [
+        {"group": ltr, "label": _LETTER_NAMES.get(ltr, ltr), "sets": muscle_agg[ltr]}
+        for ltr in _LETTER_ORDER if ltr in muscle_agg
+    ]
+    for ltr in muscle_agg:  # буквы вне стандартного порядка
+        if ltr not in _LETTER_ORDER:
+            muscle_distribution.append(
+                {"group": ltr, "label": _LETTER_NAMES.get(ltr, ltr), "sets": muscle_agg[ltr]}
+            )
+
+    # Оценка 1ПМ: план (по программе) + достигнутое (как в таблице)
+    plan_maxes = (plan.get("maxes") if plan else {}) or {}
+    one_rep_max_est = []
+    for lift, name in _LIFT_NAMES.items():
+        planned_v = plan_maxes.get(lift)
+        ach = lift_best.get(lift) or {}
+        achieved_v = ach.get("one_rm")
+        top_v = ach.get("top_weight")
+        if planned_v or achieved_v:
+            one_rep_max_est.append({
+                "lift": lift, "name": name,
+                "planned": planned_v, "achieved": achieved_v, "top_weight": top_v,
+            })
+
+    cal_streak, _ = _calendar_streak(sessions)
+    sched = None
+    workout_streak = cal_streak
+    if plan:
+        sched = await _schedule_and_streak(plan, await _streak_mode(tg))
+        workout_streak = sched["workout_streak"]
+
+    completion_pct = round(total_sets_done / total_sets_planned * 100) if total_sets_planned else (
+        round(progress_acc / n) if n else 0
+    )
+    tonnage_dev_pct = round(
+        (total_tonnage - total_tonnage_planned) / total_tonnage_planned * 100
+    ) if total_tonnage_planned else 0
+    volume_pct = round(total_sets_done / total_sets_planned * 100) if total_sets_planned else 0
+
+    # Частота/нед по календарным неделям
+    cal_weeks = {}
+    for s in sessions:
+        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+        wk = _iso_week_key(d)
+        if wk:
+            cal_weeks[wk] = cal_weeks.get(wk, 0) + 1
+    avg_per_week = round(sum(cal_weeks.values()) / len(cal_weeks), 1) if cal_weeks else 0
+
+    recent = []
+    for s in sorted(sessions, key=lambda x: x.get("finished_at") or "", reverse=True)[:10]:
+        st = _get_session_stats(s)
+        recent.append({
+            "id": s.get("id"), "date": s.get("date"),
+            "finished_at": s.get("finished_at"),
+            "title": s.get("title") or "Тренировка",
+            "week_index": s.get("week_index"), "day_index": s.get("day_index"),
+            "tonnage": st.get("tonnage", 0), "duration_sec": st.get("duration_sec", 0),
+            "progress_pct": st.get("progress_pct", 0), "group": st.get("group", ""),
+            "difficulty": st.get("difficulty"), "done_count": st.get("done_count", 0),
+            "total_count": st.get("total_count", 0),
+            "coach_confirmed": bool(s.get("coach_confirmed")),
+        })
+
+    summary = {
+        "total_workouts": n,
+        "streak_days": cal_streak,
+        "workout_streak": workout_streak,
+        "avg_per_week": avg_per_week,
+        "completion_pct": completion_pct,
+        "total_tonnage": round(total_tonnage),
+        "total_duration_sec": total_duration,
+        "total_sets": total_sets_done,
+    }
+    adherence = {
+        "volume_pct": volume_pct,
+        "schedule_pct": sched["schedule_pct"] if sched else None,
+        "tonnage_dev_pct": tonnage_dev_pct,
+    }
+    skip_counts = sched["counts"] if sched else {}
+
+    return {
+        "telegram_id": tg,
+        "plan_id": plan.get("id") if plan else None,
+        "plan_name": plan.get("name") if plan else None,
+        "range": {"from": frm, "to": to},
+        "summary": summary,
+        "tonnage_by_week": tonnage_by_week,
+        "frequency_by_week": frequency_by_week,
+        "muscle_distribution": muscle_distribution,
+        "one_rep_max_est": one_rep_max_est,
+        "adherence": adherence,
+        "skip_counts": skip_counts,
+        "recent_sessions": recent,
+    }
+
+
+async def _athlete_exercise_progress(tg, slug=None, plan_id=None):
+    plan = await _resolve_stats_plan(tg, plan_id)
+    sessions = await _finished_sessions(tg, plan["id"] if plan else None)
+
+    avail = {}
+    for s in sessions:
+        for e in (s.get("exercises") or []):
+            sg = e.get("exercise_slug") or e.get("exercise_name")
+            if sg and sg not in avail:
+                avail[sg] = {
+                    "slug": e.get("exercise_slug"),
+                    "key": sg,
+                    "name": e.get("exercise_name"),
+                    "lift_group": e.get("lift_group"),
+                }
+
+    target = slug
+    if not target:
+        for sg, info in avail.items():
+            if info.get("lift_group"):
+                target = sg
+                break
+        if not target and avail:
+            target = next(iter(avail))
+
+    series_map = {}
+    for s in sessions:
+        wi = s.get("week_index") or 1
+        for e in (s.get("exercises") or []):
+            if e.get("status") != "done":
+                continue
+            sg = e.get("exercise_slug") or e.get("exercise_name")
+            if sg != target:
+                continue
+            fact_top = _top_set(e.get("sets_scheme"))
+            if not fact_top:
+                continue
+            plan_top = _top_set(e.get("plan_sets_scheme")) or fact_top
+            fw = fact_top.get("weight")
+            pct = (plan_top or {}).get("percent_1rm") or fact_top.get("percent_1rm")
+            one_rm = _est_1rm(fw, pct, fact_top.get("reps"))
+            cand = {
+                "week_index": wi, "label": f"Нед {wi}",
+                "top_weight": fw, "plan_weight": (plan_top or {}).get("weight"),
+                "reps": fact_top.get("reps"), "one_rm": one_rm,
+                "tonnage": e.get("tonnage", 0),
+            }
+            row = series_map.get(wi)
+            if not row or (fw or 0) > (row.get("top_weight") or 0):
+                series_map[wi] = cand
+    series = sorted(series_map.values(), key=lambda x: x["week_index"])
+    return {
+        "telegram_id": tg, "slug": target,
+        "name": (avail.get(target) or {}).get("name") if target else None,
+        "exercises": list(avail.values()),
+        "series": series,
+    }
+
+
+# ---- P2.1: пропуски/переносы тренировочных дней ----
+async def _upsert_day_mark(plan, week, day, status, reason=None,
+                           rescheduled_to=None, marked_by=None):
+    plan_id = plan["id"]
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.plan_day_marks.find_one(
+        {"plan_id": plan_id, "week_index": week, "day_index": day}, {"_id": 0}
+    )
+    if existing:
+        set_fields = {"status": status, "updated_at": now}
+        if reason is not None:
+            set_fields["reason"] = reason
+        if rescheduled_to is not None:
+            set_fields["rescheduled_to"] = rescheduled_to
+        if marked_by is not None:
+            set_fields["marked_by"] = marked_by
+        await db.plan_day_marks.update_one(
+            {"plan_id": plan_id, "week_index": week, "day_index": day},
+            {"$set": set_fields},
+        )
+        existing.update(set_fields)
+        return existing
+    mark = PlanDayMark(
+        plan_id=plan_id, athlete_telegram_id=plan["athlete_telegram_id"],
+        week_index=week, day_index=day, status=status, reason=reason,
+        rescheduled_to=rescheduled_to, marked_by=marked_by,
+    )
+    doc = mark.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    await db.plan_day_marks.insert_one(dict(doc))
+    return doc
+
+
+@api_router.post("/plans/{plan_id}/day/skip")
+async def skip_plan_day(plan_id: str, payload: DaySkipReq,
+                        current: dict = Depends(get_current_user)):
+    """Спортсмен/тренер помечает день плана пропущенным (с причиной)."""
+    plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
+    by = payload.marked_by or current.get("telegram_id")
+    mark = await _upsert_day_mark(plan, payload.week, payload.day, "skipped",
+                                  reason=payload.reason, marked_by=by)
+    await _rt_plan(plan_id, "day.skipped", {
+        "week_index": payload.week, "day_index": payload.day,
+        "status": "skipped", "reason": payload.reason,
+    })
+    return mark
+
+
+@api_router.post("/plans/{plan_id}/day/reschedule")
+async def reschedule_plan_day(plan_id: str, payload: DayRescheduleReq,
+                              current: dict = Depends(get_current_user)):
+    """Перенос тренировочного дня на другую дату (не считается пропуском)."""
+    plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
+    by = payload.marked_by or current.get("telegram_id")
+    mark = await _upsert_day_mark(plan, payload.week, payload.day, "rescheduled",
+                                  reason=payload.reason,
+                                  rescheduled_to=payload.rescheduled_to, marked_by=by)
+    await _rt_plan(plan_id, "day.rescheduled", {
+        "week_index": payload.week, "day_index": payload.day,
+        "rescheduled_to": payload.rescheduled_to,
+    })
+    return mark
+
+
+@api_router.patch("/plans/{plan_id}/day/{week}/{day}/mark")
+async def mark_plan_day(plan_id: str, week: int, day: int, payload: DayMarkReq,
+                        current: dict = Depends(get_current_user)):
+    """Тренер/владелец помечает день: excused (уважительный) / missed / skipped."""
+    if payload.status not in ("excused", "missed", "skipped"):
+        raise HTTPException(status_code=400, detail="status: excused | missed | skipped")
+    plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
+    by = payload.marked_by or current.get("telegram_id")
+    mark = await _upsert_day_mark(plan, week, day, payload.status,
+                                  reason=payload.reason, marked_by=by)
+    await _rt_plan(plan_id, "day.marked", {
+        "week_index": week, "day_index": day, "status": payload.status,
+    })
+    return mark
+
+
+@api_router.delete("/plans/{plan_id}/day/{week}/{day}/mark")
+async def unmark_plan_day(plan_id: str, week: int, day: int,
+                          current: dict = Depends(get_current_user)):
+    """Снять пометку с дня (вернуть в обычное состояние)."""
+    plan = await _get_plan_or_404(plan_id)
+    await _assert_can_edit_plan(current, plan)
+    res = await db.plan_day_marks.delete_one(
+        {"plan_id": plan_id, "week_index": week, "day_index": day}
+    )
+    await _rt_plan(plan_id, "day.unmarked", {"week_index": week, "day_index": day})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/plans/{plan_id}/missed")
+async def get_plan_missed(plan_id: str):
+    """Список пропущенных/перенесённых дней + авто-определённые missed-дни."""
+    plan = await _get_plan_or_404(plan_id)
+    sched = await _schedule_and_streak(plan, await _streak_mode(plan["athlete_telegram_id"]))
+    days = [r for r in sched["rows"] if r["status"] != "completed"]
+    # Явные пометки за пределами «достигнутых» дней — тоже показываем
+    reached_keys = {(r["week_index"], r["day_index"]) for r in sched["rows"]}
+    for (w, d), m in (sched["marks"] or {}).items():
+        if (w, d) not in reached_keys:
+            days.append({
+                "week_index": w, "day_index": d, "title": "",
+                "status": m.get("status"), "mark": m,
+            })
+    days.sort(key=lambda x: (x["week_index"] or 0, x["day_index"] or 0))
+    return {
+        "plan_id": plan_id, "days": days, "counts": sched["counts"],
+        "schedule_pct": sched["schedule_pct"], "workout_streak": sched["workout_streak"],
+        "planned_total": sched["planned_total"], "reached_total": sched["reached_total"],
+    }
+
+
+# ---- P7: отклонения сессии и подробная статистика ----
+@api_router.get("/sessions/{session_id}/deviation")
+async def get_session_deviation(session_id: str):
+    """План vs факт по упражнениям одной тренировки."""
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "session_id": session_id,
+        "stats": _get_session_stats(s),
+        "exercises": _session_deviation(s),
+    }
+
+
+@api_router.get("/stats/{telegram_id}/detailed")
+async def stats_detailed(telegram_id: int, from_: Optional[str] = Query(default=None, alias="from"),
+                         to: Optional[str] = None, plan_id: Optional[str] = None):
+    return await _athlete_detailed_stats(telegram_id, from_, to, plan_id)
+
+
+@api_router.get("/stats/{telegram_id}/exercise-progress")
+async def stats_exercise_progress(telegram_id: int, slug: Optional[str] = None,
+                                  plan_id: Optional[str] = None):
+    return await _athlete_exercise_progress(telegram_id, slug, plan_id)
+
+
+@api_router.get("/coach/{coach_id}/clients/{athlete_id}/stats")
+async def coach_client_stats(coach_id: int, athlete_id: int,
+                             from_: Optional[str] = Query(default=None, alias="from"),
+                             to: Optional[str] = None, plan_id: Optional[str] = None):
+    await _assert_coach_of(coach_id, athlete_id)
+    return await _athlete_detailed_stats(athlete_id, from_, to, plan_id)
+
+
+@api_router.get("/coach/{coach_id}/clients/{athlete_id}/exercise-progress")
+async def coach_client_exercise_progress(coach_id: int, athlete_id: int,
+                                         slug: Optional[str] = None,
+                                         plan_id: Optional[str] = None):
+    await _assert_coach_of(coach_id, athlete_id)
+    return await _athlete_exercise_progress(athlete_id, slug, plan_id)
+
+
+# ---- Настройки пользователя (streak_mode / единицы) ----
+@api_router.patch("/users/{telegram_id}/settings")
+async def update_user_settings(telegram_id: int, payload: UserSettingsReq):
+    user = await db.users.find_one({"telegram_id": telegram_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings = dict(user.get("settings") or {})
+    if payload.streak_mode in ("strict", "lenient"):
+        settings["streak_mode"] = payload.streak_mode
+    if payload.units in ("kg", "lb"):
+        settings["units"] = payload.units
+    if payload.default_rest_sec is not None:
+        settings["default_rest_sec"] = int(payload.default_rest_sec)
+    await db.users.update_one(
+        {"telegram_id": telegram_id},
+        {"$set": {"settings": settings, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    updated = await db.users.find_one(
+        {"telegram_id": telegram_id}, {"_id": 0, "password_hash": 0}
+    )
+    return updated
 
 
 # Include the router in the main app

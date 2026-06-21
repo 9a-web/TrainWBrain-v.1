@@ -421,3 +421,10 @@ async def ensure_indexes(db) -> None:
     await db.plans.create_index([("coach_telegram_id", 1), ("status", 1)])
     await db.coach_links.create_index([("coach_telegram_id", 1), ("athlete_telegram_id", 1)], unique=True)
     await db.coach_links.create_index("athlete_telegram_id")
+    # P7 / P2.1 — статистика и пропуски тренировок
+    await db.workout_sessions.create_index([("athlete_telegram_id", 1), ("status", 1)])
+    await db.workout_sessions.create_index("finished_at")
+    await db.plan_day_marks.create_index(
+        [("plan_id", 1), ("week_index", 1), ("day_index", 1)], unique=True
+    )
+    await db.plan_day_marks.create_index("athlete_telegram_id")

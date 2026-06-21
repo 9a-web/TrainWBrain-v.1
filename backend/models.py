@@ -245,6 +245,8 @@ class WorkoutSession(BaseModel):
     confirmed_by: Optional[int] = None
     confirmed_at: Optional[str] = None
     last_event_at: Optional[str] = None
+    # --- P7: замороженный снимок статистики тренировки (заполняется при finish) ---
+    stats: Optional[dict] = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -254,3 +256,49 @@ class SessionStartReq(BaseModel):
     athlete_telegram_id: int
     week: int = 1
     day: int = 1
+
+
+# ---------------------------------------------------------------------------
+# P2.1 — Пропуски/переносы тренировочных дней плана (plan_day_marks)
+# ---------------------------------------------------------------------------
+class PlanDayMark(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=_uuid)
+    plan_id: str
+    athlete_telegram_id: int
+    week_index: int
+    day_index: int
+    status: str = "skipped"           # skipped | missed | rescheduled | excused
+    reason: Optional[str] = None
+    rescheduled_to: Optional[str] = None   # ISO date (для переноса)
+    marked_by: Optional[int] = None        # telegram_id того, кто пометил
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class DaySkipReq(BaseModel):
+    week: int
+    day: int
+    reason: Optional[str] = None
+    marked_by: Optional[int] = None
+
+
+class DayRescheduleReq(BaseModel):
+    week: int
+    day: int
+    rescheduled_to: str                    # ISO date YYYY-MM-DD
+    reason: Optional[str] = None
+    marked_by: Optional[int] = None
+
+
+class DayMarkReq(BaseModel):
+    status: str                            # excused | missed | skipped
+    reason: Optional[str] = None
+    marked_by: Optional[int] = None
+
+
+class UserSettingsReq(BaseModel):
+    streak_mode: Optional[str] = None      # strict | lenient
+    units: Optional[str] = None            # kg | lb
+    default_rest_sec: Optional[int] = None
