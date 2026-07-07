@@ -1055,6 +1055,35 @@ async def _assert_can_edit_plan(current: dict, plan: dict):
     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения этого плана")
 
 
+async def _assert_session_read(current: dict, session: dict):
+    """Просмотр тренировки: владелец-спортсмен ИЛИ активный тренер спортсмена."""
+    tgid = current.get("telegram_id")
+    athlete = session.get("athlete_telegram_id")
+    if tgid == athlete:
+        return
+    if await _is_coach_of(tgid, athlete):
+        return
+    raise HTTPException(status_code=403, detail="Нет доступа к этой тренировке")
+
+
+async def _assert_session_actor(current: dict, session: dict, actor: str, by: Optional[int]):
+    """Изменение тренировки: владелец-спортсмен ИЛИ активный тренер спортсмена.
+    Для actor=='coach' дополнительно проверяем, что вызывающий и есть этот тренер."""
+    tgid = current.get("telegram_id")
+    athlete = session.get("athlete_telegram_id")
+    if actor == "coach":
+        coach_id = by if by is not None else tgid
+        if tgid != coach_id:
+            raise HTTPException(status_code=403, detail="Действие от имени другого тренера запрещено")
+        await _assert_coach_of(coach_id, athlete)
+        return
+    if tgid == athlete:
+        return
+    if await _is_coach_of(tgid, athlete):
+        return
+    raise HTTPException(status_code=403, detail="Нет доступа к этой тренировке")
+
+
 async def _resolve_athlete_coach(athlete_tgid: int) -> Optional[int]:
     """Текущий активный тренер спортсмена (по coach_links). None, если нет."""
     link = await db.coach_links.find_one(
@@ -1942,15 +1971,22 @@ async def get_week_progress(plan_id: str, week: int = 1, viewer: Optional[int] =
 # Тренировочные сессии (Phase 2)
 # ===========================================================================
 @api_router.post("/sessions/start")
-async def start_session(req: SessionStartReq):
+async def start_session(req: SessionStartReq, current_user: dict = Depends(get_current_user)):
     plan = await db.plans.find_one({"id": req.plan_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
     # Старт «под диктовку тренера»: проверяем, что вызывающий — тренер этого спортсмена
     coach_led = req.coach_telegram_id is not None
+    uid = current_user["telegram_id"]
     if coach_led:
+        if uid != req.coach_telegram_id:
+            raise HTTPException(status_code=403, detail="Старт от имени другого тренера запрещён")
         await _assert_coach_of(req.coach_telegram_id, req.athlete_telegram_id)
+    else:
+        # Обычный старт: только сам спортсмен или его активный тренер
+        if uid != req.athlete_telegram_id and not await _is_coach_of(uid, req.athlete_telegram_id):
+            raise HTTPException(status_code=403, detail="Нельзя начать тренировку за другого спортсмена")
 
     existing = await db.workout_sessions.find_one(
         {"plan_id": req.plan_id, "athlete_telegram_id": req.athlete_telegram_id,
@@ -2026,11 +2062,15 @@ async def start_session(req: SessionStartReq):
 
 @api_router.get("/sessions/active")
 async def get_active_session(plan_id: str, week: int, day: int, athlete: int,
-                             date: Optional[str] = None):
+                             date: Optional[str] = None,
+                             current_user: dict = Depends(get_current_user)):
     """Сессия для дня плана. Если передан date (ISO YYYY-MM-DD) — возвращаем
     сессию, реально выполненную В ЭТУ календарную дату (иначе последнюю по
     (plan,week,day)). Это исключает показ одной тренировки на одинаковых днях
     недели разных календарных недель."""
+    # Доступ: только сам спортсмен или его активный тренер
+    if current_user["telegram_id"] != athlete and not await _is_coach_of(current_user["telegram_id"], athlete):
+        raise HTTPException(status_code=403, detail="Нет доступа к тренировкам этого спортсмена")
     q = {"plan_id": plan_id, "athlete_telegram_id": athlete,
          "week_index": week, "day_index": day}
     if date:
@@ -2044,10 +2084,11 @@ async def get_active_session(plan_id: str, week: int, day: int, athlete: int,
 
 
 @api_router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: str, current_user: dict = Depends(get_current_user)):
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _assert_session_read(current_user, s)
     return _serialize_session(s)
 
 
@@ -2058,6 +2099,7 @@ async def update_session_exercise(
     action: str,
     actor: str = "athlete",
     by: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
 ):
     """Отметка упражнения (done/skip/reset).
 
@@ -2069,10 +2111,9 @@ async def update_session_exercise(
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if actor == "coach":
-        if by is None:
-            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
-        await _assert_coach_of(by, s["athlete_telegram_id"])
+    if actor == "coach" and by is None:
+        raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+    await _assert_session_actor(current_user, s, actor, by)
 
     exs = s["exercises"]
     target = next((e for e in exs if e["order"] == order), None)
@@ -2173,6 +2214,7 @@ async def log_session_set(
     payload: SetLogReq = Body(default=None),
     actor: str = "athlete",
     by: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
 ):
     """По-подходное логирование факта: отметка подхода выполненным/пропущенным
     и/или запись фактических веса/повторов конкретного подхода.
@@ -2183,10 +2225,9 @@ async def log_session_set(
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
-    if actor == "coach":
-        if by is None:
-            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
-        await _assert_coach_of(by, s["athlete_telegram_id"])
+    if actor == "coach" and by is None:
+        raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+    await _assert_session_actor(current_user, s, actor, by)
 
     exs = s["exercises"]
     target = next((e for e in exs if e["order"] == order), None)
@@ -2287,6 +2328,7 @@ async def edit_session_exercise(
     payload: dict = Body(...),
     actor: str = "athlete",
     by: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
 ):
     """Редактирование упражнения сессии (кнопка ✨): имя и/или схема подходов.
 
@@ -2295,10 +2337,9 @@ async def edit_session_exercise(
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
-    if actor == "coach":
-        if by is None:
-            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
-        await _assert_coach_of(by, s["athlete_telegram_id"])
+    if actor == "coach" and by is None:
+        raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+    await _assert_session_actor(current_user, s, actor, by)
     plan = await db.plans.find_one({"id": s["plan_id"]}, {"_id": 0})
     orm = (plan or {}).get("one_rep_max") or {}
 
@@ -2375,10 +2416,11 @@ async def edit_session_exercise(
 
 
 @api_router.post("/sessions/{session_id}/finish")
-async def finish_session(session_id: str):
+async def finish_session(session_id: str, current_user: dict = Depends(get_current_user)):
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _assert_session_actor(current_user, s, "athlete", None)
     now = datetime.now(timezone.utc).isoformat()
     finished_at = s.get("finished_at") or now
     s["status"] = "finished"
@@ -2399,7 +2441,7 @@ async def finish_session(session_id: str):
 
 
 @api_router.post("/sessions/{session_id}/resume")
-async def resume_session(session_id: str):
+async def resume_session(session_id: str, current_user: dict = Depends(get_current_user)):
     """Продолжить ранее завершённую тренировку, СОХРАНИВ отметки о выполненных
     упражнениях. Сессия снова становится активной (in_progress); следующее
     невыполненное упражнение делается текущим. Запрещаем, если у спортсмена уже
@@ -2407,6 +2449,7 @@ async def resume_session(session_id: str):
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _assert_session_actor(current_user, s, "athlete", None)
 
     active_other = await db.workout_sessions.find_one(
         {"athlete_telegram_id": s["athlete_telegram_id"], "status": "in_progress",
@@ -2452,10 +2495,11 @@ async def resume_session(session_id: str):
 
 
 @api_router.post("/sessions/{session_id}/pause")
-async def pause_session(session_id: str, resume: bool = False):
+async def pause_session(session_id: str, resume: bool = False, current_user: dict = Depends(get_current_user)):
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _assert_session_actor(current_user, s, "athlete", None)
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
         {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now, "last_event_at": now}}
@@ -2471,7 +2515,8 @@ class SessionConfirmReq(BaseModel):
 
 
 @api_router.post("/sessions/{session_id}/confirm")
-async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(default=None)):
+async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(default=None),
+                          current_user: dict = Depends(get_current_user)):
     """Тренер подтверждает выполнение тренировки подопечного (coach_confirmed=true)."""
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
@@ -2479,6 +2524,8 @@ async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(def
     coach_tgid = payload.coach_telegram_id if payload else None
     if coach_tgid is None:
         raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
+    if current_user["telegram_id"] != coach_tgid:
+        raise HTTPException(status_code=403, detail="Подтверждение от имени другого тренера запрещено")
     await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
     now = datetime.now(timezone.utc).isoformat()
     await db.workout_sessions.update_one(
@@ -2504,7 +2551,8 @@ async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(def
 
 @api_router.patch("/sessions/{session_id}/exercise/{order}/confirm")
 async def confirm_session_exercise(
-    session_id: str, order: int, payload: SessionConfirmReq = Body(default=None)
+    session_id: str, order: int, payload: SessionConfirmReq = Body(default=None),
+    current_user: dict = Depends(get_current_user),
 ):
     """Тренер подтверждает выполнение отдельного упражнения подопечного."""
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
@@ -2513,6 +2561,8 @@ async def confirm_session_exercise(
     coach_tgid = payload.coach_telegram_id if payload else None
     if coach_tgid is None:
         raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
+    if current_user["telegram_id"] != coach_tgid:
+        raise HTTPException(status_code=403, detail="Подтверждение от имени другого тренера запрещено")
     await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
 
     exs = s["exercises"]
@@ -3081,11 +3131,12 @@ async def get_plan_missed(plan_id: str):
 
 # ---- P7: отклонения сессии и подробная статистика ----
 @api_router.get("/sessions/{session_id}/deviation")
-async def get_session_deviation(session_id: str):
+async def get_session_deviation(session_id: str, current_user: dict = Depends(get_current_user)):
     """План vs факт по упражнениям одной тренировки."""
     s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    await _assert_session_read(current_user, s)
     return {
         "session_id": session_id,
         "stats": _get_session_stats(s),
