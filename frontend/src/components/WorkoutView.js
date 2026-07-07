@@ -389,6 +389,14 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, 
 
   // Активное упражнение раскрыто по умолчанию, остальные свёрнуты
   const [open, setOpen] = useState(isActive);
+  // Если упражнение становится активным позже (данные сессии подгрузились
+  // или предыдущее упражнение завершено) — раскрываем его автоматически,
+  // не мешая ручным переключениям пользователя.
+  const wasActive = useRef(isActive);
+  useEffect(() => {
+    if (isActive && !wasActive.current) setOpen(true);
+    wasActive.current = isActive;
+  }, [isActive]);
 
   // Кнопки действий спортсмена: у основных — только у активного; у подсобных — пока не выполнено.
   // Когда тренировка завершена — действия скрыты (вернутся после «Продолжить»).
@@ -437,6 +445,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, 
               aria-label="Подтвердить упражнение"
             >
               <ShieldCheck size={16} />
+              <span className="ex-confirm-lbl">{ex.coach_confirmed ? "Подтв." : "Подтвердить"}</span>
             </span>
           ) : null}
           {isFinishedCard && !isCoach && !finished ? (

@@ -620,6 +620,19 @@
   transform: scale(0.92);
   background: #3d3d3d;
 }
+.session-done-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #62a0f5;
+  background: rgba(47, 128, 237, 0.14);
+  border: 1px solid rgba(47, 128, 237, 0.35);
+  white-space: nowrap;
+}
 
 /* ===== Модалка подтверждения старта ===== */
 .confirm-overlay {

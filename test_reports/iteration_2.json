@@ -1,0 +1,40 @@
+{
+  "summary": "Frontend-only верификация 3 UX-правок на экранах Home(athlete)/CoachLive/WorkoutView. Все 3 правки подтверждены как рабочие. Регрессий не обнаружено.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_fixes": [
+    {
+      "fix": "FIX 1 — session-done-chip on athlete Home when coach_confirmed",
+      "status": "PASS",
+      "evidence": "athdemo Home /: [data-testid='session-done-chip'] найден (count=1), внутренний текст 'Подтверждена тренером' ✓. [data-testid='resume-button'] отсутствует (count=0) ✓. Иконка ShieldCheck отображается слева от текста."
+    },
+    {
+      "fix": "FIX 2 — Текстовая подпись на coach-confirm тумблере",
+      "status": "PASS",
+      "evidence": "На /coach/939932521119/live: [data-testid='coach-confirm-0'] содержит .ex-confirm-lbl со значением 'Подтв.' (упражнение уже было подтверждено на прошлой итерации, класс 'ex-confirm-btn on'). Лейбл видим (visible=true). Клик по тумблеру корректно снял подтверждение: класс изменился с 'ex-confirm-btn on' -> 'ex-confirm-btn' (toggle работает)."
+    },
+    {
+      "fix": "FIX 3 — Авто-раскрытие активной exercise-card",
+      "status": "PASS",
+      "evidence": "phase1demo Home /: найдена карточка .ex-card.ex-card-active (order=0, Присед соревновательный, статус 'В процессе'). [data-testid='setlist-0'] отображается автоматически (visible=true) без ручного клика по заголовку карточки. Виден чек-лист подходов 2/6."
+    }
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Регрессий не найдено. useEffect с wasActive ref в ExerciseCard корректно решает race condition при позднем приходе session data — активная карточка авто-раскрывается.",
+    "WorkoutView.js по-прежнему >1000 строк — рекомендация из iteration_1 остаётся: разбить на модули (SetRow/SetList, RestTimer, WorkoutSettingsModal, EditExerciseModal, ExerciseCard, ForecastChart)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (3/3 UX-правок проходят, регрессий нет)"},
+  "test_credentials": "athdemo_1783458678@twb.dev, coachdemo_1783458678@twb.dev, phase1demo_1783429894@twb.dev — все с паролем password123, все логинятся успешно кнопкой 'Войти' (exact text). Токен в localStorage['twb_token'].",
+  "seed_data_creation": "Не создавал. Побочный эффект FIX 2: клик по coach-confirm-0 снял подтверждение с первого упражнения athdemo (было 'on', стало off). Если нужен исходный state для следующего прогона — вручную кликнуть coach-confirm-0 ещё раз или использовать backend seed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Все 3 UX-правки из iteration_2 подтверждены. Селекторы для повторного прогона: [data-testid='session-done-chip'], [data-testid='resume-button'], [data-testid='coach-confirm-<order>'] с вложенным .ex-confirm-lbl (текст 'Подтвердить'/'Подтв.'), .ex-card.ex-card-active + [data-testid='setlist-<order>']. Логин: страница /login с input[type=email], input[type=password], button 'Войти' exact. Логаут: /profile -> [data-testid='logout-btn'].",
+  "rca of the issue": "N/A — правки работают корректно, багов не найдено."
+}
