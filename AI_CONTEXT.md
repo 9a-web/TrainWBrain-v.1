@@ -1,68 +1,62 @@
-# AI_CONTEXT.md — TrainWithBrain (Telegram Web App)
+# AI_CONTEXT.md — TrainWithBrain (Website + Telegram Mini App + PWA)
 
-> **Версия документа:** 3.0
-> **Последнее обновление:** Июль 2025
+> **Версия документа:** 4.0
+> **Последнее обновление:** Июнь 2026
 > **Назначение:** Рабочий контекст для AI‑агентов. Прочитай этот файл ПЕРВЫМ перед любой задачей.
-> **Связанные документы:** [`README.md`](./README.md) (обзор для людей) · [`PROJECT_DETAILS.md`](./PROJECT_DETAILS.md) (глубокий технический разбор) · [`test_result.md`](./test_result.md) (протокол тестирования)
+> **Связанные документы:** [`twb_plan.md`](./twb_plan.md) (ТЗ + архитектурный план — источник продуктовой истины) · [`README.md`](./README.md) · [`PROJECT_DETAILS.md`](./PROJECT_DETAILS.md) · [`test_result.md`](./test_result.md) (протокол тестирования) · [`memory/test_credentials.md`](./memory/test_credentials.md)
 
 ---
 
-## 0. TL;DR для агента (прочитай за 30 секунд)
+## 0. TL;DR для агента (прочитай за 60 секунд)
 
-- **Что это:** Telegram Web App (Mini App) для трекинга силовых тренировок. Открывается внутри Telegram.
-- **Стек:** React 19 (CRACO) + FastAPI + MongoDB (Motor). Кастомный UI + shadcn/ui.
-- **Текущее состояние:** MVP UI‑скелет. Реализованы: регистрация Telegram‑пользователя в БД, аватар через Bot API, приветствие по времени суток, недельный селектор дней с круговым прогрессом (**прогресс — mock**).
-- **Где основной код:** backend → `backend/server.py` (один файл). frontend → `frontend/src/App.js` + `frontend/src/components/DateSelector.js`.
-- **Главное правило:** все API‑роуты начинаются с `/api`. URL только из `.env`. ID — только UUID, не ObjectID. Пакеты фронта — только `yarn`.
+- **Что это:** Приложение для трекинга **силовых тренировок** (пауэрлифтинг) с двумя ролями — **спортсмен** и **тренер**. Работает как обычный сайт, как **Telegram Mini App** и как **PWA**.
+- **Стек:** React 19 (CRACO) + FastAPI + MongoDB (Motor, async). Кастомный тёмный UI + shadcn/ui + recharts.
+- **Текущее состояние:** **зрелый production‑MVP**, НЕ скелет. Реализованы: обязательная аутентификация (email/пароль, Telegram, Google), библиотека программ со скейлингом под 1ПМ, назначение плана, полный жизненный цикл тренировки с **по‑подходным логированием** и таймером отдыха, статистика/streak, **режим тренера** (приглашение, подопечные, редактор плана, видимость draft/published, тренировочные дни), **real‑time co‑scribe через WebSocket**, подтверждение тренером, **старт тренировки тренером**, подробная статистика с графиками, система пропусков. Закрыты **IDOR** на всех `/sessions/*` и `/plans/*`.
+- **Где основной код:** backend → `backend/server.py` (монолит ~3400 строк) + `models.py`/`auth.py`/`realtime.py`/`seed.py`. frontend → `frontend/src/` (`App.js`, `api.js`, `components/`, `pages/`, `context/`, `hooks/`).
+- **Главное правило:** все API‑роуты начинаются с `/api`. URL/порты/секреты — только из `.env`. ID — только UUID (не ObjectID). Пакеты фронта — только `yarn`. **Аутентификация обязательна** (нет гостевого режима) — почти все запросы требуют `Authorization: Bearer <token>`.
+
+> ⚠️ **Документ v3.0 описывал раннюю версию‑«скелет» (mock‑прогресс, 2 коллекции, 6 эндпоинтов) — это устарело.** Актуальная реальность — ниже.
 
 ---
 
 ## 1. Суть проекта
 
-**TrainWithBrain (TWB)** — Telegram Web App для отслеживания тренировочного прогресса, ориентированный на пауэрлифтеров и силовых спортсменов. Идея: пользователь открывает приложение прямо в Telegram, видит персональное приветствие, свою тренировочную серию (streak) и недельный календарь с прогрессом выполнения по каждому дню.
+**TrainWithBrain (TWB)** — приложение для отслеживания силовых тренировок с **двумя ролями в одном аккаунте**:
 
-### Ключевые особенности
-- Интеграция с Telegram WebApp API (`window.Telegram.WebApp`)
-- Автоматическая регистрация/обновление пользователя в MongoDB при входе (upsert по `telegram_id`)
-- Загрузка аватара пользователя через Telegram Bot API (с fallback на ui-avatars.com)
-- Персонализированное приветствие по времени суток
-- Недельный селектор дней с круговыми progress‑барами (SVG)
-- Mobile‑first адаптивный дизайн (брейкпоинты 374 / 767 / 1023 / 1024px)
+- **Спортсмен (athlete)** — выбирает/получает тренировочную программу, запускает тренировку кнопкой «Начать», по ходу отмечает подходы (по‑подходно), видит прогресс, streak и статистику.
+- **Тренер (coach)** — ведёт подопечных, готовит и правит планы, **в реальном времени** видит ход тренировки, сам может отмечать/подтверждать выполненное и **запускать тренировку за спортсмена**.
+
+Продуктовое ТЗ, доменная модель и фазовая дорожная карта — в [`twb_plan.md`](./twb_plan.md). Этот файл — техническая карта актуального кода.
 
 ---
 
 ## 2. Технологический стек (источник истины — `package.json` / `requirements.txt`)
 
 ### Frontend
-| Технология | Версия | Назначение |
-|------------|--------|------------|
-| React | 19.0.0 | UI фреймворк |
-| CRACO | 7.1.0 | Обёртка над CRA, конфиг webpack, alias `@` → `src` |
-| react-scripts (CRA) | 5.0.1 | Сборка |
-| Tailwind CSS | 3.4.17 | Утилитарные стили |
-| shadcn/ui + Radix UI | latest | Библиотека UI‑компонентов (`src/components/ui/`) |
-| react-router-dom | 7.5.1 | Роутинг (сейчас один маршрут `/`) |
-| axios | 1.8.4 | HTTP‑запросы к backend |
-| lucide-react | 0.507.0 | Иконки |
-| recharts | 3.6.0 | Графики (пока не используются) |
-| date-fns | 4.1.0 | Работа с датами (пока не используется в коде) |
-| sonner | 2.0.3 | Toast‑уведомления |
+| Технология | Назначение |
+|------------|------------|
+| React 19 + CRACO | UI, alias `@` → `src` |
+| react-router-dom | Роутинг (много маршрутов, см. §6) |
+| axios | HTTP‑клиент (`src/api.js`, Bearer‑токен) |
+| Tailwind CSS + shadcn/ui + Radix | Стили и компоненты (`src/components/ui/`) |
+| recharts | Графики статистики (`pages/Stats.js`) |
+| lucide-react | Иконки |
+| sonner | Toast‑уведомления (`<Toaster theme="dark" />`) |
+| date-fns | Работа с датами |
 
 ### Backend
-| Технология | Версия | Назначение |
-|------------|--------|------------|
-| FastAPI | 0.110.1 | Web‑фреймворк |
-| Motor | 3.3.1 | Async MongoDB driver |
-| Pydantic | 2.x | Валидация данных (используется `ConfigDict(extra="ignore")`) |
-| httpx | (зависимость) | Async HTTP‑клиент для вызовов Telegram Bot API |
-| python-dotenv | 1.x | Загрузка `.env` |
-| uvicorn | 0.25.0 | ASGI‑сервер (запуск через supervisor) |
-| emergentintegrations | 0.1.0 | Установлена, но **пока не используется** |
+| Технология | Назначение |
+|------------|------------|
+| FastAPI | REST + нативный WebSocket (`/api/ws`) |
+| Motor | Async MongoDB driver |
+| Pydantic v2 | Модели (`ConfigDict(extra="ignore")`) |
+| passlib[bcrypt] | Хеширование паролей |
+| httpx | Async HTTP (Telegram Bot API, Google, Emergent session) |
+| openpyxl | Парсинг Excel при генерации seed |
+| python-dotenv, uvicorn | Конфиг и ASGI (через supervisor) |
 
-### База данных
-- **MongoDB** через Motor (async).
-- Имя БД берётся из `DB_NAME` (`.env`), сейчас `test_database`.
-- Коллекции: **`users`**, **`status_checks`**.
+### База данных — MongoDB (Motor), имя из `DB_NAME`
+**Коллекции:** `users`, `user_sessions`, `exercises`, `programs`, `plans`, `workout_sessions`, `coach_links`, `plan_day_marks`, `status_checks` (демо).
 
 ---
 
@@ -71,270 +65,218 @@
 ```
 /app/
 ├── backend/
-│   ├── server.py              # ВЕСЬ backend: модели + все эндпоинты (1 файл)
-│   ├── requirements.txt       # Python‑зависимости
-│   └── .env                   # MONGO_URL, DB_NAME, CORS_ORIGINS, TELEGRAM_BOT_TOKEN
+│   ├── server.py        # МОНОЛИТ ~3400 строк: все REST‑эндпоинты + WebSocket + бизнес‑логика
+│   ├── models.py        # Pydantic‑модели (Exercise, Program*, Plan, WorkoutSession, SetLog, ...)
+│   ├── auth.py          # аутентификация: bcrypt, Telegram HMAC, Google (OAuth + Emergent), сессии
+│   ├── realtime.py      # ConnectionManager (in-memory), комнаты plan:{id}/user:{tg}, broadcast
+│   ├── seed.py          # идемпотентный seed: 29 упражнений + 4 шаблона (uuid5), индексы
+│   ├── seed_data/       # исходные данные шаблонов (напр. pl_autumn_3m.json)
+│   ├── requirements.txt
+│   └── .env             # MONGO_URL, DB_NAME, CORS_ORIGINS, TELEGRAM_BOT_TOKEN, GOOGLE_CLIENT_ID/SECRET
 │
 ├── frontend/
-│   ├── public/
-│   │   ├── index.html         # Подключает Telegram, PostHog, Emergent visual-edit скрипты
-│   │   ├── TWBlogo.png        # Логотип (рендерится 90x56px)
-│   │   ├── gradientcenter.png # Размытый градиент‑свечение в шапке (blur 100px)
-│   │   ├── menu.svg           # Иконка меню (40x40px, БЕЗ функционала)
-│   │   ├── fire_strike.svg    # Иконка серии тренировок
-│   │   ├── arrow-left.svg / arrow-right.svg  # Навигация по неделям
-│   │   ├── sunrise.svg        # Утро (05:00–11:59)
-│   │   ├── day.svg            # День (12:00–17:59)
-│   │   ├── sunset.svg         # Вечер (18:00–22:59)
-│   │   └── night.svg          # Ночь (23:00–04:59)
-│   │
-│   ├── src/
-│   │   ├── App.js             # Главный компонент Home: Telegram init, приветствие, streak
-│   │   ├── App.css            # Стили шапки/приветствия/streak + адаптив
-│   │   ├── index.js           # Точка входа React
-│   │   ├── index.css          # Импорт шрифтов, CSS‑переменные, Tailwind, shadcn HSL‑токены
-│   │   ├── fonts/             # GGZaglav.woff / .woff2 (кастомный шрифт для крупной даты)
-│   │   ├── components/
-│   │   │   ├── DateSelector.js   # Недельный селектор дней + ProgressRing (SVG)
-│   │   │   ├── DateSelector.css  # Стили карточек дней + адаптив
-│   │   │   └── ui/               # 46 компонентов shadcn/ui (.jsx)
-│   │   ├── hooks/
-│   │   │   └── use-toast.js
-│   │   └── lib/
-│   │       └── utils.js          # cn() — объединение классов (clsx + tailwind-merge)
-│   │
-│   ├── package.json
-│   ├── craco.config.js        # alias '@', watchOptions, health-check plugin
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   ├── jsconfig.json          # alias '@/*' для IDE
-│   └── .env                   # REACT_APP_BACKEND_URL, WDS_SOCKET_PORT, ENABLE_HEALTH_CHECK
+│   └── src/
+│       ├── App.js               # AuthProvider + роуты + Splash + Google‑callback
+│       ├── api.js               # обёртка axios: API=${REACT_APP_BACKEND_URL}/api, WS_BASE, Bearer
+│       ├── context/
+│       │   ├── AuthContext.js   # логин/регистрация/logout, switchMode, token в localStorage (twb_token)
+│       │   └── UserContext.js   # текущий пользователь, аватар, Telegram init + dev‑fallback
+│       ├── hooks/
+│       │   ├── useRealtime.js   # WebSocket‑клиент (reconnect + backoff), диспатч событий
+│       │   └── useTelegramUI.js # platform-aware Telegram WebApp (haptics, кнопки)
+│       ├── components/
+│       │   ├── DateSelector.js  # недельный селектор + прогресс‑кольца + «План»‑пикер + пропуски
+│       │   ├── WorkoutView.js   # экран тренировки: по‑подходный чек‑лист, таймер отдыха, настройки
+│       │   ├── InstallPrompt.js # PWA install‑кнопка
+│       │   └── ui/              # shadcn/ui
+│       ├── pages/
+│       │   ├── Login.js         # 3 метода входа
+│       │   ├── Profile.js       # режим athlete/coach, «Подопечные», «Мой тренер», настройки
+│       │   ├── Programs.js      # библиотека шаблонов + назначение плана (модалка максимумов/дней)
+│       │   ├── Coach.js         # кабинет тренера: invite‑код + список подопечных
+│       │   ├── CoachClient.js   # карточка подопечного: план, видимость, дни, публикация недель
+│       │   ├── CoachLiveSession.js # LIVE‑экран тренировки подопечного (co-scribe + подтверждение + старт)
+│       │   ├── CoachPlanEditor.js  # редактор снимка плана (недели/дни/упражнения CRUD)
+│       │   ├── Stats.js         # подробная статистика с графиками (свои + подопечного, recharts)
+│       │   └── Streak.js        # экран тренировочной серии
+│       └── .env                 # REACT_APP_BACKEND_URL, WDS_SOCKET_PORT
 │
-├── backend_test.py            # Скрипт интеграционного тестирования backend (requests)
-├── tests/                     # Пустая директория (__init__)
-├── AI_CONTEXT.md              # ← этот файл
-├── README.md
-├── PROJECT_DETAILS.md
-└── test_result.md
+├── AI_CONTEXT.md   # ← этот файл (техническая карта кода)
+├── twb_plan.md     # ТЗ + архитектура + фазовая дорожная карта (продуктовый источник истины)
+├── test_result.md  # протокол тестирования (используется testing‑агентами)
+└── memory/test_credentials.md  # тестовые аккаунты + заметки окружения
 ```
-
-> ⚠️ В текущем `App.js` в шапке рендерятся ТОЛЬКО логотип и кнопка меню. Элемент аватара в UI пока НЕ выводится, хотя backend‑эндпоинт аватара готов и протестирован. См. раздел 10 (Backlog).
 
 ---
 
-## 4. API‑контракт (актуальный)
+## 4. Аутентификация и безопасность (реализовано)
 
-Базовый префикс: **`/api`** (обязателен для Kubernetes ingress). Все роуты определены в `backend/server.py` через `APIRouter(prefix="/api")`.
+### 4.1 Три метода входа, одна модель сессии
+Реализация — `backend/auth.py` + эндпоинты `/api/auth/*` в `server.py`. Гостевого режима НЕТ — вход обязателен.
+1. **Email + пароль** — bcrypt (`passlib`), `password_hash` НИКОГДА не возвращается в ответах.
+2. **Telegram WebApp** — валидация `initData` по HMAC‑SHA256 бот‑токеном (`validate_telegram_init_data`).
+3. **Google** — два пути: прямой OAuth 2.0 (`/auth/google/oauth`, своё брендирование, ключи в `.env`) и Emergent Managed (`/auth/google/session`, keyless, exchange `session_id`).
 
-| Метод | Endpoint | Назначение | Тело / Параметры | Ответ |
-|-------|----------|------------|------------------|-------|
-| GET | `/api/` | Health check | — | `{"message": "Hello World"}` |
-| POST | `/api/status` | Создать запись статуса | `{ "client_name": str }` | `StatusCheck` |
-| GET | `/api/status` | Список статусов (до 1000) | — | `StatusCheck[]` |
-| POST | `/api/users` | **Upsert пользователя** по `telegram_id` | `UserCreate` | `User` |
-| GET | `/api/users/{telegram_id}` | Получить пользователя | path `telegram_id: int` | `User` (404 если нет) |
-| GET | `/api/telegram/avatar/{user_id}` | URL аватара через Bot API | path `user_id: int` | `{ avatar_url, ... }` |
+- Каждый аккаунт ключуется по `telegram_id` (реальный для Telegram; **синтетический** `900_000_000_000+` для email/Google) — вся плановая/сессионная логика работает единообразно.
+- Сессии — непрозрачные токены в `user_sessions` `{session_token, telegram_id, auth_method, expires_at(ISO), created_at}`, TTL 7 дней.
+- Зависимость `get_current_user` читает `Authorization: Bearer <token>` (в первую очередь), затем cookie `session_token`. Фронт хранит токен в `localStorage["twb_token"]` и ставит его дефолтным заголовком axios.
 
-### Модели данных (Pydantic)
-
-```python
-# Пользователь — входные данные из Telegram WebApp
-class UserCreate(BaseModel):
-    telegram_id: int
-    first_name: str
-    last_name: Optional[str] = None
-    username: Optional[str] = None
-    language_code: Optional[str] = None
-
-# Пользователь — документ в БД
-class User(BaseModel):
-    id: str                    # UUID (НЕ ObjectID)
-    telegram_id: int
-    first_name: str
-    last_name: Optional[str]
-    username: Optional[str]
-    language_code: Optional[str]
-    created_at: datetime
-    updated_at: datetime
-
-# Демо‑модели из шаблона
-class StatusCheck(BaseModel):
-    id: str                    # UUID
-    client_name: str
-    timestamp: datetime
-class StatusCheckCreate(BaseModel):
-    client_name: str
-```
-
-### Поведение `/api/telegram/avatar/{user_id}`
-Делает 3 запроса к Telegram Bot API: `getUserProfilePhotos` → `getFile` → формирует прямой URL файла.
-Возвращает `{"avatar_url": null, "error": ...}` если: токен не задан / у юзера нет фото / юзер не найден / таймаут (10с). **Никогда не бросает 500** — всегда отдаёт JSON.
-
-### Конвенции сериализации (важно соблюдать в новых эндпоинтах!)
-- `datetime` → сохраняется в Mongo как ISO‑строка (`.isoformat()`), при чтении парсится обратно через `datetime.fromisoformat()`.
-- Запросы к Mongo всегда исключают `_id`: `find({...}, {"_id": 0})`.
-- `id` всегда генерируется как `str(uuid.uuid4())`.
+### 4.2 Авторизация по ролям / защита от IDOR (закрыто на всех `/sessions/*` и `/plans/*`)
+Хелперы в `server.py`:
+- `_assert_coach_of(coach_tgid, athlete_tgid)` — 403, если между ними нет `active` `coach_link`.
+- `_assert_can_edit_plan(current, plan)` — редактировать план может только владелец‑спортсмен ИЛИ его активный/назначенный тренер.
+- `_assert_session_read(current, session)` — читать сессию может только владелец или его тренер.
+- `_assert_session_actor(current, session, actor, by)` — действия от имени тренера (`actor=coach&by=<tgid>`) разрешены только реальному привязанному тренеру; подмена чужого `by` → 403.
+- Неавторизованный запрос → **401**, чужой доступ → **403**. Покрыто backend‑тестами (см. `test_result.md`).
 
 ---
 
-## 5. Frontend: ключевые компоненты
+## 5. API‑контракт (актуальный, префикс `/api`)
 
-### `App.js` → `Home`
-1. **Telegram init** (`useEffect`): `tg.ready()`, `tg.expand()`, читает `tg.initDataUnsafe.user`, вызывает `registerUser()` → `POST /api/users`.
-2. **Приветствие по времени** (`getGreetingData()`): возвращает текст + иконку в зависимости от часа.
-3. **Streak**: статичный текст «Тренировочная серия в течение 0 дней» (значение пока захардкожено).
-4. Рендерит `<DateSelector />`.
+Все роуты в `backend/server.py` через `APIRouter(prefix="/api")`; WebSocket — `@app.websocket("/api/ws")`.
 
-| Время | Приветствие | Иконка |
-|-------|-------------|--------|
-| 05:00–11:59 | Доброе утро | `/sunrise.svg` |
-| 12:00–17:59 | Добрый день | `/day.svg` |
-| 18:00–22:59 | Добрый вечер | `/sunset.svg` |
-| 23:00–04:59 | Доброй ночи | `/night.svg` |
+### 5.1 Auth и пользователи
+`POST /auth/register` · `POST /auth/login` · `POST /auth/telegram` · `POST /auth/google/session` · `GET /auth/google/config` · `POST /auth/google/oauth` · `GET /auth/me` · `POST /auth/logout`
+`POST /users` (upsert) · `GET /users/{telegram_id}` · `PATCH /users/{telegram_id}/mode` · `PATCH /users/{telegram_id}/settings` · `GET /telegram/avatar/{user_id}`
 
-### `DateSelector.js`
-- Показывает 7 дней текущей недели (Пн→Вс). Навигация по неделям через `weekOffset` (стрелки).
-- Каждый день — `DayCard` с `ProgressRing` (SVG, `stroke-dashoffset`).
-- Выбранный день подсвечивается градиентом.
-- **`MOCK_PROGRESS`** — захардкоженные значения прогресса по дню недели (0–100%). ⚠️ Это mock, реального источника данных нет.
-- Под селектором — крупная дата шрифтом `GG Zaglav` (56px).
+### 5.2 Каталог и программы
+`GET /exercises` (?query=&muscle=&owner=) · `POST /exercises`
+`GET /programs/templates` (4 built‑in) · `GET /programs/templates/{id}` · `POST /programs/templates`
 
----
+### 5.3 Планы (снимок программы)
+`POST /plans` (из `template_id`; поддерживает `maxes`, `training_days`, `coach_telegram_id`, `visibility`) · `GET /plans/active/{telegram_id}` (для draft‑плана спортсмену возвращает пустые `weeks`) · `GET /plans/{id}` · `GET /plans/{id}/day?week=&day=&viewer=` · `GET /plans/{id}/week-progress?week=&viewer=&dates=`
+**Редактор (тренер/владелец, guard `_assert_can_edit_plan`):** `PATCH /plans/{id}` · `PUT/DELETE /plans/{id}/day` · `PUT/DELETE /plans/{id}/exercise` · `POST/DELETE /plans/{id}/week` · `PATCH /plans/{id}/visibility` · `PATCH /plans/{id}/weeks/{week}/publish` · `PATCH /plans/{id}/training-days`
+**Пропуски/переносы (P2.1):** `POST /plans/{id}/day/skip` · `POST /plans/{id}/day/reschedule` · `PATCH /plans/{id}/day/{week}/{day}/mark` · `DELETE /plans/{id}/day/{week}/{day}/mark` · `GET /plans/{id}/missed`
 
-## 6. Дизайн‑система (сверено с CSS)
+### 5.4 Тренировочные сессии (Phase 2 + P4 co‑scribe)
+`POST /sessions/start` (409 при активной сессии; поддерживает `coach_telegram_id` → старт тренером) · `GET /sessions/active?plan_id=&week=&day=&athlete=` · `GET /sessions/{id}`
+`PATCH /sessions/{id}/exercise/{order}?action=done|skip|reset&actor=&by=` — статус упражнения (co‑scribe)
+`PATCH /sessions/{id}/exercise/{order}/set/{set_index}` — **по‑подходное логирование** (done/skipped + факт. вес/повторы)
+`PATCH /sessions/{id}/exercise/{order}/edit` — правка схемы подходов/названия/комментария
+`POST /sessions/{id}/finish` · `POST /sessions/{id}/resume` · `POST /sessions/{id}/pause?resume=`
+`POST /sessions/{id}/confirm` — тренер подтверждает всю тренировку
+`PATCH /sessions/{id}/exercise/{order}/confirm` — тренер подтверждает упражнение (toggle)
+`GET /sessions/{id}/deviation` — отклонения план↔факт
 
-### Цвета
-```css
---bg-main: #1C1C1C;                 /* фон приложения */
---text-primary: #FFFFFF;
---text-secondary: rgba(255,255,255,0.7);
---text-muted: #959595;              /* серый текст (streak) */
-Accent / акцент:   #FF6B00          /* оранжевая обводка аватара */
-Gradient (выбранный день): linear-gradient(-34deg, #FF8A24, #FFDA24)
-Card bg:           #333333          /* карточка дня */
-Progress ring bg:  #FFEBD9
-Progress ring fill:#FF8A24
-shadcn HSL‑токены: заданы в index.css (@layer base :root)
-```
+### 5.5 Тренер
+`POST /coach/invite` · `POST /coach/link` · `POST /coach/unlink` · `GET /athlete/{telegram_id}/coach` · `GET /coach/{telegram_id}/clients` · `GET /coach/{coach}/clients/{athlete}/plan` (coach‑gated) · `GET /coach/{coach}/clients/{athlete}/session` (coach‑gated LIVE)
 
-### Типографика
-| Шрифт | Источник | Использование |
-|-------|----------|---------------|
-| Plus Jakarta Sans | Google Fonts (400/500/600/700) | Весь основной текст, числа, заголовки |
-| GG Zaglav | локальный `src/fonts/GGZaglav.woff2` | Только крупная дата под селектором (56px) |
-| SF Pro Display / system | system fallback | Резервный |
+### 5.6 Статистика (P7)
+`GET /stats/{telegram_id}` · `GET /stats/{telegram_id}/detailed` · `GET /stats/{telegram_id}/exercise-progress` · `GET /stats/{telegram_id}/streak` · `GET /coach/{coach}/clients/{athlete}/stats` (coach‑gated) · `GET /coach/{coach}/clients/{athlete}/exercise-progress` (coach‑gated)
 
-### Размеры (mobile ~430px, сверено с CSS)
-```
-Header padding: 16px 40px (padding-top 40px)
-Logo: 90x56px · Menu icon: 40x40px · Avatar (CSS готов): 40x40px, border 2px #FF6B00
-Greeting font: 21px · Streak icon: 16x16px · Streak font: 14px
-Day card: 64x90px, radius 22px, bg #333
-Progress ring wrapper: 44x44px · Week nav button: 35x35px
-Selected date title: 56px (шрифт GG Zaglav)
-```
-Брейкпоинты адаптива: `≤374px`, `≤767px`, `768–1023px`, `≥1024px`.
+### 5.7 WebSocket — `WS /api/ws?token=<session_token>`
+Хендшейк валидирует токен (иначе рефьюз), подписывает на комнаты `user:{telegram_id}` и `plan:{plan_id}`. События (см. `twb_plan.md` §6.4): `session.started/finished`, `set.filled`, `exercise.confirmed`, `session.confirmed`, `plan.published`, `training_days.updated`, `presence` и т.д. **Источник истины — БД; WS только транслирует.** На реконнекте — REST‑«догон».
 
-### Эффекты
-1. Свечение в шапке: `gradientcenter.png` с `filter: blur(100px)`, `opacity 0.8`.
-2. Прогресс: анимация `stroke-dashoffset 0.3s`.
-3. Карточки: hover `scale(1.02)`, active `scale(0.98)`.
+### 5.8 Конвенции сериализации (обязательно в новых эндпоинтах)
+- `id` = `str(uuid.uuid4())`; для built‑in — детерминированный `uuid5(slug)`.
+- `datetime` → ISO‑строка при записи, парсинг при чтении. `datetime.now(timezone.utc)`.
+- Чтение из Mongo всегда с `{"_id": 0}` — никаких ObjectId‑утечек и `password_hash` в ответах.
 
 ---
 
-## 7. Telegram‑интеграция
+## 6. Frontend: маршруты и ключевые компоненты
 
-```javascript
-if (window.Telegram?.WebApp) {
-  const tg = window.Telegram.WebApp;
-  tg.ready();   // сигнал готовности
-  tg.expand();  // развернуть на весь экран
-  const user = tg.initDataUnsafe?.user; // { id, first_name, last_name, username, language_code, photo_url }
-}
 ```
-- **Bot Token** хранится в `backend/.env` → `TELEGRAM_BOT_TOKEN`. Используется только на backend для Bot API.
-- **Fallback аватара:** `https://ui-avatars.com/api/?name={first_name}&background=FF6B00&color=fff&size=80&bold=true`.
-- ⚠️ Telegram WebApp существует только при открытии внутри Telegram. В обычном браузере `window.Telegram` отсутствует → имя = «Гость», регистрация не вызывается. Это нормально для локальной разработки.
+/                        → Home: приветствие, streak (реальный), DateSelector
+/programs                → библиотека шаблонов + назначение плана
+/profile                 → режим athlete/coach, «Подопечные», «Мой тренер», настройки
+/stats                   → своя подробная статистика (recharts)
+/streak                  → тренировочная серия
+/coach                   → кабинет тренера (invite + подопечные)
+/coach/:athleteId        → карточка подопечного (план, видимость, дни)
+/coach/:athleteId/live   → LIVE‑экран тренировки (co-scribe, подтверждение, старт за спортсмена)
+/coach/:athleteId/edit   → редактор плана подопечного
+/coach/:athleteId/stats  → статистика подопечного (coach‑gated)
+/auth/google             → обработка Google OAuth redirect
+```
+
+- **`WorkoutView.js`** — центральный экран тренировки: по‑подходный чек‑лист (кнопки «Выполнить»/«Пропустить» на каждый подход), редактируемые факт. вес/повторы, оверлей‑**таймер отдыха** (появляется после отметки подхода при наличии `rest_seconds`), модалка **«Настройки тренировки»** (⚡), бейджи подтверждения тренером.
+- **`CoachLiveSession.js`** — тренер видит live‑ход тренировки: тумблер‑щит подтверждения на упражнении, кнопка «Подтвердить тренировку», co‑scribe отметки; в пустом состоянии — кнопки старта тренировки за спортсмена.
+- **`DateSelector.js`** — недельный селектор (реальный прогресс из `week-progress`), точки‑недели + модалка «План», карточки дней с бейджами пропусков; для draft‑плана — карточка «план готовится».
 
 ---
 
-## 8. Правила для AI‑агентов (DO / DON'T)
+## 7. Дизайн‑система (сохраняется)
+
+- **Цвета:** фон `#1C1C1C`; акцент `#FF6B00`; градиент выбранного дня `linear-gradient(-34deg, #FF8A24, #FFDA24)`; карточка `#333`; muted `#959595`; текст `#FFFFFF`/`rgba(255,255,255,.7)`.
+- **Шрифты:** Plus Jakarta Sans (основной) + GG Zaglav (крупная дата 56px, локальный woff2).
+- **Тёмная тема сквозная** (веб, Telegram, PWA); адаптив mobile‑first с центрированием колонки `max-width: 720px` при ≥768px. Брейкпоинты `374/767/1023/1024`.
+- Toaster `sonner` — тёмная тема, `position="top-center"`.
+
+---
+
+## 8. Кроссплатформенность (реализовано)
+
+- **Website‑first + Telegram WebApp (`telegram-web-app.js`) + PWA** (manifest + service‑worker + иконки, `InstallPrompt.js`).
+- Детект среды: `document.documentElement[data-env]` = `telegram | pwa | web`; `[data-platform]` = `tg.platform`.
+- `useTelegramUI.js` — platform‑aware: haptics с guard (`tg.HapticFeedback?.impactOccurred?.(...)`), Telegram‑кнопки с graceful‑degradation в вебе.
+- Dev‑fallback пользователь вне Telegram (для локальной разработки/автотестов) — в `UserContext.js`.
+
+---
+
+## 9. Правила для AI‑агентов (DO / DON'T)
 
 ### ❌ НЕ ДЕЛАТЬ
-1. ❌ npm — только `yarn` для фронта.
-2. ❌ Хардкод URL/портов — всё из `.env`.
-3. ❌ MongoDB ObjectID — только UUID (`str(uuid.uuid4())`).
-4. ❌ Запуск uvicorn/yarn start вручную — только через supervisor.
-5. ❌ Менять значения/URL/порты в `.env`.
-6. ❌ `create_file(overwrite=True)` для существующих файлов — использовать `search_replace`.
-7. ❌ Реализовывать сторонние интеграции «по памяти» — только через playbook‑эксперта.
+1. `npm` — только `yarn` для фронта.
+2. Хардкод URL/портов/секретов — всё из `.env`; без дефолтов (fail‑fast).
+3. MongoDB ObjectID — только UUID; в ответах не должно быть `_id`/`password_hash`.
+4. Запуск uvicorn/yarn вручную — только supervisor.
+5. Менять значения в `.env` (`REACT_APP_BACKEND_URL`, `MONGO_URL`, `DB_NAME`).
+6. `create_file(overwrite=True)` для существующих без нужды — предпочтительно `search_replace`.
+7. Реализовывать сторонние интеграции/аутентификацию «по памяти» — только через integration‑playbook.
 
 ### ✅ ДЕЛАТЬ
-1. ✅ Все API‑роуты с префиксом `/api`.
-2. ✅ В Mongo‑запросах исключать `_id` (`{"_id": 0}`).
-3. ✅ Новые datetime сериализовать в ISO‑строку при записи и парсить при чтении.
-4. ✅ Новые пакеты добавлять в `requirements.txt` / `package.json`.
-5. ✅ После правки `.env` — перезапустить сервис (`sudo supervisorctl restart backend|frontend`).
-6. ✅ Frontend → backend всегда через `process.env.REACT_APP_BACKEND_URL` + `/api`.
-7. ✅ Перед тестированием — обновлять `test_result.md`, backend тестировать первым.
+1. Все API‑роуты с префиксом `/api`; фронт → бэкенд через `process.env.REACT_APP_BACKEND_URL` + `/api`.
+2. Новые защищённые эндпоинты — с `Depends(get_current_user)` и проверкой владения (IDOR).
+3. Datetime → ISO при записи; `{"_id": 0}` при чтении.
+4. Каждый интерактивный/значимый элемент UI — с `data-testid` (kebab‑case).
+5. После правки `.env`/зависимостей — `sudo supervisorctl restart backend|frontend`.
+6. Перед тестированием — обновлять `test_result.md`; backend тестировать первым.
+7. Отвечать пользователю **на русском**.
 
 ---
 
-## 9. Команды разработки
+## 10. Команды разработки
 
 ```bash
-# Зависимости
-cd /app/frontend && yarn add <package>
-cd /app/backend && pip install <package> && echo "<package>==<version>" >> requirements.txt
-
-# Сервисы
-sudo supervisorctl status
-sudo supervisorctl restart backend
-sudo supervisorctl restart frontend
-sudo supervisorctl restart all
-
-# Логи
+sudo supervisorctl status                 # состояние сервисов
+sudo supervisorctl restart backend|frontend
 tail -n 100 /var/log/supervisor/backend.err.log
-tail -n 100 /var/log/supervisor/frontend.err.log
-
-# Быстрая проверка backend
-curl -s http://localhost:8001/api/
+curl -s http://localhost:8001/api/         # health (локально)
+# внешний e2e: $REACT_APP_BACKEND_URL/api/
 ```
 
 ---
 
-## 10. Backlog / планируемые функции
+## 11. Статус фаз (кратко; детали — `twb_plan.md`)
 
-### Высокий приоритет
-- [ ] Вывести аватар пользователя в шапку (backend‑эндпоинт уже готов; в UI его нет)
-- [ ] Регистрация с выбором тренировочного плана
-- [ ] API тренировочных планов и упражнений (модели + CRUD)
-- [ ] Реальный прогресс по дням вместо `MOCK_PROGRESS`
-- [ ] Экран дня: список упражнений (название, подходы, повторы, вес)
-
-### Средний приоритет
-- [ ] Отметка выполнения упражнений + расчёт прогресса/streak
-- [ ] Реальный подсчёт тренировочной серии (streak) вместо «0»
-- [ ] Меню навигации (Sheet/Drawer) — кнопка меню пока без действия
-- [ ] Таймер отдыха между подходами, профиль пользователя
-
-### Низкий приоритет
-- [ ] Статистика с графиками (recharts уже в зависимостях)
-- [ ] Push‑уведомления, экспорт данных, настройки
+| Фаза | Статус | Что готово |
+|------|--------|-----------|
+| P0 Фундамент | ✅ | индексы, роли/режим, dev‑fallback |
+| P1 Программы и план | ✅ | 29 упражнений, 4 шаблона, снимок плана, реальный прогресс (mock убран) |
+| P2 Тренировка и статистика | ✅ | lifecycle сессии, **по‑подходный лог + таймер отдыха + настройки**, тоннаж/%1ПМ/streak |
+| P2.1 Пропуски + отклонения | ✅ backend | `plan_day_marks`, skip/reschedule/mark/missed, adherence, streak strict/lenient |
+| P3 Режим тренера | ✅ | invite/link, подопечные, редактор плана, draft/published, недели, тренировочные дни, **подтверждение тренером**, **старт тренировки тренером** |
+| P4 Real‑time (WebSocket) | ✅ | `/api/ws`, ConnectionManager, co‑scribe (`filled_by`/`coach_confirmed`), `useRealtime` |
+| Аутентификация | ✅ | 3 метода, сессии, **IDOR закрыт** на `/sessions/*` и `/plans/*` |
+| P7 Подробная статистика | ✅ | detailed/exercise‑progress/adherence + экран графиков (recharts) |
+| CP Кроссплатформенность | ✅ база | website + Telegram + PWA, детект среды, адаптив, safe‑area |
+| P5 Доступ по неделям + оплата | ⏳ | week_access gating + опц. оплата (Stars/Stripe) — не начато |
+| P6 Импорт/экспорт + полировка | 🟡 | Excel‑шаблон готов; UI‑загрузка файла, импорт по коду/ссылке, экспорт, конструктор — впереди |
 
 ---
 
-## 11. История изменений
+## 12. Технический долг / риски
+1. `server.py` — монолит ~3400 строк; кандидат на разбиение по FastAPI‑роутерам (`routes/`, `models/`, `services/`). Не приоритет.
+2. `ConnectionManager` in‑memory — не масштабируется на несколько подов → Redis Pub/Sub (future).
+3. WebSocket за ingress — держать префикс `/api/ws`; на мобильных — reconnect + REST‑«догон» при `visibilitychange`.
+4. Bot token / Google secret — держать в секретах, ротировать на проде; при деплое добавить `<origin>/auth/google` в Google Console.
+5. Снимок плана дублирует данные — приемлемо ради изоляции истории.
 
+---
+
+## 13. История изменений
 | Дата | Версия | Изменения |
 |------|--------|-----------|
-| Янв 2025 | 1.0 | Начальная версия (Header, DateSelector) |
-| Июль 2025 | 2.0 | Расширена документация |
-| Июль 2025 | 3.0 | Полная сверка с кодом: добавлены user/avatar эндпоинты и модели, коллекции, конвенции сериализации, корректные размеры дизайн‑системы, GG Zaglav, CRACO, PostHog; добавлен `PROJECT_DETAILS.md` |
-
----
-
-## 12. Полезные ссылки
-- [Telegram WebApp API](https://core.telegram.org/bots/webapps)
-- [Telegram Bot API](https://core.telegram.org/bots/api)
-- [shadcn/ui](https://ui.shadcn.com/) · [FastAPI](https://fastapi.tiangolo.com/) · [Motor](https://motor.readthedocs.io/)
+| Янв–Июль 2025 | 1.0–3.0 | Ранние версии (скелет: Header, DateSelector, mock‑прогресс) |
+| Июнь 2026 | 4.0 | **Полная пересборка документа под актуальный код.** Отражены: обязательная аутентификация (email/Telegram/Google, сессии), закрытие IDOR на `/sessions/*` и `/plans/*`, по‑подходное логирование + таймер отдыха + настройки (P2), режим тренера с подтверждением и стартом тренировки тренером (P3), real‑time co‑scribe WebSocket (P4), подробная статистика с графиками (P7), пропуски/отклонения (P2.1), кроссплатформенность (website + Telegram + PWA). Актуализированы структура, API‑контракт (60+ эндпоинтов), коллекции (9), маршруты фронта, правила агентов |

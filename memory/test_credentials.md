@@ -26,8 +26,14 @@
 - `frontend/.env` → `REACT_APP_BACKEND_URL=https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
 
-## Phase 2 demo accounts (coach confirmation) — coach linked to athlete, athlete has a FINISHED workout today
-- COACH: `coachdemo_1783458678@twb.dev` / `password123` (role coach; open the client's live session to confirm)
+## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (created Jun 2026)
+- COACH: `coachlive_1783463290@twb.dev` / `password123` (tg 970334280141, active_mode=coach, linked to athlete below)
+- ATHLETE: `athlive_1783463290@twb.dev` / `password123` (tg 924697985185, plan published, NO workout session)
+- Plan: full-body-beginner, training_days [2,4,6] (today = Tue = day 2 is a workout day). Plan id 7988d7d2-5526-4f9e-af6e-1cea9da48ea7.
+- Flow to test coach-led start (Phase 3): login as COACH -> /coach -> open athlete -> «Наблюдать»/live (`/coach/924697985185/live`) -> empty state shows `cl-start-box` with day chips (`cl-start-day-2/4/6`) + `cl-start-for-athlete-btn` -> start -> session goes live -> co-scribe sets/exercises (coach-done/coach-skip, coach-confirm-<order>) -> `cl-finish-session-btn` -> `cl-confirm-session-btn`. Then login as ATHLETE -> Home shows the workout coach started with confirmed badges + `session-confirmed-banner`.
+- NOTE: re-run /tmp/setup_live.py to regenerate a fresh no-session pair if the session was already started.
+
+## Phase 2 demo accounts (coach confirmation) — coach linked to athlete, athlete has a FINISHED workout today- COACH: `coachdemo_1783458678@twb.dev` / `password123` (role coach; open the client's live session to confirm)
 - ATHLETE: `athdemo_1783458678@twb.dev` / `password123` (has a finished workout today; will show confirmed badges after coach confirms)
 - Flow: login as coach -> Профиль says coach mode / open «Кабинет тренера» -> client card -> «Наблюдать» (live) -> confirm exercises (shield toggle) + «Подтвердить тренировку». Then login as athlete -> Home workout shows blue «подтв.» badges + «Тренировка подтверждена тренером» banner.
 

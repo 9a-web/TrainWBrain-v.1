@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend UI E2E тесты Phases 2–4 (Coach Live + Co-scribe + Athlete WorkoutView). Пройдены три сценария: (1) чистый старт тренировки тренером за спортсмена + подтверждение сессии + отражение у спортсмена; (2) подтверждение УЖЕ завершённой тренировки с кнопкой «Продолжить»; (3) экран спортсмена с per-set логом, таймером отдыха, настройками, edit-модалкой. Все ключевые data-testid селекторы найдены и функционируют. Реалтайм-соединение (rt-status) активно (Wifi иконка зелёная).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CoachLiveSession — coach-confirm-<order> тумблер-щит", "issues": ["Иконка щита в правом верхнем углу карточки упражнения (~24px) — небольшая и не очень явно читается как «интерактивный тумблер подтверждения». В coach-режиме нет подписи/лейбла возле щита. Пользователь может не сразу догадаться, что это переключатель. Рекомендуется добавить микро-подпись «Подтвердить» или явное активное состояние (заливку/бордер), либо тултип по умолчанию виден на десктопе."]},
+      {"screen": "Путь тренера к LIVE-экрану", "issues": ["Home → аватар → Профиль → «Открыть кабинет тренера» → карточка клиента → «Наблюдать» = 4–5 переходов. На десктопе это заметно длинно. Возможные упрощения: (a) при active_mode=coach показывать на Home ярлык «Кабинет тренера» рядом с меню; (b) добавить в шапке /profile прямую кнопку «Мои клиенты» без промежуточного экрана /coach; (c) в карточке клиента вынести «Наблюдать» на первую позицию (сейчас open-live-btn первый — хорошо, но не выделен цветом акцента для тренера в live-состоянии)."]},
+      {"screen": "CoachLiveSession — завершённая тренировка (Phase 2 бар)", "issues": ["Одновременно показываются 3 крупных элемента: «Тренировка завершена», «Вы подтвердили тренировку»/«Подтвердить тренировку», «Продолжить тренировку». Визуально не сразу очевидно, что «Продолжить» — это откат завершения (respawn). Мог бы быть менее заметным (secondary), сейчас он тоже полноширинный."]},
+      {"screen": "WorkoutView — exercise-card первое раскрытие", "issues": ["В компоненте ExerciseCard `useState(isActive)` вычисляется ОДИН РАЗ при монтировании. Если данные ex загружаются позже, карточка может остаться свёрнутой у активного упражнения (наблюдалось в Scenario 3: setlist-0 пуст сразу после логина, потребовался клик по head). Не критично, но пользователю с активной тренировкой ожидаемо, что активная карточка открыта."]},
+      {"screen": "Home (athlete) — session уже завершена и подтверждена", "issues": ["На Home после завершения+подтверждения тренировки в date-actions отображается ярко-оранжевая кнопка «Продолжить» (resume-button). Для спортсмена это может выглядеть как «нужно продолжать» вместо чёткого «Тренировка завершена и подтверждена». Возможно, стоит скрыть кнопку «Продолжить» при view.coach_confirmed или заменить на текст-статус."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Убрать/спрятать кнопку «Продолжить» (resume-button на Home, cl-resume-session-btn на CoachLive) когда тренировка уже подтверждена тренером — либо сделать её secondary и переместить ниже.",
+    "Улучшить обнаруживаемость coach-confirm-<order>: добавить лейбл/тултип «Подтвердить» или изменить фон на acc-orange для непонятного щита.",
+    "В ExerciseCard заменить `useState(isActive)` на `useEffect`-синхронизацию, чтобы активная карточка автоматически раскрывалась после первичной загрузки данных сессии.",
+    "Сократить путь тренера к LIVE-экрану: показать «Кабинет тренера» прямо на Home для coach-режима или прямо на Профиль без промежуточного /coach."
+  ],
+  "critical_code_review_comments": [
+    "WorkoutView.js (~1013 строк) — рекомендую разбить на модули: SetRow/SetList, RestTimer, WorkoutSettingsModal, EditExerciseModal, ExerciseCard, ForecastChart, WorkoutView. Файл превышает ориентир в 700 строк.",
+    "ExerciseCard `useState(isActive)` — race condition при позднем приходе session data (см. UI-баг выше).",
+    "CoachLiveSession.js использует ref/setTimeout polling (4s) как fallback WS — реализация корректная, но нет visual-индикатора для пользователя, что данные подтягиваются опросом (rt-off иконка есть — ok)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (все критичные UI-флоу пройдены)"},
+  "test_credentials": "coachlive_1783463290@twb.dev/password123, athlive_1783463290@twb.dev/password123, coachdemo_1783458678@twb.dev/password123, athdemo_1783458678@twb.dev/password123, phase1demo_1783429894@twb.dev/password123 — все использованы, все успешно логинятся. Токен сохраняется в localStorage['twb_token'].",
+  "seed_data_creation": "Не создавал новых. Scenario 1 стартанул сессию для fresh-пары (coachlive/athlive) — теперь у неё есть подтверждённая завершённая тренировка. Для повторного запуска Scenario 1 (проверка пустого состояния) необходимо перезапустить /tmp/setup_live.py, чтобы получить свежую пару без сессии.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Все 3 сценария (P2/P3/P4) на CoachLive/WorkoutView прошли зелёными. Скрипты для повторного прогона могут переиспользовать selectors: profile-link, open-coach-cabinet, client-card-<tg>, open-live-btn, cl-no-session, cl-start-box, cl-start-day-N, cl-start-for-athlete-btn, workout-view, day-exercises, setlist-N, set-done/skip/undo/weight/reps/rest-N, coach-done/skip/reset-N, coach-confirm-N, confirmed-flag-N (виден только у athlete), cl-finish-session-btn, cl-finished, cl-confirm-session-btn, cl-resume-session-btn, cl-session-confirmed, session-confirmed-banner, rest-timer, rest-time/minus/plus/toggle/close, btn-settings, workout-settings-modal, ws-default-sec/autostart/sound/vibrate/save, edit-0, edit-modal, edit-add-set, edit-del-set-*, edit-comment, edit-save, logout-btn. Замечание: coach-confirm-<order>.on НЕ показывает confirmed-flag-<order> самому тренеру — по логике render (`{ex.coach_confirmed && !isCoach}`) бейдж «подтв.» виден только спортсмену. Это по дизайну, не бага. WS работает (rt-status показывает Wifi зелёный).",
+  "rca of the issue": "Багов не найдено — все три сценария зелёные. Юзабилити-наблюдения перечислены в design_issues и action_items."
+}
