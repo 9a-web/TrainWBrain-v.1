@@ -273,6 +273,7 @@ class SessionStartReq(BaseModel):
     week: int = 1
     day: int = 1
     date: Optional[str] = None      # ISO YYYY-MM-DD — календарная дата тренировки (по выбранному дню)
+    coach_telegram_id: Optional[int] = None  # если задан — старт инициирован тренером («под диктовку»)
 
 
 # ---------------------------------------------------------------------------

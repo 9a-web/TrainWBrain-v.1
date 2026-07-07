@@ -354,19 +354,34 @@ const DateSelector = () => {
     if (t.startsWith('session.')) {
       const sess = evt.payload?.session;
       if (!sess) return;
-      // Применяем снимок только если это та же сессия, что открыта у спортсмена
-      setSession((cur) => (cur && cur.id === sess.id ? sess : cur));
+      // Применяем снимок для открытой сессии; либо принимаем НОВУЮ сессию, если
+      // тренер начал тренировку «под диктовку» в выбранный сейчас день.
+      setSession((cur) => {
+        if (cur && cur.id === sess.id) return sess;
+        if (!cur && sess.plan_id === plan?.id
+            && sess.week_index === planWeek
+            && sess.day_index === selectedDayIndex) {
+          return sess;
+        }
+        return cur;
+      });
       refreshProgress();
       if (t === 'session.confirmed') {
         hapticNotify('success');
         toast.success('Тренер подтвердил тренировку 👏');
+      } else if (t === 'session.started' && sess.started_by === 'coach'
+                 && sess.plan_id === plan?.id
+                 && sess.week_index === planWeek
+                 && sess.day_index === selectedDayIndex) {
+        hapticNotify('success');
+        toast.message('Тренер начал тренировку', { description: sess.title || '' });
       }
     } else if (t.startsWith('plan') || t.startsWith('week') || t.startsWith('training_days')) {
       reloadPlan();
       refreshProgress();
       if (t === 'plan.published') toast.message('Тренер открыл вам программу 💪');
     }
-  }, [refreshProgress, reloadPlan]);
+  }, [refreshProgress, reloadPlan, plan?.id, planWeek, selectedDayIndex]);
 
   useRealtime({
     planId: plan?.id || null,

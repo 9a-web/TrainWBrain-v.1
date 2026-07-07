@@ -6,7 +6,7 @@ import { useUser } from "@/context/UserContext";
 import {
   getUserById, getCoachClientPlan, getCoachClientSession,
   sessionExerciseAction, editSessionExercise, finishSession, resumeSession, logSessionSet,
-  confirmSession, confirmSessionExercise,
+  confirmSession, confirmSessionExercise, startSession,
 } from "@/api";
 import WorkoutView from "@/components/WorkoutView";
 import { useRealtime } from "@/hooks/useRealtime";
@@ -19,6 +19,12 @@ const avatarFor = (a) => {
   if (a?.picture) return a.picture;
   const name = encodeURIComponent(a?.first_name || "U");
   return `https://ui-avatars.com/api/?name=${name}&background=FF6B00&color=fff&size=80&bold=true`;
+};
+
+const DOW = { 1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб", 7: "Вс" };
+const todayWeekday = () => {
+  const jd = new Date().getDay(); // 0=Вс..6=Сб
+  return jd === 0 ? 7 : jd;
 };
 
 export default function CoachLiveSession() {
@@ -250,6 +256,52 @@ export default function CoachLiveSession() {
     }
   };
 
+  // ---- старт тренировки «под диктовку тренера» ----
+  const startWeek = plan?.current_week || 1;
+  const startDays = useMemo(() => {
+    if (!plan?.weeks) return [];
+    const wk = plan.weeks.find((w) => w.week_index === startWeek);
+    if (!wk) return [];
+    return (wk.days || []).filter((d) => !d.is_rest && (d.exercises || []).length > 0);
+  }, [plan, startWeek]);
+  const [startDay, setStartDay] = useState(null);
+  useEffect(() => {
+    if (startDays.length && startDay == null) {
+      const wd = todayWeekday();
+      const found = startDays.find((d) => d.day_index === wd);
+      setStartDay(found ? found.day_index : startDays[0].day_index);
+    }
+  }, [startDays, startDay]);
+
+  const handleStartForAthlete = async () => {
+    if (!plan || startDay == null) return;
+    setBusy(true);
+    try {
+      const dateISO = new Date().toISOString().slice(0, 10);
+      const s = await startSession({
+        plan_id: plan.id,
+        athlete_telegram_id: aid,
+        week: startWeek,
+        day: startDay,
+        date: dateISO,
+        coach_telegram_id: coachId,
+      });
+      setSession(s);
+      hapticNotify("success");
+      toast.success("Тренировка начата");
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail?.message || "У спортсмена уже есть активная тренировка");
+      } else if (e?.response?.status === 403) {
+        toast.error("Нет доступа к этому спортсмену");
+      } else {
+        toast.error("Не удалось начать тренировку");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const athleteName = athlete?.first_name || "Спортсмен";
   const status = session?.status;
   const isLive = status === "in_progress";
@@ -310,9 +362,36 @@ export default function CoachLiveSession() {
           <div className="cl-empty-ico"><Radio size={30} /></div>
           <p className="cl-empty-title">Сейчас тренировка не идёт</p>
           <p className="cl-empty-sub">
-            Как только спортсмен нажмёт «Начать», тренировка появится здесь автоматически
-            {connected ? " — соединение активно." : "."}
+            Дождитесь, пока спортсмен нажмёт «Начать», или запустите тренировку сами — под диктовку
+            {connected ? " (соединение активно)." : "."}
           </p>
+          {startDays.length ? (
+            <div className="cl-start-box" data-testid="cl-start-box">
+              <div className="cl-start-label">Неделя {startWeek} · выберите день</div>
+              <div className="cl-start-days">
+                {startDays.map((d) => (
+                  <button
+                    key={d.day_index}
+                    type="button"
+                    className={`cl-day-chip ${startDay === d.day_index ? "active" : ""}`}
+                    onClick={() => setStartDay(d.day_index)}
+                    data-testid={`cl-start-day-${d.day_index}`}
+                  >
+                    <span className="cl-day-chip-dow">{DOW[d.day_index]}</span>
+                    <span className="cl-day-chip-title">{d.title || "Тренировка"}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="coach-primary-btn cl-start-btn"
+                onClick={handleStartForAthlete}
+                disabled={busy || startDay == null}
+                data-testid="cl-start-for-athlete-btn"
+              >
+                <Play size={16} /> Начать тренировку за спортсмена
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>

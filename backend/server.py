@@ -1947,6 +1947,11 @@ async def start_session(req: SessionStartReq):
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    # Старт «под диктовку тренера»: проверяем, что вызывающий — тренер этого спортсмена
+    coach_led = req.coach_telegram_id is not None
+    if coach_led:
+        await _assert_coach_of(req.coach_telegram_id, req.athlete_telegram_id)
+
     existing = await db.workout_sessions.find_one(
         {"plan_id": req.plan_id, "athlete_telegram_id": req.athlete_telegram_id,
          "week_index": req.week, "day_index": req.day, "status": {"$ne": "finished"},
@@ -1964,7 +1969,9 @@ async def start_session(req: SessionStartReq):
     if active_other:
         raise HTTPException(status_code=409, detail={
             "error": "active_session_exists",
-            "message": "У вас уже есть активная тренировка. Завершите её, чтобы начать новую.",
+            "message": ("У спортсмена уже есть активная тренировка. Завершите её, чтобы начать новую."
+                        if coach_led else
+                        "У вас уже есть активная тренировка. Завершите её, чтобы начать новую."),
             "session_id": active_other["id"],
             "plan_id": active_other.get("plan_id"),
             "week_index": active_other.get("week_index"),
@@ -1972,16 +1979,20 @@ async def start_session(req: SessionStartReq):
         })
 
     week_obj = next((w for w in (plan.get("weeks") or []) if w.get("week_index") == req.week), None)
-    # Нельзя начать тренировку в скрытой (неопубликованной) тренером неделе
-    if week_obj and week_obj.get("published") is False and plan.get("athlete_telegram_id") == req.athlete_telegram_id:
+    # Нельзя начать тренировку в скрытой (неопубликованной) тренером неделе —
+    # но тренер, ведущий тренировку «под диктовку», может стартовать любую неделю.
+    if (week_obj and week_obj.get("published") is False
+            and plan.get("athlete_telegram_id") == req.athlete_telegram_id
+            and not coach_led):
         raise HTTPException(status_code=400, detail="Эта неделя ещё не открыта тренером")
     day_obj = next((d for d in (week_obj.get("days") or []) if d.get("day_index") == req.day), None) if week_obj else None
     if not day_obj or day_obj.get("is_rest"):
         raise HTTPException(status_code=400, detail="No workout scheduled for this day")
 
-    # Тренер сессии: из плана, иначе из активной связи спортсмена (план мог быть self-made,
-    # а тренер привязался позже — он всё равно должен видеть тренировку в real-time) (I3)
-    coach_for_session = plan.get("coach_telegram_id") or await _resolve_athlete_coach(req.athlete_telegram_id)
+    # Тренер сессии: из плана, иначе инициатор старта, иначе из активной связи спортсмена
+    coach_for_session = (plan.get("coach_telegram_id")
+                         or req.coach_telegram_id
+                         or await _resolve_athlete_coach(req.athlete_telegram_id))
 
     orm = plan.get("one_rep_max") or {}
     now = datetime.now(timezone.utc).isoformat()
@@ -1994,6 +2005,7 @@ async def start_session(req: SessionStartReq):
         "date": req.date or datetime.now(timezone.utc).date().isoformat(),
         "title": day_obj.get("title", ""),
         "status": "in_progress", "paused": False,
+        "started_by": "coach" if coach_led else "athlete",
         "started_at": now, "finished_at": None,
         "exercises": _build_session_exercises(day_obj, orm),
         "coach_confirmed": False, "confirmed_by": None, "confirmed_at": None,
@@ -2001,7 +2013,7 @@ async def start_session(req: SessionStartReq):
         "created_at": now, "updated_at": now,
     }
     await db.workout_sessions.insert_one(dict(session))
-    logger.info(f"Session started: {session['id']} plan={req.plan_id} day={req.day}")
+    logger.info(f"Session started ({session['started_by']}): {session['id']} plan={req.plan_id} day={req.day}")
     # Real-time: оповестить комнату плана и лично тренера
     await _rt_session(req.plan_id, "session.started", session)
     await _notify_user(coach_for_session, "session.started", {
