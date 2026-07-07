@@ -200,6 +200,19 @@ class SessionSet(BaseModel):
     percent_1rm: Optional[float] = None
 
 
+class SetLog(BaseModel):
+    """Один индивидуальный рабочий подход — для по-подходного логирования факта.
+
+    Инициализируется из плановой схемы (разворотом weight×sets×reps в отдельные
+    подходы); при выполнении спортсмен отмечает `done` и может поправить факт.
+    вес/повторы этого конкретного подхода."""
+    model_config = ConfigDict(extra="ignore")
+    weight: Optional[float] = None       # рабочий вес (план → факт)
+    reps: int = 0                        # повторы (план → факт)
+    percent_1rm: Optional[float] = None  # % от 1ПМ (справочно)
+    done: bool = False                   # подход выполнен
+
+
 class SessionExercise(BaseModel):
     model_config = ConfigDict(extra="ignore")
     order: int = 0
@@ -211,6 +224,8 @@ class SessionExercise(BaseModel):
     difficulty: Optional[str] = None
     sets_scheme: List[SessionSet] = Field(default_factory=list)
     plan_sets_scheme: List[SessionSet] = Field(default_factory=list)  # оригинал из плана (для диффа)
+    set_logs: List[SetLog] = Field(default_factory=list)  # по-подходный чек-лист (факт)
+    rest_seconds: Optional[int] = None   # отдых между подходами (из плана; для таймера)
     tonnage: float = 0
     status: str = "pending"          # pending | in_progress | done | skipped
     comment: Optional[str] = None    # комментарий спортсмена для тренера (виден тренеру)

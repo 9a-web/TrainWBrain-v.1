@@ -105,6 +105,12 @@ export const confirmSessionExercise = (id, order, coach_telegram_id) =>
   client
     .patch(`/sessions/${id}/exercise/${order}/confirm`, { coach_telegram_id })
     .then((r) => r.data);
+export const logSessionSet = (id, order, setIndex, body, actor, by) =>
+  client
+    .patch(`/sessions/${id}/exercise/${order}/set/${setIndex}`, body, {
+      params: { ...(actor ? { actor } : {}), ...(by != null ? { by } : {}) },
+    })
+    .then((r) => r.data);
 export const finishSession = (id) =>
   client.post(`/sessions/${id}/finish`).then((r) => r.data);
 export const resumeSession = (id) =>

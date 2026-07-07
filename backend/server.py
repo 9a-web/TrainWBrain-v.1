@@ -1478,6 +1478,40 @@ def _resolve_sets(pe, orm):
     return out
 
 
+def _expand_set_logs(sets_scheme):
+    """Разворачивает групповую схему (weight×sets×reps) в плоский чек-лист
+    индивидуальных подходов для по-подходного логирования."""
+    logs = []
+    for grp in (sets_scheme or []):
+        n = max(1, int(grp.get("sets") or 1))
+        for _ in range(n):
+            logs.append({
+                "weight": grp.get("weight"),
+                "reps": int(grp.get("reps") or 0),
+                "percent_1rm": grp.get("percent_1rm"),
+                "done": False,
+            })
+    return logs
+
+
+def _scheme_from_logs(set_logs, only_done=True):
+    """Собирает групповую схему (weight×sets×reps) из плоского списка подходов.
+    Подряд идущие одинаковые (вес, повторы, %) сворачиваются в одну группу.
+    only_done=True — учитывать только выполненные подходы (факт)."""
+    groups = []
+    for lg in (set_logs or []):
+        if only_done and not lg.get("done"):
+            continue
+        w = lg.get("weight")
+        r = int(lg.get("reps") or 0)
+        p = lg.get("percent_1rm")
+        if groups and groups[-1]["weight"] == w and groups[-1]["reps"] == r and groups[-1].get("percent_1rm") == p:
+            groups[-1]["sets"] += 1
+        else:
+            groups.append({"weight": w, "sets": 1, "reps": r, "percent_1rm": p})
+    return groups
+
+
 def _view_exercise(pe, orm, order, status="pending"):
     """Унифицированная карточка упражнения для экрана дня/сессии."""
     is_acc = bool(pe.get("is_accessory"))
@@ -1492,6 +1526,8 @@ def _view_exercise(pe, orm, order, status="pending"):
         "difficulty": pe.get("difficulty"),
         "sets_scheme": sets,
         "plan_sets_scheme": [dict(s) for s in sets],
+        "set_logs": [],
+        "rest_seconds": pe.get("rest_seconds"),
         "tonnage": scheme_tonnage(sets),
         "status": status,
         "comment": pe.get("comment"),
@@ -1515,6 +1551,11 @@ def _day_group_difficulty(exercises):
 def _build_session_exercises(day_obj, orm):
     ordered = sorted(day_obj.get("exercises", []), key=lambda x: x.get("order", 0))
     exs = [_view_exercise(pe, orm, i) for i, pe in enumerate(ordered)]
+    for ex in exs:
+        # По-подходный чек-лист строим только для основных упражнений (у подсобных
+        # нет схемы подходов — они отмечаются целиком).
+        if not ex.get("is_accessory"):
+            ex["set_logs"] = _expand_set_logs(ex.get("sets_scheme"))
     if exs:
         exs[0]["status"] = "in_progress"
     return exs
@@ -2026,12 +2067,25 @@ async def update_session_exercise(
         raise HTTPException(status_code=404, detail="Exercise not found")
 
     if action == "done":
+        # «Выполнить всё» = все подходы сделаны как в плане (с учётом ранее
+        # внесённого факта по отдельным подходам).
+        for lg in target.get("set_logs") or []:
+            lg["done"] = True
+        if target.get("set_logs"):
+            target["sets_scheme"] = _scheme_from_logs(target["set_logs"], only_done=True)
+            target["tonnage"] = scheme_tonnage(target["sets_scheme"])
         target["status"] = "done"
         target["filled_by"] = actor
     elif action == "skip":
         target["status"] = "skipped"
         target["filled_by"] = actor
     elif action == "reset":
+        for lg in target.get("set_logs") or []:
+            lg["done"] = False
+        if target.get("set_logs"):
+            # Возвращаем плановую схему как ориентир (упражнение снова pending)
+            target["sets_scheme"] = [dict(s) for s in (target.get("plan_sets_scheme") or [])]
+            target["tonnage"] = scheme_tonnage(target["sets_scheme"])
         target["status"] = "pending"
         target["filled_by"] = None
         # Сброс отметки снимает и подтверждение тренера
@@ -2073,6 +2127,117 @@ async def update_session_exercise(
     s["finished_at"] = finished_at
     s["last_event_at"] = now
     # Real-time broadcast: либо обновление, либо завершение
+    await _rt_session(s.get("plan_id"), "session.finished" if just_finished else "session.updated", s)
+    if just_finished:
+        await _notify_user(s.get("coach_telegram_id"), "session.finished", {
+            "session_id": s["id"], "plan_id": s.get("plan_id"),
+            "athlete_telegram_id": s["athlete_telegram_id"],
+        })
+    return _serialize_session(s)
+
+
+class SetLogReq(BaseModel):
+    done: Optional[bool] = None
+    weight: Optional[float] = None
+    reps: Optional[int] = None
+
+
+@api_router.patch("/sessions/{session_id}/exercise/{order}/set/{set_index}")
+async def log_session_set(
+    session_id: str,
+    order: int,
+    set_index: int,
+    payload: SetLogReq = Body(default=None),
+    actor: str = "athlete",
+    by: Optional[int] = None,
+):
+    """По-подходное логирование факта: отметка подхода выполненным и/или запись
+    фактических веса/повторов конкретного подхода.
+
+    actor: "athlete" (по умолчанию) | "coach". Тренер (actor=="coach", by=telegram_id)
+    может заполнять подходы подопечного в реальном времени (co-scribe).
+    """
+    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if actor == "coach":
+        if by is None:
+            raise HTTPException(status_code=400, detail="Не указан тренер (by)")
+        await _assert_coach_of(by, s["athlete_telegram_id"])
+
+    exs = s["exercises"]
+    target = next((e for e in exs if e["order"] == order), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    logs = target.get("set_logs") or []
+    if set_index < 0 or set_index >= len(logs):
+        raise HTTPException(status_code=404, detail="Set not found")
+
+    payload = payload or SetLogReq()
+    lg = logs[set_index]
+    changed = False
+    if payload.weight is not None and payload.weight != lg.get("weight"):
+        lg["weight"] = payload.weight
+        changed = True
+    if payload.reps is not None and int(payload.reps) != int(lg.get("reps") or 0):
+        lg["reps"] = max(0, int(payload.reps))
+        changed = True
+    if payload.done is not None:
+        lg["done"] = bool(payload.done)
+    target["set_logs"] = logs
+    if changed:
+        target["edited"] = True
+
+    # Факт. схема и тоннаж — из выполненных подходов
+    target["sets_scheme"] = _scheme_from_logs(logs, only_done=True)
+    target["tonnage"] = scheme_tonnage(target["sets_scheme"])
+
+    all_done = len(logs) > 0 and all(x.get("done") for x in logs)
+    any_done = any(x.get("done") for x in logs)
+    if all_done:
+        if target.get("status") != "done":
+            target["filled_by"] = actor
+        target["status"] = "done"
+    else:
+        # Сняли отметку с ранее выполненного/пропущенного — снимаем подтверждение тренера
+        if target.get("status") in ("done", "skipped"):
+            target["coach_confirmed"] = False
+            target["confirmed_by"] = None
+            target["confirmed_at"] = None
+        target["status"] = "in_progress" if any_done else (target.get("status") or "pending")
+
+    # Активное упражнение: следующий pending → in_progress, если активного нет
+    if not any(e["status"] == "in_progress" for e in exs):
+        nxt = next((e for e in exs if e["status"] == "pending"), None)
+        if nxt:
+            nxt["status"] = "in_progress"
+
+    now = datetime.now(timezone.utc).isoformat()
+    status = s.get("status", "in_progress")
+    finished_at = s.get("finished_at")
+    just_finished = False
+    all_settled = bool(exs) and all(e["status"] in ("done", "skipped") for e in exs)
+    if all_settled:
+        if status != "finished":
+            just_finished = True
+        status = "finished"
+        finished_at = finished_at or now
+    elif status == "finished":
+        # Тренировка была завершена, но появились незакрытые упражнения — снова активна
+        status = "in_progress"
+        finished_at = None
+
+    set_fields = {"exercises": exs, "status": status, "finished_at": finished_at,
+                  "updated_at": now, "last_event_at": now}
+    if status == "finished":
+        s["exercises"] = exs
+        s["finished_at"] = finished_at
+        set_fields["stats"] = _session_stats(s)
+    await db.workout_sessions.update_one({"id": session_id}, {"$set": set_fields})
+    s["exercises"] = exs
+    s["status"] = status
+    s["finished_at"] = finished_at
+    s["last_event_at"] = now
     await _rt_session(s.get("plan_id"), "session.finished" if just_finished else "session.updated", s)
     if just_finished:
         await _notify_user(s.get("coach_telegram_id"), "session.finished", {
@@ -2138,6 +2303,19 @@ async def edit_session_exercise(
             changed = True
         target["sets_scheme"] = new_sets
         target["tonnage"] = scheme_tonnage(new_sets)
+        # Пересобираем по-подходный чек-лист под новую схему, сохраняя отметки
+        # выполнения по позициям. Для уже завершённого упражнения держим факт.
+        # схему в согласии с логами.
+        old_logs = target.get("set_logs") or []
+        if old_logs:
+            new_logs = _expand_set_logs(new_sets)
+            for i, nl in enumerate(new_logs):
+                if i < len(old_logs) and old_logs[i].get("done"):
+                    nl["done"] = True
+            target["set_logs"] = new_logs
+            if target.get("status") == "done":
+                target["sets_scheme"] = _scheme_from_logs(new_logs, only_done=True)
+                target["tonnage"] = scheme_tonnage(target["sets_scheme"])
     # Комментарий спортсмена тренеру (виден тренеру). Пустая строка/None -> сброс.
     if "comment" in payload:
         c = payload.get("comment")
