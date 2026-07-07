@@ -408,7 +408,6 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
                     <div className="stats-recent-main">
                       <div className="stats-recent-title">
                         {s.title || "Тренировка"}
-                        {s.coach_confirmed ? <ShieldCheck size={13} className="stats-recent-ok" /> : null}
                       </div>
                       <div className="stats-recent-meta">
                         {s.group ? <span className="stats-recent-group">{s.group}</span> : null}

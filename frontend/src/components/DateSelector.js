@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Pause, Play, Square, Bolt, Lock, ShieldCheck } from 'lucide-react';
+import { Zap, Pause, Play, Square, Bolt, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
@@ -691,23 +691,16 @@ const DateSelector = () => {
               </button>
             </>
           ) : sessionStatus === 'finished' ? (
-            session?.coach_confirmed ? (
-              <div className="session-done-chip" data-testid="session-done-chip">
-                <ShieldCheck size={15} strokeWidth={2.4} />
-                <span>Подтверждена тренером</span>
-              </div>
-            ) : (
-              <button
-                className="launch-button launch-button-restart"
-                type="button"
-                data-testid="resume-button"
-                onClick={handleResume}
-                disabled={starting}
-              >
-                <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
-                <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
-              </button>
-            )
+            <button
+              className="launch-button launch-button-restart"
+              type="button"
+              data-testid="resume-button"
+              onClick={handleResume}
+              disabled={starting}
+            >
+              <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
+              <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
+            </button>
           ) : !isRestSelected ? (
             <button
               className="launch-button"

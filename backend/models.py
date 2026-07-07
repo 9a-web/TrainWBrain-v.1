@@ -233,11 +233,8 @@ class SessionExercise(BaseModel):
     edited: bool = False             # упражнение было изменено (название/подходы)
     lift_group: Optional[str] = None # squat | bench | deadlift | null
     is_accessory: bool = False       # подсобное упражнение
-    # --- P4: авторство и подтверждение (real-time co-scribe) ---
+    # --- P4: авторство отметки (real-time co-scribe) ---
     filled_by: Optional[str] = None        # "athlete" | "coach" — кто отметил факт
-    coach_confirmed: bool = False          # тренер подтвердил это упражнение
-    confirmed_by: Optional[int] = None      # telegram_id тренера
-    confirmed_at: Optional[str] = None       # ISO-время подтверждения
 
 
 class WorkoutSession(BaseModel):
@@ -256,10 +253,7 @@ class WorkoutSession(BaseModel):
     started_at: Optional[datetime] = Field(default_factory=_now)
     finished_at: Optional[datetime] = None
     exercises: List[SessionExercise] = Field(default_factory=list)
-    # --- P4: подтверждение всей тренировки тренером + метка последнего события ---
-    coach_confirmed: bool = False
-    confirmed_by: Optional[int] = None
-    confirmed_at: Optional[str] = None
+    # --- P4: метка последнего события (real-time) ---
     last_event_at: Optional[str] = None
     # --- P7: замороженный снимок статистики тренировки (заполняется при finish) ---
     stats: Optional[dict] = None

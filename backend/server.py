@@ -1565,9 +1565,6 @@ def _view_exercise(pe, orm, order, status="pending"):
         "lift_group": pe.get("lift_group"),
         "is_accessory": is_acc,
         "filled_by": None,
-        "coach_confirmed": False,
-        "confirmed_by": None,
-        "confirmed_at": None,
     }
 
 
@@ -2044,7 +2041,6 @@ async def start_session(req: SessionStartReq, current_user: dict = Depends(get_c
         "started_by": "coach" if coach_led else "athlete",
         "started_at": now, "finished_at": None,
         "exercises": _build_session_exercises(day_obj, orm),
-        "coach_confirmed": False, "confirmed_by": None, "confirmed_at": None,
         "last_event_at": now,
         "created_at": now, "updated_at": now,
     }
@@ -2151,10 +2147,6 @@ async def update_session_exercise(
             target["tonnage"] = scheme_tonnage(target["sets_scheme"])
         target["status"] = "pending"
         target["filled_by"] = None
-        # Сброс отметки снимает и подтверждение тренера
-        target["coach_confirmed"] = False
-        target["confirmed_by"] = None
-        target["confirmed_at"] = None
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
@@ -2273,11 +2265,6 @@ async def log_session_set(
             target["filled_by"] = actor
         target["status"] = "done" if any_done else "skipped"
     else:
-        # Сняли отметку с ранее завершённого/пропущенного — снимаем подтверждение тренера
-        if target.get("status") in ("done", "skipped"):
-            target["coach_confirmed"] = False
-            target["confirmed_by"] = None
-            target["confirmed_at"] = None
         target["status"] = "in_progress" if any_settled else (target.get("status") or "pending")
 
     # Активное упражнение: следующий pending → in_progress, если активного нет
@@ -2468,7 +2455,7 @@ async def resume_session(session_id: str, current_user: dict = Depends(get_curre
 
     now = datetime.now(timezone.utc).isoformat()
     exs = s.get("exercises") or []
-    # Сохраняем все отметки (done/skipped/filled_by/coach_confirmed). Просто
+    # Сохраняем все отметки (done/skipped/filled_by). Просто
     # реактивируем следующее невыполненное упражнение, если активного нет.
     if not any(e.get("status") == "in_progress" for e in exs):
         nxt = next((e for e in exs if e.get("status") == "pending"), None)
@@ -2505,83 +2492,6 @@ async def pause_session(session_id: str, resume: bool = False, current_user: dic
         {"id": session_id}, {"$set": {"paused": (not resume), "updated_at": now, "last_event_at": now}}
     )
     s["paused"] = (not resume)
-    s["last_event_at"] = now
-    await _rt_session(s.get("plan_id"), "session.updated", s)
-    return _serialize_session(s)
-
-
-class SessionConfirmReq(BaseModel):
-    coach_telegram_id: Optional[int] = None
-
-
-@api_router.post("/sessions/{session_id}/confirm")
-async def confirm_session(session_id: str, payload: SessionConfirmReq = Body(default=None),
-                          current_user: dict = Depends(get_current_user)):
-    """Тренер подтверждает выполнение тренировки подопечного (coach_confirmed=true)."""
-    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
-    if not s:
-        raise HTTPException(status_code=404, detail="Session not found")
-    coach_tgid = payload.coach_telegram_id if payload else None
-    if coach_tgid is None:
-        raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
-    if current_user["telegram_id"] != coach_tgid:
-        raise HTTPException(status_code=403, detail="Подтверждение от имени другого тренера запрещено")
-    await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
-    now = datetime.now(timezone.utc).isoformat()
-    await db.workout_sessions.update_one(
-        {"id": session_id},
-        {"$set": {
-            "coach_confirmed": True,
-            "confirmed_by": coach_tgid,
-            "confirmed_at": now,
-            "updated_at": now,
-        }},
-    )
-    s["coach_confirmed"] = True
-    s["confirmed_by"] = coach_tgid
-    s["confirmed_at"] = now
-    s["last_event_at"] = now
-    await db.workout_sessions.update_one({"id": session_id}, {"$set": {"last_event_at": now}})
-    await _rt_session(s.get("plan_id"), "session.confirmed", s)
-    await _notify_user(s.get("athlete_telegram_id"), "session.confirmed", {
-        "session_id": s["id"], "plan_id": s.get("plan_id"),
-    })
-    return _serialize_session(s)
-
-
-@api_router.patch("/sessions/{session_id}/exercise/{order}/confirm")
-async def confirm_session_exercise(
-    session_id: str, order: int, payload: SessionConfirmReq = Body(default=None),
-    current_user: dict = Depends(get_current_user),
-):
-    """Тренер подтверждает выполнение отдельного упражнения подопечного."""
-    s = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
-    if not s:
-        raise HTTPException(status_code=404, detail="Session not found")
-    coach_tgid = payload.coach_telegram_id if payload else None
-    if coach_tgid is None:
-        raise HTTPException(status_code=400, detail="Не указан тренер (coach_telegram_id)")
-    if current_user["telegram_id"] != coach_tgid:
-        raise HTTPException(status_code=403, detail="Подтверждение от имени другого тренера запрещено")
-    await _assert_coach_of(coach_tgid, s["athlete_telegram_id"])
-
-    exs = s["exercises"]
-    target = next((e for e in exs if e["order"] == order), None)
-    if not target:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-
-    now = datetime.now(timezone.utc).isoformat()
-    # Переключатель: повторное подтверждение снимает отметку тренера
-    new_state = not bool(target.get("coach_confirmed"))
-    target["coach_confirmed"] = new_state
-    target["confirmed_by"] = coach_tgid if new_state else None
-    target["confirmed_at"] = now if new_state else None
-
-    await db.workout_sessions.update_one(
-        {"id": session_id},
-        {"$set": {"exercises": exs, "updated_at": now, "last_event_at": now}},
-    )
-    s["exercises"] = exs
     s["last_event_at"] = now
     await _rt_session(s.get("plan_id"), "session.updated", s)
     return _serialize_session(s)
@@ -2915,7 +2825,6 @@ async def _athlete_detailed_stats(tg, frm=None, to=None, plan_id=None):
             "progress_pct": st.get("progress_pct", 0), "group": st.get("group", ""),
             "difficulty": st.get("difficulty"), "done_count": st.get("done_count", 0),
             "total_count": st.get("total_count", 0),
-            "coach_confirmed": bool(s.get("coach_confirmed")),
         })
 
     summary = {

@@ -603,24 +603,6 @@
   border-radius: 999px;
   padding: 2px 7px 2px 5px;
 }
-/* Бейдж «подтверждено тренером» */
-.ex-confirmed-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #59E08A;
-  background: rgba(59, 209, 111, 0.14);
-  border: 1px solid rgba(59, 209, 111, 0.34);
-  border-radius: 999px;
-  padding: 2px 7px 2px 5px;
-}
-/* Подсветка подтверждённой карточки */
-.ex-card-confirmed {
-  box-shadow: inset 3px 0 0 0 #3BD16F;
-}
-
 /* Зелёная полоска слева у выполненного упражнения (кем бы ни было отмечено) */
 .ex-card-done {
   box-shadow: inset 4px 0 0 0 #3BD16F;
@@ -983,54 +965,3 @@
   cursor: pointer;
 }
 
-/* ============ Phase 2: подтверждение тренером ============ */
-.ex-confirm-btn {
-  min-width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  border: 1px solid #3a3a3a;
-  background: #262626;
-  color: #8a8a8a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 9px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.ex-confirm-lbl {
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.ex-confirm-btn.on {
-  border-color: #2f80ed;
-  background: rgba(47, 128, 237, 0.16);
-  color: #62a0f5;
-}
-.ex-confirmed-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #62a0f5;
-  background: rgba(47, 128, 237, 0.14);
-  padding: 2px 7px;
-  border-radius: 999px;
-}
-.wv-confirmed-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(47, 128, 237, 0.12);
-  border: 1px solid rgba(47, 128, 237, 0.3);
-  color: #7fb0f7;
-  font-size: 13px;
-  font-weight: 700;
-}

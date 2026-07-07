@@ -101,10 +101,6 @@ export const editSessionExercise = (id, order, body, actor, by) =>
       params: { ...(actor ? { actor } : {}), ...(by != null ? { by } : {}) },
     })
     .then((r) => r.data);
-export const confirmSessionExercise = (id, order, coach_telegram_id) =>
-  client
-    .patch(`/sessions/${id}/exercise/${order}/confirm`, { coach_telegram_id })
-    .then((r) => r.data);
 export const logSessionSet = (id, order, setIndex, body, actor, by) =>
   client
     .patch(`/sessions/${id}/exercise/${order}/set/${setIndex}`, body, {
@@ -180,8 +176,6 @@ export const publishPlanWeek = (planId, week, published) =>
   client.patch(`/plans/${planId}/weeks/${week}/publish`, { published }).then((r) => r.data);
 export const setPlanTrainingDays = (planId, training_days) =>
   client.patch(`/plans/${planId}/training-days`, { training_days }).then((r) => r.data);
-export const confirmSession = (sessionId, coach_telegram_id) =>
-  client.post(`/sessions/${sessionId}/confirm`, { coach_telegram_id }).then((r) => r.data);
 
 // --- Редактор плана (тренер/владелец) ---
 export const updatePlanMeta = (planId, body) =>

@@ -148,20 +148,11 @@
   gap: 10px;
 }
 
-/* Phase 2: подтверждение тренером (панель управления live) */
+/* Панель управления live (тренер) */
 .cl-live-bar {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-.cl-confirm-btn {
-  background: linear-gradient(-20deg, #2f80ed, #62a0f5) !important;
-  color: #fff !important;
-}
-.cl-confirmed-coach {
-  color: #7fb0f7;
-  background: rgba(47, 128, 237, 0.12);
-  border-color: rgba(47, 128, 237, 0.3);
 }
 
 /* Phase 3: старт тренировки «под диктовку тренера» */
