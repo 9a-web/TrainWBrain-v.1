@@ -27,7 +27,7 @@
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
 
 ## Phase 1 demo account (per-set logging + rest timer) — has an IN-PROGRESS workout
-- Email: `phase1demo_1783428475@twb.dev`  Password: `password123`
+- Email: `phase1demo_1783429894@twb.dev`  Password: `password123`
 - Active plan: pl-autumn-3m (maxes 200/130/230). An in-progress session exists on today's workout day; exercise #0 has a 6-set checklist with sets 1–2 already marked done (set 2 edited to 152.5кг × 4).
 - Use for verifying: per-set checkboxes, editable weight/reps per set, ⏱ rest button -> bottom rest-timer overlay, ⚡ button -> «Настройки тренировки» modal.
 - NOTE: session dates are stamped to the container's "today"; if the demo session isn't visible on Home, re-run /tmp/setup_known.py to create a fresh one.
