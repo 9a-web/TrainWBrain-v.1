@@ -1490,6 +1490,7 @@ def _expand_set_logs(sets_scheme):
                 "reps": int(grp.get("reps") or 0),
                 "percent_1rm": grp.get("percent_1rm"),
                 "done": False,
+                "skipped": False,
             })
     return logs
 
@@ -2071,17 +2072,26 @@ async def update_session_exercise(
         # внесённого факта по отдельным подходам).
         for lg in target.get("set_logs") or []:
             lg["done"] = True
+            lg["skipped"] = False
         if target.get("set_logs"):
             target["sets_scheme"] = _scheme_from_logs(target["set_logs"], only_done=True)
             target["tonnage"] = scheme_tonnage(target["sets_scheme"])
         target["status"] = "done"
         target["filled_by"] = actor
     elif action == "skip":
+        # «Пропустить всё» = все подходы помечаются пропущенными
+        for lg in target.get("set_logs") or []:
+            lg["skipped"] = True
+            lg["done"] = False
+        if target.get("set_logs"):
+            target["sets_scheme"] = _scheme_from_logs(target["set_logs"], only_done=True)
+            target["tonnage"] = scheme_tonnage(target["sets_scheme"])
         target["status"] = "skipped"
         target["filled_by"] = actor
     elif action == "reset":
         for lg in target.get("set_logs") or []:
             lg["done"] = False
+            lg["skipped"] = False
         if target.get("set_logs"):
             # Возвращаем плановую схему как ориентир (упражнение снова pending)
             target["sets_scheme"] = [dict(s) for s in (target.get("plan_sets_scheme") or [])]
@@ -2138,6 +2148,7 @@ async def update_session_exercise(
 
 class SetLogReq(BaseModel):
     done: Optional[bool] = None
+    skipped: Optional[bool] = None
     weight: Optional[float] = None
     reps: Optional[int] = None
 
@@ -2151,8 +2162,8 @@ async def log_session_set(
     actor: str = "athlete",
     by: Optional[int] = None,
 ):
-    """По-подходное логирование факта: отметка подхода выполненным и/или запись
-    фактических веса/повторов конкретного подхода.
+    """По-подходное логирование факта: отметка подхода выполненным/пропущенным
+    и/или запись фактических веса/повторов конкретного подхода.
 
     actor: "athlete" (по умолчанию) | "coach". Тренер (actor=="coach", by=telegram_id)
     может заполнять подходы подопечного в реальном времени (co-scribe).
@@ -2182,8 +2193,15 @@ async def log_session_set(
     if payload.reps is not None and int(payload.reps) != int(lg.get("reps") or 0):
         lg["reps"] = max(0, int(payload.reps))
         changed = True
+    # Пропуск и выполнение — взаимоисключающие состояния подхода
+    if payload.skipped is not None:
+        lg["skipped"] = bool(payload.skipped)
+        if lg["skipped"]:
+            lg["done"] = False
     if payload.done is not None:
         lg["done"] = bool(payload.done)
+        if lg["done"]:
+            lg["skipped"] = False
     target["set_logs"] = logs
     if changed:
         target["edited"] = True
@@ -2192,19 +2210,22 @@ async def log_session_set(
     target["sets_scheme"] = _scheme_from_logs(logs, only_done=True)
     target["tonnage"] = scheme_tonnage(target["sets_scheme"])
 
-    all_done = len(logs) > 0 and all(x.get("done") for x in logs)
+    # Статус упражнения по чек-листу: подход «улажен», если выполнен или пропущен
+    settled = [bool(x.get("done") or x.get("skipped")) for x in logs]
+    all_settled = len(logs) > 0 and all(settled)
+    any_settled = any(settled)
     any_done = any(x.get("done") for x in logs)
-    if all_done:
-        if target.get("status") != "done":
+    if all_settled:
+        if target.get("status") not in ("done", "skipped"):
             target["filled_by"] = actor
-        target["status"] = "done"
+        target["status"] = "done" if any_done else "skipped"
     else:
-        # Сняли отметку с ранее выполненного/пропущенного — снимаем подтверждение тренера
+        # Сняли отметку с ранее завершённого/пропущенного — снимаем подтверждение тренера
         if target.get("status") in ("done", "skipped"):
             target["coach_confirmed"] = False
             target["confirmed_by"] = None
             target["confirmed_at"] = None
-        target["status"] = "in_progress" if any_done else (target.get("status") or "pending")
+        target["status"] = "in_progress" if any_settled else (target.get("status") or "pending")
 
     # Активное упражнение: следующий pending → in_progress, если активного нет
     if not any(e["status"] == "in_progress" for e in exs):
@@ -2216,8 +2237,8 @@ async def log_session_set(
     status = s.get("status", "in_progress")
     finished_at = s.get("finished_at")
     just_finished = False
-    all_settled = bool(exs) and all(e["status"] in ("done", "skipped") for e in exs)
-    if all_settled:
+    all_closed = bool(exs) and all(e["status"] in ("done", "skipped") for e in exs)
+    if all_closed:
         if status != "finished":
             just_finished = True
         status = "finished"
@@ -2310,8 +2331,11 @@ async def edit_session_exercise(
         if old_logs:
             new_logs = _expand_set_logs(new_sets)
             for i, nl in enumerate(new_logs):
-                if i < len(old_logs) and old_logs[i].get("done"):
-                    nl["done"] = True
+                if i < len(old_logs):
+                    if old_logs[i].get("done"):
+                        nl["done"] = True
+                    if old_logs[i].get("skipped"):
+                        nl["skipped"] = True
             target["set_logs"] = new_logs
             if target.get("status") == "done":
                 target["sets_scheme"] = _scheme_from_logs(new_logs, only_done=True)

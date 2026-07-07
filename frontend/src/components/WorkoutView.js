@@ -122,7 +122,7 @@ const vibrate = (pattern) => {
 };
 
 // ---------- одна строка подхода (интерактивный чек-лист) ----------
-const SetRow = ({ idx, log, editable, onToggle, onCommit, onRest }) => {
+const SetRow = ({ idx, log, editable, showRest, onDone, onSkip, onCommit, onRest }) => {
   const [weight, setWeight] = useState(log.weight ?? "");
   const [reps, setReps] = useState(log.reps ?? "");
   const focusRef = useRef(false);
@@ -143,19 +143,11 @@ const SetRow = ({ idx, log, editable, onToggle, onCommit, onRest }) => {
     }
   };
 
+  const state = log.done ? "done" : log.skipped ? "skipped" : "pending";
+
   return (
-    <div className={`setrow ${log.done ? "setrow-done" : ""}`} data-testid={`set-row-${idx}`}>
-      <button
-        type="button"
-        className={`set-check ${log.done ? "on" : ""}`}
-        onClick={() => editable && onToggle(idx, !log.done)}
-        disabled={!editable}
-        aria-pressed={log.done}
-        aria-label={`Подход ${idx + 1}${log.done ? ", выполнен" : ""}`}
-        data-testid={`set-check-${idx}`}
-      >
-        {log.done ? <Check size={15} strokeWidth={3} /> : <span className="set-num">{idx + 1}</span>}
-      </button>
+    <div className={`setrow setrow-${state}`} data-testid={`set-row-${idx}`}>
+      <span className="set-num">{idx + 1}</span>
       <div className="set-fields">
         <input
           className="set-input"
@@ -187,15 +179,58 @@ const SetRow = ({ idx, log, editable, onToggle, onCommit, onRest }) => {
           <span className="set-pct">{log.percent_1rm}%</span>
         ) : null}
       </div>
-      <button
-        type="button"
-        className="set-rest-btn"
-        onClick={onRest}
-        aria-label="Запустить отдых"
-        data-testid={`set-rest-${idx}`}
-      >
-        <Timer size={16} />
-      </button>
+
+      <div className="set-ops">
+        {state === "pending" ? (
+          <>
+            <button
+              type="button"
+              className="set-op set-op-done"
+              disabled={!editable}
+              onClick={() => onDone(idx, true)}
+              aria-label="Выполнить подход"
+              data-testid={`set-done-${idx}`}
+            >
+              <Check size={16} strokeWidth={3} />
+            </button>
+            <button
+              type="button"
+              className="set-op set-op-skip"
+              disabled={!editable}
+              onClick={() => onSkip(idx, true)}
+              aria-label="Пропустить подход"
+              data-testid={`set-skip-${idx}`}
+            >
+              <X size={16} strokeWidth={3} />
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className={`set-op set-op-state set-op-${state}`}
+            disabled={!editable}
+            onClick={() => (state === "done" ? onDone(idx, false) : onSkip(idx, false))}
+            aria-label={state === "done" ? "Отменить выполнение" : "Отменить пропуск"}
+            data-testid={`set-undo-${idx}`}
+          >
+            {state === "done" ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
+          </button>
+        )}
+      </div>
+
+      <div className="set-rest-slot">
+        {showRest ? (
+          <button
+            type="button"
+            className="set-rest-btn"
+            onClick={onRest}
+            aria-label="Запустить отдых"
+            data-testid={`set-rest-${idx}`}
+          >
+            <Timer size={16} />
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 };
@@ -203,23 +238,34 @@ const SetRow = ({ idx, log, editable, onToggle, onCommit, onRest }) => {
 const SetList = ({ ex, editable, onSetLog, onStartRest, restSec }) => {
   const logs = ex.set_logs || [];
   const doneCount = logs.filter((l) => l.done).length;
+  const skippedCount = logs.filter((l) => l.skipped).length;
   return (
     <div className="setlist" data-testid={`setlist-${ex.order}`}>
       <div className="setlist-head">
         <span className="setlist-title">Подходы</span>
-        <span className="setlist-count">{doneCount}/{logs.length}</span>
+        <span className="setlist-count">
+          {doneCount}/{logs.length}
+          {skippedCount ? ` · ${skippedCount} проп.` : ""}
+        </span>
       </div>
-      {logs.map((log, i) => (
-        <SetRow
-          key={i}
-          idx={i}
-          log={log}
-          editable={editable}
-          onToggle={(idx, done) => onSetLog(ex.order, idx, { done })}
-          onCommit={(idx, body) => onSetLog(ex.order, idx, body)}
-          onRest={() => onStartRest(restSec)}
-        />
-      ))}
+      {logs.map((log, i) => {
+        const prev = i > 0 ? logs[i - 1] : null;
+        // Кнопка отдыха — только когда предыдущий подход выполнен или пропущен
+        const showRest = !!prev && (prev.done || prev.skipped);
+        return (
+          <SetRow
+            key={i}
+            idx={i}
+            log={log}
+            editable={editable}
+            showRest={showRest}
+            onDone={(idx, val) => onSetLog(ex.order, idx, { done: val })}
+            onSkip={(idx, val) => onSetLog(ex.order, idx, { skipped: val })}
+            onCommit={(idx, body) => onSetLog(ex.order, idx, body)}
+            onRest={() => onStartRest(restSec)}
+          />
+        );
+      })}
     </div>
   );
 };
