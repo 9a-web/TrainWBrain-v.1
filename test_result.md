@@ -565,6 +565,18 @@ backend:
         comment: "✅ BUGFIX ROUND TESTS COMPLETE - ALL TESTS PASSED: Tested all 3 bugfix areas with comprehensive scenarios using fresh athletes (821001-821005). (1) TRAINING-DAYS REMAP: Created plan from full-body-beginner template (original workout days [1,3,5]). PATCH /api/plans/{id}/training-days {training_days:[2,4,6]} -> workouts ACTUALLY MOVED to days [2,4,6] in snapshot (verified via week-progress: is_workout=true only on [2,4,6]). Day 2 has real workout (is_rest=false, exercises present), day 1 is rest. Re-PATCH to [1,3,5,7] -> workouts moved again to [1,3,5] with NO duplicate day_index, same number of workouts (no workouts lost). Day 1 now has workout, day 2 is rest. Out-of-range [0,8] returns 400. (2) STREAK ONLY COUNTS REAL WORK: Athlete 821002 - started session, marked ALL exercises as skip -> session auto-finished with done_count=0, skipped_count=3. GET /api/stats/821002 -> streak_days=0, total_workouts=0 (all-skipped session NOT counted). Athlete 821003 - marked 1 exercise done, rest skipped -> GET /api/stats/821003 -> streak_days>=1, total_workouts>=1 (session with >=1 done exercise counted). (3) ROBUSTNESS: GET /api/plans/{id}/day?week=99&day=1 returns is_rest=true rest response (no 500). GET /api/plans/{id}/week-progress?week=99 returns 200 with 7 rest days (all is_workout=false, no 500). Explicit rest day (day 2) returns is_rest=true. POST /api/sessions/start on rest day returns 400. After starting session, session.date is non-null ISO date '2026-06-16' (YYYY-MM-DD format, 10 chars). (4) GENERAL: All responses use UUID strings (36 chars), no MongoDB _id leaks, ISO datetime strings. All 3 bugfix areas working correctly."
 
 frontend:
+  - task: "Phase2 UI: coach confirmation in live screen (per-exercise + whole-session) + athlete sees confirmed state"
+    implemented: true
+    working: "NA"
+    file: "components/WorkoutView.js, components/WorkoutView.css, pages/CoachLiveSession.js, pages/CoachLive.css"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "NEW PHASE 2 — wired existing backend confirm endpoints into the live UI. COACH SIDE (CoachLiveSession /coach/{athleteId}/live): (1) each exercise card in coach mode has a confirm TOGGLE button data-testid=coach-confirm-{order} (shield) -> calls confirmSessionExercise (PATCH /sessions/{id}/exercise/{order}/confirm {coach_telegram_id}); toggling makes ex.coach_confirmed true/false (button turns blue when on). (2) control bar: when NOT finished shows 'Завершить тренировку' (cl-finish-session-btn); when finished shows 'Подтвердить тренировку' button data-testid=cl-confirm-session-btn (calls confirmSession POST /sessions/{id}/confirm) — after confirm it becomes 'Вы подтвердили тренировку' (cl-session-confirmed) — plus 'Продолжить тренировку'. ATHLETE SIDE (Home workout): confirmed exercises show a blue badge data-testid=confirmed-flag-{order} ('подтв.'), and when session.coach_confirmed a footer banner data-testid=session-confirmed-banner ('Тренировка подтверждена тренером') appears. Backend endpoints already tested previously and smoke-verified again (exercise toggle, session confirm, 403 for unlinked coach, athlete sees coach_confirmed). TEST PLAN (needs a coach account linked to an athlete with an in-progress session — see test_credentials.md Phase 2 accounts): login as COACH, open the athlete's live session, tap coach-confirm-0 (verify exercise turns confirmed/blue and toggles back), then (if the workout is finished) tap cl-confirm-session-btn and verify it changes to confirmed state. Then login as the ATHLETE and verify the confirmed-flag badge + session-confirmed-banner appear on the same workout."
+
   - task: "Phase1 UI: per-set checklist (complete/skip per set) + rest timer overlay + workout settings"
     implemented: true
     working: true
@@ -753,7 +765,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Phase1 UI: per-set checklist (complete/skip per set) + rest timer overlay + workout settings"
+    - "Phase2 UI: coach confirmation in live screen (per-exercise + whole-session) + athlete sees confirmed state"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

@@ -26,6 +26,11 @@
 - `frontend/.env` → `REACT_APP_BACKEND_URL=https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
 
+## Phase 2 demo accounts (coach confirmation) — coach linked to athlete, athlete has a FINISHED workout today
+- COACH: `coachdemo_1783458678@twb.dev` / `password123` (role coach; open the client's live session to confirm)
+- ATHLETE: `athdemo_1783458678@twb.dev` / `password123` (has a finished workout today; will show confirmed badges after coach confirms)
+- Flow: login as coach -> Профиль says coach mode / open «Кабинет тренера» -> client card -> «Наблюдать» (live) -> confirm exercises (shield toggle) + «Подтвердить тренировку». Then login as athlete -> Home workout shows blue «подтв.» badges + «Тренировка подтверждена тренером» banner.
+
 ## Phase 1 demo account (per-set logging + rest timer) — has an IN-PROGRESS workout
 - Email: `phase1demo_1783429894@twb.dev`  Password: `password123`
 - Active plan: pl-autumn-3m (maxes 200/130/230). An in-progress session exists on today's workout day; exercise #0 has a 6-set checklist with sets 1–2 already marked done (set 2 edited to 152.5кг × 4).

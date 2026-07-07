@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers, RotateCcw, UserCog, Timer, Volume2, Vibrate, Play, Pause,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers, RotateCcw, UserCog, Timer, Volume2, Vibrate, Play, Pause, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import "./WorkoutView.css";
@@ -377,7 +377,7 @@ const PlanRows = ({ sets, planSets }) => (
 );
 
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, mode = "athlete", finished = false, forecast, currentWeek, planSets }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, onConfirmExercise, mode = "athlete", finished = false, forecast, currentWeek, planSets }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
@@ -418,9 +418,27 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, 
                 <MessageSquareText size={12} />
               </span>
             ) : null}
+            {ex.coach_confirmed && !isCoach ? (
+              <span className="ex-confirmed-flag" title="Подтверждено тренером" data-testid={`confirmed-flag-${ex.order}`}>
+                <ShieldCheck size={12} /> подтв.
+              </span>
+            ) : null}
           </span>
         </div>
         <div className="ex-head-right">
+          {isCoach && !isPreview ? (
+            <span
+              className={`ex-confirm-btn ${ex.coach_confirmed ? "on" : ""}`}
+              role="button"
+              tabIndex={0}
+              data-testid={`coach-confirm-${ex.order}`}
+              onClick={(e) => { e.stopPropagation(); if (onConfirmExercise) onConfirmExercise(ex.order); }}
+              title={ex.coach_confirmed ? "Подтверждено — снять отметку" : "Подтвердить упражнение"}
+              aria-label="Подтвердить упражнение"
+            >
+              <ShieldCheck size={16} />
+            </span>
+          ) : null}
           {isFinishedCard && !isCoach && !finished ? (
             <span
               className="ex-btn ex-btn-magic-sm"
@@ -765,7 +783,7 @@ const WorkoutSettingsModal = ({ settings, onSave, onClose }) => {
 };
 
 // ---------- основной вид тренировки ----------
-const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, onSetLog, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
+const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, onSetLog, onConfirmExercise, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
   const [now, setNow] = useState(() => Date.now());
   const [editing, setEditing] = useState(null);
   const [accOpen, setAccOpen] = useState(false);
@@ -901,6 +919,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
             onEdit={(e) => setEditing(e)}
             onSetLog={handleSetLog}
             onStartRest={startRest}
+            onConfirmExercise={onConfirmExercise}
             forecast={forecastBySlug[ex.exercise_slug]}
             currentWeek={currentWeek}
             planSets={planSetsByOrder[ex.order]}
@@ -935,6 +954,7 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
                   finished={isFinished}
                   onAction={onAction}
                   onEdit={(e) => setEditing(e)}
+                  onConfirmExercise={onConfirmExercise}
                   planSets={planSetsByOrder[ex.order]}
                 />
               ))}
@@ -957,6 +977,11 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
               <span key={ex.order} className={`wv-seg wv-seg-${ex.status}`} />
             ))}
           </div>
+          {view.coach_confirmed ? (
+            <div className="wv-confirmed-banner" data-testid="session-confirmed-banner">
+              <ShieldCheck size={15} /> Тренировка подтверждена тренером
+            </div>
+          ) : null}
           <div className="wv-footer-status">
             {isFinished ? "Тренировка закончилась" : "Тренировка идёт"}
           </div>
