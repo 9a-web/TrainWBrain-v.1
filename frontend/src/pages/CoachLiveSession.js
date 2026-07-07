@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import {
   getUserById, getCoachClientPlan, getCoachClientSession,
-  sessionExerciseAction, editSessionExercise, finishSession, resumeSession,
+  sessionExerciseAction, editSessionExercise, finishSession, resumeSession, logSessionSet,
 } from "@/api";
 import WorkoutView from "@/components/WorkoutView";
 import { useRealtime } from "@/hooks/useRealtime";
@@ -176,6 +176,18 @@ export default function CoachLiveSession() {
     }
   };
 
+  const handleSetLog = async (order, setIndex, body) => {
+    if (!session) return;
+    if (body && body.done !== undefined) haptic(body.done ? "medium" : "light");
+    try {
+      const s = await logSessionSet(session.id, order, setIndex, body, "coach", coachId);
+      setSession(s);
+    } catch (e) {
+      hapticNotify("error");
+      toast.error(e?.response?.status === 403 ? "Нет доступа" : "Не удалось сохранить подход");
+    }
+  };
+
   const handleFinishSession = async () => {
     if (!session) return;
     setBusy(true);
@@ -311,6 +323,7 @@ export default function CoachLiveSession() {
             paused={!!session.paused}
             onAction={handleAction}
             onEditSave={handleEditSave}
+            onSetLog={handleSetLog}
             forecastBySlug={forecastBySlug}
             currentWeek={session.week_index}
             planSetsByOrder={planSetsByOrder}

@@ -21,10 +21,16 @@
 - **username**: `testtg`
 
 ## URLs
-- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://1db6bd65-9d5b-4875-a5d8-adc82ec9d902.preview.emergentagent.com`
+- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
-- `frontend/.env` → `REACT_APP_BACKEND_URL=https://1db6bd65-9d5b-4875-a5d8-adc82ec9d902.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`, ещё раньше — `c76fc4a8`/`trainbrain-2`). Менять не нужно.
+- `frontend/.env` → `REACT_APP_BACKEND_URL=https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
+
+## Phase 1 demo account (per-set logging + rest timer) — has an IN-PROGRESS workout
+- Email: `phase1demo_1783428475@twb.dev`  Password: `password123`
+- Active plan: pl-autumn-3m (maxes 200/130/230). An in-progress session exists on today's workout day; exercise #0 has a 6-set checklist with sets 1–2 already marked done (set 2 edited to 152.5кг × 4).
+- Use for verifying: per-set checkboxes, editable weight/reps per set, ⏱ rest button -> bottom rest-timer overlay, ⚡ button -> «Настройки тренировки» modal.
+- NOTE: session dates are stamped to the container's "today"; if the demo session isn't visible on Home, re-run /tmp/setup_known.py to create a fresh one.
 
 ## Cross-platform (реализовано)
 - Website-first + Telegram WebApp (telegram-web-app.js) + PWA (manifest + service-worker + иконки).

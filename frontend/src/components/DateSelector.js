@@ -6,7 +6,7 @@ import { useUser } from '@/context/UserContext';
 import {
   getActivePlan, getWeekProgress, getPlanDay,
   startSession, getActiveSession, sessionExerciseAction,
-  editSessionExercise, finishSession, resumeSession, pauseSession,
+  editSessionExercise, finishSession, resumeSession, pauseSession, logSessionSet,
 } from '@/api';
 import WorkoutView from '@/components/WorkoutView';
 import Portal from '@/components/Portal';
@@ -497,6 +497,23 @@ const DateSelector = () => {
     }
   };
 
+  const handleSetLog = async (order, setIndex, body) => {
+    if (!session) return;
+    if (body && body.done !== undefined) haptic(body.done ? 'medium' : 'light');
+    try {
+      const s = await logSessionSet(session.id, order, setIndex, body);
+      setSession(s);
+      refreshProgress();
+      if (s.status === 'finished') {
+        hapticNotify('success');
+        toast.success('Тренировка завершена! 🎉');
+      }
+    } catch (e) {
+      hapticNotify('error');
+      toast.error('Не удалось сохранить подход');
+    }
+  };
+
   const handlePauseToggle = async () => {
     if (!session) return;
     haptic('light');
@@ -653,8 +670,8 @@ const DateSelector = () => {
                 <Square size={15} strokeWidth={2.6} color="#CACACA" />
               </button>
               <button className="icon-btn" type="button"
-                onClick={() => toast.info('Настройки тренировки скоро')}
-                aria-label="Настройки" data-testid="btn-settings">
+                onClick={() => window.dispatchEvent(new Event('twb:open-workout-settings'))}
+                aria-label="Настройки тренировки" data-testid="btn-settings">
                 <Bolt size={18} strokeWidth={2.2} color="#CACACA" />
               </button>
             </>
@@ -718,6 +735,7 @@ const DateSelector = () => {
           paused={!!session?.paused}
           onAction={handleAction}
           onEditSave={handleEditSave}
+          onSetLog={handleSetLog}
           forecastBySlug={forecastBySlug}
           currentWeek={planWeek}
           planSetsByOrder={planSetsByOrder}

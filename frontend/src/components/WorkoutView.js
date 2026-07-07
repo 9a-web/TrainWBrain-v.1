@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers, RotateCcw, UserCog,
+  Check, X, WandSparkles, ChevronDown, CheckCircle2, Trash2, Plus, MessageSquareText, Pencil, Layers, RotateCcw, UserCog, Timer, Volume2, Vibrate, Play, Pause,
 } from "lucide-react";
+import { toast } from "sonner";
 import "./WorkoutView.css";
 import Portal from "./Portal";
 
@@ -54,6 +55,173 @@ const STATUS_META = {
   in_progress: { label: "В процессе", color: "#FFB020" },
   skipped: { label: "Пропущено", color: "#FF5A5A" },
   pending: { label: "Ожидает", color: "#FFC83F" },
+};
+
+// ---------- настройки таймера отдыха (хранятся локально) ----------
+const REST_SETTINGS_KEY = "twb_rest_settings";
+const DEFAULT_REST_SETTINGS = { defaultSec: 120, autostart: false, sound: true, vibrate: true };
+
+export const loadRestSettings = () => {
+  try {
+    const raw = localStorage.getItem(REST_SETTINGS_KEY);
+    if (raw) return { ...DEFAULT_REST_SETTINGS, ...JSON.parse(raw) };
+  } catch (e) {
+    /* no-op */
+  }
+  return { ...DEFAULT_REST_SETTINGS };
+};
+const saveRestSettings = (s) => {
+  try {
+    localStorage.setItem(REST_SETTINGS_KEY, JSON.stringify(s));
+  } catch (e) {
+    /* no-op */
+  }
+};
+
+const fmtClock = (sec) => {
+  const s = Math.max(0, Math.round(sec || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+};
+
+// Короткий сигнал по окончании отдыха (WebAudio, без ассетов)
+const beep = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    o.start();
+    o.stop(ctx.currentTime + 0.5);
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch (e) {
+        /* no-op */
+      }
+    }, 800);
+  } catch (e) {
+    /* no-op */
+  }
+};
+const vibrate = (pattern) => {
+  try {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  } catch (e) {
+    /* no-op */
+  }
+};
+
+// ---------- одна строка подхода (интерактивный чек-лист) ----------
+const SetRow = ({ idx, log, editable, onToggle, onCommit, onRest }) => {
+  const [weight, setWeight] = useState(log.weight ?? "");
+  const [reps, setReps] = useState(log.reps ?? "");
+  const focusRef = useRef(false);
+
+  // Синхронизация с сервером, когда поле не редактируется (real-time правки)
+  useEffect(() => {
+    if (focusRef.current) return;
+    setWeight(log.weight ?? "");
+    setReps(log.reps ?? "");
+  }, [log.weight, log.reps]);
+
+  const commit = () => {
+    focusRef.current = false;
+    const w = weight === "" ? null : Number(weight);
+    const r = reps === "" ? 0 : Number(reps);
+    if (w !== (log.weight ?? null) || r !== (log.reps ?? 0)) {
+      onCommit(idx, { weight: w, reps: r });
+    }
+  };
+
+  return (
+    <div className={`setrow ${log.done ? "setrow-done" : ""}`} data-testid={`set-row-${idx}`}>
+      <button
+        type="button"
+        className={`set-check ${log.done ? "on" : ""}`}
+        onClick={() => editable && onToggle(idx, !log.done)}
+        disabled={!editable}
+        aria-pressed={log.done}
+        aria-label={`Подход ${idx + 1}${log.done ? ", выполнен" : ""}`}
+        data-testid={`set-check-${idx}`}
+      >
+        {log.done ? <Check size={15} strokeWidth={3} /> : <span className="set-num">{idx + 1}</span>}
+      </button>
+      <div className="set-fields">
+        <input
+          className="set-input"
+          type="number"
+          inputMode="decimal"
+          value={weight}
+          placeholder="—"
+          disabled={!editable}
+          onFocus={() => { focusRef.current = true; }}
+          onChange={(e) => setWeight(e.target.value)}
+          onBlur={commit}
+          data-testid={`set-weight-${idx}`}
+        />
+        <span className="set-unit">кг</span>
+        <span className="set-x">×</span>
+        <input
+          className="set-input set-input-reps"
+          type="number"
+          inputMode="numeric"
+          value={reps}
+          placeholder="—"
+          disabled={!editable}
+          onFocus={() => { focusRef.current = true; }}
+          onChange={(e) => setReps(e.target.value)}
+          onBlur={commit}
+          data-testid={`set-reps-${idx}`}
+        />
+        {log.percent_1rm !== null && log.percent_1rm !== undefined ? (
+          <span className="set-pct">{log.percent_1rm}%</span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className="set-rest-btn"
+        onClick={onRest}
+        aria-label="Запустить отдых"
+        data-testid={`set-rest-${idx}`}
+      >
+        <Timer size={16} />
+      </button>
+    </div>
+  );
+};
+
+const SetList = ({ ex, editable, onSetLog, onStartRest, restSec }) => {
+  const logs = ex.set_logs || [];
+  const doneCount = logs.filter((l) => l.done).length;
+  return (
+    <div className="setlist" data-testid={`setlist-${ex.order}`}>
+      <div className="setlist-head">
+        <span className="setlist-title">Подходы</span>
+        <span className="setlist-count">{doneCount}/{logs.length}</span>
+      </div>
+      {logs.map((log, i) => (
+        <SetRow
+          key={i}
+          idx={i}
+          log={log}
+          editable={editable}
+          onToggle={(idx, done) => onSetLog(ex.order, idx, { done })}
+          onCommit={(idx, body) => onSetLog(ex.order, idx, body)}
+          onRest={() => onStartRest(restSec)}
+        />
+      ))}
+    </div>
+  );
 };
 
 // ---------- мини-график: динамика топового веса упражнения по неделям плана ----------
@@ -163,15 +331,18 @@ const PlanRows = ({ sets, planSets }) => (
 );
 
 // ---------- карточка упражнения ----------
-const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", finished = false, forecast, currentWeek, planSets }) => {
+const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, mode = "athlete", finished = false, forecast, currentWeek, planSets }) => {
   const meta = STATUS_META[ex.status] || STATUS_META.pending;
   const isActive = !isPreview && ex.status === "in_progress";
   const isFinishedCard = !isPreview && (ex.status === "done" || ex.status === "skipped");
   const isAcc = !!ex.is_accessory;
   const isCoach = mode === "coach";
 
-  // По умолчанию карточки свёрнуты
-  const [open, setOpen] = useState(false);
+  // По-подходный чек-лист — для основных упражнений в живой сессии
+  const useSetList = !isPreview && !isAcc && Array.isArray(ex.set_logs) && ex.set_logs.length > 0;
+
+  // Активное упражнение раскрыто по умолчанию, остальные свёрнуты
+  const [open, setOpen] = useState(isActive);
 
   // Кнопки действий спортсмена: у основных — только у активного; у подсобных — пока не выполнено.
   // Когда тренировка завершена — действия скрыты (вернутся после «Продолжить»).
@@ -295,7 +466,17 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, mode = "athlete", finis
           ) : (
             <div className="ex-body">
               <div className="ex-plan">
-                <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                {useSetList ? (
+                  <SetList
+                    ex={ex}
+                    editable={!finished}
+                    onSetLog={onSetLog}
+                    onStartRest={onStartRest}
+                    restSec={ex.rest_seconds}
+                  />
+                ) : (
+                  <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                )}
                 <div className="ex-meta">
                   <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
                   {ex.muscle_letter ? <div className="ex-meta-row">Группа: <b>{ex.muscle_letter}</b></div> : null}
@@ -440,11 +621,111 @@ const EditExerciseModal = ({ ex, onClose, onSave }) => {
   );
 };
 
+// ---------- таймер отдыха (нижняя плашка-оверлей) ----------
+const RestTimer = ({ state, onAdjust, onToggle, onClose }) => {
+  if (!state.active) return null;
+  const pct = state.total > 0 ? Math.max(0, Math.min(100, (state.remaining / state.total) * 100)) : 0;
+  const finished = state.remaining <= 0;
+  return (
+    <Portal>
+      <div className={`rest-bar ${finished ? "rest-bar-done" : ""}`} data-testid="rest-timer" role="timer">
+        <div className="rest-bar-progress" style={{ width: `${pct}%` }} />
+        <div className="rest-bar-inner">
+          <button className="rest-adj" onClick={() => onAdjust(-15)} aria-label="минус 15 секунд" data-testid="rest-minus">−15</button>
+          <div className="rest-center">
+            <span className="rest-label">{finished ? "Отдых окончен" : "Отдых"}</span>
+            <span className="rest-time" data-testid="rest-time">{fmtClock(state.remaining)}</span>
+          </div>
+          <button className="rest-adj" onClick={() => onAdjust(15)} aria-label="плюс 15 секунд" data-testid="rest-plus">+15</button>
+          <button
+            className="rest-toggle"
+            onClick={onToggle}
+            disabled={finished}
+            aria-label={state.running ? "Пауза" : "Продолжить"}
+            data-testid="rest-toggle"
+          >
+            {state.running ? <Pause size={18} /> : <Play size={18} />}
+          </button>
+          <button className="rest-close" onClick={onClose} aria-label="Закрыть" data-testid="rest-close">
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+    </Portal>
+  );
+};
+
+// ---------- настройки тренировки (таймер отдыха) ----------
+const WorkoutSettingsModal = ({ settings, onSave, onClose }) => {
+  const [s, setS] = useState(settings);
+  const set = (k, v) => setS((p) => ({ ...p, [k]: v }));
+  const chips = [60, 90, 120, 180];
+  return (
+    <Portal>
+      <div className="edit-overlay" onClick={onClose} data-testid="workout-settings-modal">
+        <div className="edit-modal ws-modal" onClick={(e) => e.stopPropagation()}>
+          <h3 className="edit-title">Настройки тренировки</h3>
+
+          <div className="ws-section">
+            <div className="ws-row">
+              <span className="ws-label"><Timer size={16} /> Отдых по умолчанию</span>
+              <span className="ws-val" data-testid="ws-default-val">{fmtClock(s.defaultSec)}</span>
+            </div>
+            <div className="ws-chips">
+              {chips.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`ws-chip ${s.defaultSec === c ? "active" : ""}`}
+                  onClick={() => set("defaultSec", c)}
+                >
+                  {fmtClock(c)}
+                </button>
+              ))}
+            </div>
+            <input
+              className="ws-range"
+              type="range"
+              min="30"
+              max="300"
+              step="15"
+              value={s.defaultSec}
+              onChange={(e) => set("defaultSec", Number(e.target.value))}
+              data-testid="ws-default-sec"
+            />
+          </div>
+
+          <label className="ws-toggle-row">
+            <span className="ws-label">Автостарт после подхода</span>
+            <input type="checkbox" checked={!!s.autostart} onChange={(e) => set("autostart", e.target.checked)} data-testid="ws-autostart" />
+          </label>
+          <label className="ws-toggle-row">
+            <span className="ws-label"><Volume2 size={16} /> Звук по окончании</span>
+            <input type="checkbox" checked={!!s.sound} onChange={(e) => set("sound", e.target.checked)} data-testid="ws-sound" />
+          </label>
+          <label className="ws-toggle-row">
+            <span className="ws-label"><Vibrate size={16} /> Вибрация</span>
+            <input type="checkbox" checked={!!s.vibrate} onChange={(e) => set("vibrate", e.target.checked)} data-testid="ws-vibrate" />
+          </label>
+
+          <div className="edit-actions">
+            <button className="edit-btn-cancel" onClick={onClose}>Отмена</button>
+            <button className="edit-btn-save" onClick={() => onSave(s)} data-testid="ws-save">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+};
+
 // ---------- основной вид тренировки ----------
-const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
+const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete", onAction, onEditSave, onSetLog, forecastBySlug = {}, currentWeek, planSetsByOrder = {} }) => {
   const [now, setNow] = useState(() => Date.now());
   const [editing, setEditing] = useState(null);
   const [accOpen, setAccOpen] = useState(false);
+  const [restSettings, setRestSettings] = useState(loadRestSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rest, setRest] = useState({ active: false, total: 0, remaining: 0, running: false });
 
   const status = view.status;
   const stats = view.stats || {};
@@ -458,6 +739,61 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [status, paused]);
+
+  // --- Таймер отдыха ---
+  // Тик обратного отсчёта
+  useEffect(() => {
+    if (!rest.active || !rest.running) return undefined;
+    const t = setInterval(() => {
+      setRest((r) => (r.active && r.running ? { ...r, remaining: r.remaining - 1 } : r));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [rest.active, rest.running]);
+
+  // Финиш отдыха: сигнал + вибрация (один раз)
+  useEffect(() => {
+    if (rest.active && rest.running && rest.remaining <= 0) {
+      if (restSettings.sound) beep();
+      if (restSettings.vibrate) vibrate([120, 60, 120]);
+      setRest((r) => ({ ...r, remaining: 0, running: false }));
+    }
+  }, [rest.active, rest.running, rest.remaining, restSettings.sound, restSettings.vibrate]);
+
+  // Открытие «Настроек тренировки» из внешней кнопки (⚡)
+  useEffect(() => {
+    const openSettings = () => setSettingsOpen(true);
+    window.addEventListener("twb:open-workout-settings", openSettings);
+    return () => window.removeEventListener("twb:open-workout-settings", openSettings);
+  }, []);
+
+  const startRest = useCallback(
+    (sec) => {
+      const total = Math.max(5, Number(sec) || restSettings.defaultSec || 120);
+      setRest({ active: true, total, remaining: total, running: true });
+    },
+    [restSettings.defaultSec]
+  );
+
+  const adjustRest = (delta) =>
+    setRest((r) => {
+      if (!r.active) return r;
+      const remaining = Math.max(0, r.remaining + delta);
+      return { ...r, remaining, total: Math.max(r.total, remaining), running: remaining > 0 ? r.running : false };
+    });
+  const toggleRest = () => setRest((r) => ({ ...r, running: r.remaining > 0 ? !r.running : false }));
+  const closeRest = () => setRest({ active: false, total: 0, remaining: 0, running: false });
+
+  // Логирование подхода + опциональный автостарт отдыха
+  const handleSetLog = useCallback(
+    (order, idx, body) => {
+      if (onSetLog) onSetLog(order, idx, body);
+      if (body && body.done === true && restSettings.autostart) {
+        const ex = (view.exercises || []).find((e) => e.order === order);
+        startRest(ex && ex.rest_seconds ? ex.rest_seconds : restSettings.defaultSec);
+      }
+    },
+    [onSetLog, restSettings.autostart, restSettings.defaultSec, view.exercises, startRest]
+  );
 
   const durationSec =
     status === "in_progress" && view.started_at && !paused
@@ -517,6 +853,8 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
             finished={isFinished}
             onAction={onAction}
             onEdit={(e) => setEditing(e)}
+            onSetLog={handleSetLog}
+            onStartRest={startRest}
             forecast={forecastBySlug[ex.exercise_slug]}
             currentWeek={currentWeek}
             planSets={planSetsByOrder[ex.order]}
@@ -581,6 +919,20 @@ const WorkoutView = ({ view, isPreview = false, paused = false, mode = "athlete"
 
       {editing ? (
         <EditExerciseModal ex={editing} onClose={() => setEditing(null)} onSave={handleSave} />
+      ) : null}
+
+      <RestTimer state={rest} onAdjust={adjustRest} onToggle={toggleRest} onClose={closeRest} />
+      {settingsOpen ? (
+        <WorkoutSettingsModal
+          settings={restSettings}
+          onSave={(s) => {
+            setRestSettings(s);
+            saveRestSettings(s);
+            setSettingsOpen(false);
+            toast.success("Настройки сохранены");
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
       ) : null}
     </div>
   );

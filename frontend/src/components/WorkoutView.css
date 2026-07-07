@@ -667,3 +667,275 @@
   color: #0f2417;
 }
 
+
+/* ============ Phase 1: по-подходный чек-лист ============ */
+.setlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.setlist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 2px;
+}
+.setlist-title {
+  font-size: 12px;
+  color: #8a8a8a;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.setlist-count {
+  font-size: 12px;
+  color: #FFB36B;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.setrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.setrow-done {
+  background: rgba(59, 209, 111, 0.09);
+  border-color: rgba(59, 209, 111, 0.28);
+}
+.set-check {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #4a4a4a;
+  background: transparent;
+  color: #9a9a9a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+.set-check:disabled { cursor: default; opacity: 0.7; }
+.set-check .set-num { font-variant-numeric: tabular-nums; }
+.set-check.on {
+  background: #3BD16F;
+  border-color: #3BD16F;
+  color: #10240f;
+}
+.set-fields {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.set-input {
+  width: 58px;
+  padding: 7px 8px;
+  background: #1f1f1f;
+  border: 1px solid #3a3a3a;
+  border-radius: 9px;
+  color: #efefef;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+.set-input::-webkit-outer-spin-button,
+.set-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.set-input:focus { border-color: #FF8A24; }
+.set-input:disabled { opacity: 0.6; }
+.set-input-reps { width: 46px; }
+.set-unit { font-size: 12px; color: #8a8a8a; }
+.set-x { font-size: 13px; color: #6f6f6f; }
+.set-pct {
+  margin-left: auto;
+  font-size: 12px;
+  color: #FFB36B;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.set-rest-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 138, 36, 0.28);
+  background: rgba(255, 138, 36, 0.10);
+  color: #FFB36B;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.set-rest-btn:active { background: rgba(255, 138, 36, 0.22); }
+
+/* ============ Таймер отдыха (нижняя плашка) ============ */
+.rest-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 16px;
+  width: calc(100% - 24px);
+  max-width: 460px;
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  z-index: 9000;
+  animation: restIn 0.22s ease;
+}
+@keyframes restIn {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.rest-bar-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #FF8A24, #FFD24A);
+  transition: width 1s linear;
+}
+.rest-bar-done .rest-bar-progress { background: #3BD16F; }
+.rest-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.rest-adj {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid #3a3a3a;
+  background: #2a2a2a;
+  color: #dcdcdc;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.rest-adj:active { background: #333; }
+.rest-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+}
+.rest-label {
+  font-size: 11px;
+  color: #8a8a8a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rest-bar-done .rest-label { color: #3BD16F; }
+.rest-time {
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.rest-toggle,
+.rest-close {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.rest-toggle {
+  background: linear-gradient(-20deg, #FF8A24, #FFD24A);
+  color: #1c1c1c;
+}
+.rest-toggle:disabled { opacity: 0.45; cursor: default; }
+.rest-close {
+  background: #2a2a2a;
+  color: #cacaca;
+  border: 1px solid #3a3a3a;
+}
+
+/* ============ Настройки тренировки ============ */
+.ws-modal { max-width: 400px; }
+.ws-section { margin-bottom: 6px; }
+.ws-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.ws-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  color: #e2e2e2;
+  font-weight: 500;
+}
+.ws-label svg { color: #FFB36B; }
+.ws-val {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.ws-chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ws-chip {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 11px;
+  border: 1px solid #3a3a3a;
+  background: #262626;
+  color: #cacaca;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.ws-chip.active {
+  border-color: transparent;
+  background: linear-gradient(-20deg, #FF8A24, #FFD24A);
+  color: #1c1c1c;
+}
+.ws-range {
+  width: 100%;
+  accent-color: #FF8A24;
+  margin-bottom: 4px;
+}
+.ws-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.ws-toggle-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: #FF8A24;
+  cursor: pointer;
+}
