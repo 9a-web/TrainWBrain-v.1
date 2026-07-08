@@ -876,7 +876,15 @@ async def update_template(template_id: str, payload: ProgramTemplateUpdate,
 async def delete_template(template_id: str, current: dict = Depends(get_current_user)):
     await _get_own_template_or_403(template_id, current)
     res = await db.programs.delete_one({"id": template_id})
-    return {"deleted": res.deleted_count}
+    # Деактивируем активные планы этого пользователя, ссылающиеся на удалённый шаблон
+    tgid = current.get("telegram_id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    upd = await db.plans.update_many(
+        {"source_template_id": template_id, "athlete_telegram_id": tgid,
+         "status": {"$in": ["active", "draft"]}},
+        {"$set": {"status": "completed", "updated_at": now_iso}},
+    )
+    return {"deleted": res.deleted_count, "plans_cancelled": upd.modified_count}
 
 
 @api_router.post("/programs/templates/{template_id}/share")
@@ -1156,6 +1164,25 @@ async def get_plan(plan_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Plan not found")
     return doc
+
+
+@api_router.post("/plans/{plan_id}/cancel")
+async def cancel_plan(plan_id: str, current: dict = Depends(get_current_user)):
+    """Спортсмен отменяет выбор программы. Сессии/прогресс сохраняются, план — «completed»."""
+    doc = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    tgid = current.get("telegram_id")
+    if doc.get("athlete_telegram_id") != tgid:
+        raise HTTPException(status_code=403, detail="Not your plan")
+    if doc.get("status") not in ("active", "draft"):
+        return {"status": doc.get("status") or "completed", "cancelled": False}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.plans.update_one(
+        {"id": plan_id},
+        {"$set": {"status": "completed", "updated_at": now_iso}},
+    )
+    return {"status": "completed", "cancelled": True}
 
 
 # ===========================================================================

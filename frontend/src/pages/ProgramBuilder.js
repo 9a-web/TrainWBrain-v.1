@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Plus, Trash2, CopyPlus, ChevronDown, ChevronUp,
-  Search, Check, Loader2, CloudUpload, X, GripVertical,
+  Search, Check, Loader2, CloudUpload, X, GripVertical, Sparkles, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PulsingBorder } from "@paper-design/shaders-react";
 import { useUser } from "@/context/UserContext";
 import { getTemplate, updateTemplate, getExercises, createExercise } from "@/api";
 import { haptic } from "@/lib/platform";
@@ -418,6 +419,42 @@ export default function ProgramBuilder() {
             : (<><Check size={13} /> Сохранено</>)}
         </span>
       </header>
+
+      {/* AI Promo — плашка с pulsing-border shader */}
+      <button
+        type="button"
+        className="pb-ai-promo"
+        onClick={() => navigate("/programs/ai")}
+        data-testid="builder-ai-promo"
+      >
+        <span className="pb-ai-promo-shader" aria-hidden="true">
+          <PulsingBorder
+            width="100%"
+            height="100%"
+            colors={["#ff8a24", "#ffda24", "#ff5e00", "#ffce8a"]}
+            colorBack="transparent"
+            roundness={0.22}
+            thickness={0.06}
+            softness={0.9}
+            intensity={1.0}
+            spotsPerColor={3}
+            spotSize={0.32}
+            pulse={0.35}
+            smoke={0.4}
+            smokeSize={0.5}
+            scale={1.0}
+            speed={1.2}
+          />
+        </span>
+        <span className="pb-ai-promo-content">
+          <span className="pb-ai-promo-icon"><Sparkles size={18} /></span>
+          <span className="pb-ai-promo-text">
+            <b>Создайте программу через ИИ бесплатно</b>
+            <span>По вашим предпочтениям и научным исследованиям</span>
+          </span>
+          <ArrowRight size={18} className="pb-ai-promo-arrow" />
+        </span>
+      </button>
 
       <input className="pb-name" value={tpl.name || ""}
         onChange={(e) => mutate((t) => { t.name = e.target.value; })}

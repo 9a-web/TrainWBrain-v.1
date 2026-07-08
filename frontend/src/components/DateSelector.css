@@ -673,6 +673,62 @@
 }
 .confirm-btn-ok:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* Info-кнопка + модалка завершённой тренировки */
+.info-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.info-btn:hover { background: rgba(255, 138, 36, 0.14); transform: translateY(-1px); }
+.info-btn:active { transform: translateY(0); }
+.session-info-modal .session-info-day {
+  text-align: center;
+  color: #ffce8a;
+  font-size: 14px;
+  font-weight: 700;
+  margin: -6px 0 14px;
+}
+.session-info-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 14px;
+}
+.session-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+.session-info-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.session-info-lbl {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: none;
+}
+.session-info-val {
+  font-family: "SF Mono", "JetBrains Mono", monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  text-align: right;
+}
+.session-info-val.session-info-strong {
+  color: #ffce8a;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
 /* Карточка "нет программы" */
 .no-plan-card {
   margin-top: 22px;

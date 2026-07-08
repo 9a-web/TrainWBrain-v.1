@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Pause, Play, Square, Bolt, Lock } from 'lucide-react';
+import { Zap, Pause, Play, Square, Bolt, Lock, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
@@ -116,6 +116,7 @@ const DateSelector = () => {
   const [weekOffset, setWeekOffset] = useState(0); // Смещение недели (0 = текущая)
   const [slideDir, setSlideDir] = useState(null); // Направление анимации смены недели
   const [weekPickerOpen, setWeekPickerOpen] = useState(false); // Модалка «План» — выбор любой недели
+  const [infoOpen, setInfoOpen] = useState(false); // Инфо-модалка завершённой тренировки
 
   const [plan, setPlan] = useState(null);
   const [planLoading, setPlanLoading] = useState(true);
@@ -574,12 +575,17 @@ const DateSelector = () => {
   };
 
   const sessionStatus = session?.status;
+  const allExercisesResolved = useMemo(() => {
+    if (sessionStatus !== 'finished') return false;
+    const exs = session?.exercises || [];
+    return exs.length > 0 && exs.every((e) => e.status === 'done' || e.status === 'skipped');
+  }, [session, sessionStatus]);
 
   // Telegram native MainButton mirrors the primary CTA (no-op off-Telegram).
   const tgMainVisible =
     !!plan &&
     !isRestSelected &&
-    (sessionStatus === 'in_progress' || sessionStatus === 'finished' || (!session && !!previewView));
+    (sessionStatus === 'in_progress' || (sessionStatus === 'finished' && !allExercisesResolved) || (!session && !!previewView));
   useMainButton({
     enabled: true,
     visible: tgMainVisible,
@@ -691,16 +697,29 @@ const DateSelector = () => {
               </button>
             </>
           ) : sessionStatus === 'finished' ? (
-            <button
-              className="launch-button launch-button-restart"
-              type="button"
-              data-testid="resume-button"
-              onClick={handleResume}
-              disabled={starting}
-            >
-              <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
-              <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
-            </button>
+            allExercisesResolved ? (
+              <button
+                className="icon-btn info-btn"
+                type="button"
+                data-testid="session-info-button"
+                onClick={() => setInfoOpen(true)}
+                aria-label="Информация о тренировке"
+                title="Информация о тренировке"
+              >
+                <Info size={18} strokeWidth={2.2} color="#CACACA" />
+              </button>
+            ) : (
+              <button
+                className="launch-button launch-button-restart"
+                type="button"
+                data-testid="resume-button"
+                onClick={handleResume}
+                disabled={starting}
+              >
+                <Play className="launch-button-icon" size={16} strokeWidth={2.5} />
+                <span>{starting ? 'Загрузка…' : 'Продолжить'}</span>
+              </button>
+            )
           ) : !isRestSelected ? (
             <button
               className="launch-button"
@@ -807,6 +826,78 @@ const DateSelector = () => {
             </div>
             <div className="confirm-actions">
               <button className="confirm-btn-cancel" onClick={() => setWeekPickerOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+        </Portal>
+      ) : null}
+
+      {/* Инфо-модалка о завершённой тренировке */}
+      {infoOpen && session ? (
+        <Portal>
+        <div className="confirm-overlay" onClick={() => setInfoOpen(false)} data-testid="session-info-modal">
+          <div className="confirm-modal session-info-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="confirm-title">
+              <Info size={18} style={{ verticalAlign: '-3px', marginRight: '6px', color: '#ff8a24' }} />
+              Тренировка завершена
+            </h3>
+            <p className="session-info-day">{session.title || `День ${session.day_index || ''}`}</p>
+            <div className="session-info-rows" data-testid="session-info-rows">
+              <div className="session-info-row">
+                <span className="session-info-lbl">Дата</span>
+                <span className="session-info-val">{formattedDate}</span>
+              </div>
+              <div className="session-info-row">
+                <span className="session-info-lbl">Неделя плана</span>
+                <span className="session-info-val">{planWeek} из {(plan?.weeks?.length) || 1}</span>
+              </div>
+              {(() => {
+                const exs = session?.exercises || [];
+                const done = exs.filter((e) => e.status === 'done').length;
+                const skipped = exs.filter((e) => e.status === 'skipped').length;
+                const totalTonnage = exs.reduce((sum, e) => {
+                  return sum + ((e.sets || []).reduce((s, x) => {
+                    const w = Number(x.weight) || 0;
+                    const r = Number(x.reps) || 0;
+                    return s + w * r;
+                  }, 0));
+                }, 0);
+                return (
+                  <>
+                    <div className="session-info-row">
+                      <span className="session-info-lbl">Выполнено упражнений</span>
+                      <span className="session-info-val session-info-strong">{done} из {exs.length}</span>
+                    </div>
+                    {skipped > 0 ? (
+                      <div className="session-info-row">
+                        <span className="session-info-lbl">Пропущено</span>
+                        <span className="session-info-val">{skipped}</span>
+                      </div>
+                    ) : null}
+                    {totalTonnage > 0 ? (
+                      <div className="session-info-row">
+                        <span className="session-info-lbl">Тоннаж</span>
+                        <span className="session-info-val session-info-strong">
+                          {totalTonnage >= 1000 ? `${(totalTonnage / 1000).toFixed(1)} т` : `${Math.round(totalTonnage)} кг`}
+                        </span>
+                      </div>
+                    ) : null}
+                    {session.duration_sec ? (
+                      <div className="session-info-row">
+                        <span className="session-info-lbl">Время</span>
+                        <span className="session-info-val">
+                          {Math.floor(session.duration_sec / 60)} мин
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
+            </div>
+            <div className="confirm-actions">
+              <button className="confirm-btn-cancel" onClick={() => setInfoOpen(false)} data-testid="session-info-close">
                 Закрыть
               </button>
             </div>

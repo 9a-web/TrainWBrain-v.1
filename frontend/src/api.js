@@ -107,6 +107,8 @@ export const getActivePlan = (telegramId) =>
   client.get(`/plans/active/${telegramId}`).then((r) => r.data);
 export const getPlan = (id) =>
   client.get(`/plans/${id}`).then((r) => r.data);
+export const cancelPlan = (id) =>
+  client.post(`/plans/${id}/cancel`).then((r) => r.data);
 export const getPlanDay = (id, week, day, viewer) =>
   client.get(`/plans/${id}/day`, { params: { week, day, ...(viewer != null ? { viewer } : {}) } }).then((r) => r.data);
 export const getWeekProgress = (id, week, viewer, dates) =>

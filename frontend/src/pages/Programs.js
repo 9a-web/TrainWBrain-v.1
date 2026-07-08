@@ -9,6 +9,7 @@ import { useUser } from "@/context/UserContext";
 import {
   getTemplates, getActivePlan, createPlan, createTemplate,
   deleteTemplate, shareTemplate, importSharedProgram,
+  cancelPlan,
 } from "@/api";
 import { haptic, hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
@@ -256,6 +257,8 @@ const Programs = () => {
   const [shareTpl, setShareTpl] = useState(null);
   const [codeModal, setCodeModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmCancelPlan, setConfirmCancelPlan] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const loadTemplates = async () => {
@@ -370,10 +373,32 @@ const Programs = () => {
     try {
       await deleteTemplate(tpl.id);
       setConfirmDeleteId(null);
+      // если активный план ссылался на этот шаблон — deletetemplate вернул plans_cancelled>0
+      setActivePlan((p) => (p && p.source_template_id === tpl.id ? null : p));
       toast.success("Программа удалена");
       loadTemplates();
     } catch (e) {
       toast.error("Не удалось удалить");
+    }
+  };
+
+  const handleCancelActive = async () => {
+    if (!activePlan?.id) return;
+    if (!confirmCancelPlan) {
+      setConfirmCancelPlan(true);
+      setTimeout(() => setConfirmCancelPlan((v) => (v ? false : v)), 3500);
+      return;
+    }
+    setCancelling(true);
+    try {
+      await cancelPlan(activePlan.id);
+      setActivePlan(null);
+      setConfirmCancelPlan(false);
+      toast.success("Выбор программы отменён. Прогресс сохранён.");
+    } catch (e) {
+      toast.error("Не удалось отменить");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -417,6 +442,18 @@ const Programs = () => {
             {isActive ? (<><Check size={16} /> Активна</>)
               : assigningId === tpl.id ? "Назначаем…" : "Выбрать"}
           </button>
+          {isActive ? (
+            <button
+              className={`program-cancel-btn ${confirmCancelPlan ? "confirming" : ""}`}
+              type="button"
+              onClick={handleCancelActive}
+              disabled={cancelling}
+              data-testid={`cancel-active-${tpl.slug || tpl.id}`}
+              title="Отменить выбор программы (прогресс сохраняется)"
+            >
+              {cancelling ? "Отменяем…" : (confirmCancelPlan ? "Точно отменить?" : "Отменить выбор")}
+            </button>
+          ) : null}
           {own ? (
             <div className="program-own-actions">
               <button className="own-act" onClick={() => navigate(`/programs/builder/${tpl.id}`)}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Flame, Gift, Check, Trophy, Dumbbell, Target } from "lucide-react";
+import { ArrowLeft, Flame, Check, Trophy, Dumbbell, Target } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import { getStreakData } from "@/api";
@@ -17,6 +17,21 @@ const pluralize = (n, forms) => {
   if (b === 1) return forms[0];
   return forms[2];
 };
+
+const GiftIcon = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    {/* Крышка */}
+    <rect x="2.5" y="6.5" width="19" height="4.5" rx="1.2" fill="currentColor" opacity="0.92" />
+    {/* Коробка */}
+    <path d="M4 11h16v9.2a1.3 1.3 0 0 1-1.3 1.3H5.3A1.3 1.3 0 0 1 4 20.2V11Z" fill="currentColor" opacity="0.72" />
+    {/* Лента вертикальная */}
+    <rect x="10.6" y="6.5" width="2.8" height="15" fill="#1c1c1c" opacity="0.85" />
+    {/* Бант */}
+    <path d="M12 6.5c-.6-2-2.2-3.4-4-2.9-1.6.4-2.4 2-1.6 3.4.6 1 2 1.5 3.6 1.5H12Z" fill="currentColor" />
+    <path d="M12 6.5c.6-2 2.2-3.4 4-2.9 1.6.4 2.4 2 1.6 3.4-.6 1-2 1.5-3.6 1.5H12Z" fill="currentColor" />
+    <circle cx="12" cy="6.2" r="1.2" fill="#1c1c1c" opacity="0.85" />
+  </svg>
+);
 
 function DayCircle({ d }) {
   let cls = "sk-circle";
@@ -134,7 +149,7 @@ export default function StreakPage() {
               <div className="sk-day sk-reward" data-testid="streak-reward">
                 <span className="sk-day-label">Приз</span>
                 <span className={`sk-gift ${rewardActive ? "active" : ""}`}>
-                  <Gift size={20} strokeWidth={2.2} />
+                  <GiftIcon size={22} />
                 </span>
               </div>
             </div>
