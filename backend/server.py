@@ -4,6 +4,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import asyncio
 import logging
 import re
 import copy
@@ -3614,6 +3615,19 @@ _AI_SYSTEM_GEN = _AI_SYSTEM + (
 )
 
 
+_AI_QUESTIONS_SYSTEM = (
+    "Ты — опытный тренер по силовым видам спорта. Пользователь просит составить тренировочную программу. "
+    "Перед составлением задай уточняющие вопросы. Отвечай ТОЛЬКО валидным JSON без пояснений, по схеме:\n"
+    '{"questions":[{"question":"текст вопроса","options":["вариант 1","вариант 2"]}]}\n'
+    "Правила:\n"
+    "- Ровно 3–5 вопросов. Спрашивай ТОЛЬКО о том, чего нет в запросе пользователя (не переспрашивай известное).\n"
+    "- Типичные темы: цель, уровень/опыт, дней в неделю, доступное оборудование, длительность программы (недель), "
+    "известные 1ПМ в базовых движениях, травмы/ограничения, время на тренировку.\n"
+    "- К каждому вопросу 3–5 коротких вариантов ответа (до 40 символов каждый), без варианта «другое».\n"
+    "- Вопросы и варианты — на русском языке. Выводи компактный JSON."
+)
+
+
 async def _ai_build_template(data, current, source):
     """Конвертация JSON-ответа ИИ во внутренний шаблон программы + сохранение."""
     if not isinstance(data, dict) or not (data.get("weeks") or []):
@@ -3749,7 +3763,17 @@ async def _ai_build_template(data, current, source):
     return doc
 
 
+class AiAnswer(BaseModel):
+    question: str
+    answer: str
+
+
 class AiGenerateReq(BaseModel):
+    prompt: str
+    answers: list[AiAnswer] = []
+
+
+class AiQuestionsReq(BaseModel):
     prompt: str
 
 
@@ -3757,22 +3781,97 @@ class AiParseReq(BaseModel):
     text: str
 
 
-@api_router.post("/ai/program/generate")
-async def ai_generate_program(payload: AiGenerateReq, current: dict = Depends(get_current_user)):
-    """Генерация программы по пожеланиям (промпту)."""
+def _ai_require_enabled():
+    cfg = _ai_config()
+    if not (cfg["base_url"] and cfg["api_key"]):
+        raise HTTPException(status_code=503,
+                            detail="ИИ-анализ пока не настроен: не задан API-ключ сервиса")
+
+
+async def _ai_start_job(current, kind, coro_factory):
+    """Долгие ИИ-запросы (>60 c) убивает ingress — выполняем в фоне, клиент опрашивает job."""
+    job_id = str(uuid.uuid4())
+    await db.ai_jobs.insert_one({
+        "id": job_id, "telegram_id": current.get("telegram_id"), "kind": kind,
+        "status": "pending", "template": None, "error": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    async def _run():
+        try:
+            tpl = await coro_factory()
+            await db.ai_jobs.update_one({"id": job_id}, {"$set": {"status": "done", "template": tpl}})
+        except HTTPException as e:
+            await db.ai_jobs.update_one({"id": job_id}, {"$set": {"status": "error", "error": str(e.detail)}})
+        except Exception:
+            logger.exception(f"AI job {job_id} failed")
+            await db.ai_jobs.update_one(
+                {"id": job_id},
+                {"$set": {"status": "error", "error": "Непредвиденная ошибка ИИ — попробуйте ещё раз"}})
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id, "status": "pending"}
+
+
+@api_router.get("/ai/program/jobs/{job_id}")
+async def ai_job_status(job_id: str, current: dict = Depends(get_current_user)):
+    job = await db.ai_jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    if job.get("telegram_id") != current.get("telegram_id"):
+        raise HTTPException(status_code=403, detail="Доступ к чужой задаче запрещён")
+    return job
+
+
+@api_router.post("/ai/program/questions")
+async def ai_program_questions(payload: AiQuestionsReq, current: dict = Depends(get_current_user)):
+    """Уточняющие вопросы по первому запросу пользователя (шаг 1 генерации)."""
     prompt = (payload.prompt or "").strip()
     if len(prompt) < 10:
         raise HTTPException(status_code=400, detail="Опишите пожелания подробнее (минимум 10 символов)")
     content = await _ai_chat([
-        {"role": "system", "content": _AI_SYSTEM_GEN},
-        {"role": "user", "content":
-            "Составь ПОЛНОЦЕННУЮ объёмную тренировочную программу по пожеланиям пользователя: "
-            "5–8 упражнений в каждый тренировочный день, с прогрессией по неделям. "
-            "Если пользователь не указал длительность — сделай 4 недели; не более 12 недель. "
-            f"Пожелания:\n{prompt[:4000]}"},
-    ], temperature=0.5)
+        {"role": "system", "content": _AI_QUESTIONS_SYSTEM},
+        {"role": "user", "content": f"Запрос пользователя:\n{prompt[:4000]}"},
+    ], temperature=0.4)
     data = _extract_json(content)
-    return await _ai_build_template(data, current, "ai")
+    out = []
+    for q in (data.get("questions") or [])[:5]:
+        qt = str(q.get("question") or "").strip()
+        if not qt:
+            continue
+        opts = [str(o).strip()[:60] for o in (q.get("options") or [])[:6] if str(o).strip()]
+        out.append({"question": qt[:200], "options": opts})
+    if not out:
+        raise HTTPException(status_code=422, detail="ИИ не смог составить вопросы — попробуйте ещё раз")
+    return {"questions": out}
+
+
+@api_router.post("/ai/program/generate")
+async def ai_generate_program(payload: AiGenerateReq, current: dict = Depends(get_current_user)):
+    """Генерация программы (фоновая задача): промпт + ответы на уточняющие вопросы."""
+    prompt = (payload.prompt or "").strip()
+    if len(prompt) < 10:
+        raise HTTPException(status_code=400, detail="Опишите пожелания подробнее (минимум 10 символов)")
+    _ai_require_enabled()
+    extra = ""
+    qa_lines = [f"- {a.question.strip()[:200]} → {a.answer.strip()[:200]}"
+                for a in (payload.answers or [])[:8] if (a.answer or "").strip()]
+    if qa_lines:
+        extra = "\n\nОтветы пользователя на уточняющие вопросы (обязательно учти):\n" + "\n".join(qa_lines)
+
+    async def _factory():
+        content = await _ai_chat([
+            {"role": "system", "content": _AI_SYSTEM_GEN},
+            {"role": "user", "content":
+                "Составь ПОЛНОЦЕННУЮ объёмную тренировочную программу по пожеланиям пользователя: "
+                "5–8 упражнений в каждый тренировочный день, с прогрессией по неделям. "
+                "Если пользователь не указал длительность — сделай 4 недели; не более 12 недель. "
+                f"Пожелания:\n{prompt[:4000]}{extra}"},
+        ], temperature=0.5)
+        data = _extract_json(content)
+        return await _ai_build_template(data, current, "ai")
+
+    return await _ai_start_job(current, "generate", _factory)
 
 
 async def _ai_parse_text(text, current):
@@ -3789,11 +3888,12 @@ async def _ai_parse_text(text, current):
 
 @api_router.post("/ai/program/parse")
 async def ai_parse_program(payload: AiParseReq, current: dict = Depends(get_current_user)):
-    """Разбор готового плана (вставленный текст/таблица)."""
+    """Разбор готового плана (вставленный текст/таблица) — фоновая задача."""
     text = (payload.text or "").strip()
     if len(text) < 20:
         raise HTTPException(status_code=400, detail="Вставьте текст плана (минимум 20 символов)")
-    return await _ai_parse_text(text, current)
+    _ai_require_enabled()
+    return await _ai_start_job(current, "parse", lambda: _ai_parse_text(text, current))
 
 
 @api_router.post("/ai/program/parse-file")

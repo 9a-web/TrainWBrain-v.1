@@ -84,8 +84,12 @@ export const importSharedProgram = (code) =>
 
 // --- P6: ИИ-анализ программ ---
 export const getAiStatus = () => client.get(`/ai/status`).then((r) => r.data);
-export const aiGenerateProgram = (prompt) =>
-  client.post(`/ai/program/generate`, { prompt }).then((r) => r.data);
+export const aiProgramQuestions = (prompt) =>
+  client.post(`/ai/program/questions`, { prompt }).then((r) => r.data);
+export const getAiJob = (jobId) =>
+  client.get(`/ai/program/jobs/${jobId}`).then((r) => r.data);
+export const aiGenerateProgram = (prompt, answers = []) =>
+  client.post(`/ai/program/generate`, { prompt, answers }).then((r) => r.data);
 export const aiParseProgram = (text) =>
   client.post(`/ai/program/parse`, { text }).then((r) => r.data);
 export const aiParseProgramFile = (file) => {

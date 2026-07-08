@@ -287,14 +287,13 @@ def test_import_requires_auth():
     assert r.status_code == 401
 
 
-# ==================== AI: disabled (no key) ====================
+# ==================== AI: status / validation / jobs ====================
 
-def test_ai_status_disabled():
+def test_ai_status():
     r = requests.get(f"{BASE_URL}/api/ai/status", timeout=15)
     assert r.status_code == 200
     d = r.json()
-    assert d.get("enabled") is False
-    assert d.get("model") == "deepseek-v4-flash"
+    assert "enabled" in d and "model" in d
 
 
 def test_ai_generate_requires_auth():
@@ -309,6 +308,12 @@ def test_ai_parse_requires_auth():
     assert r.status_code == 401
 
 
+def test_ai_questions_requires_auth():
+    r = requests.post(f"{BASE_URL}/api/ai/program/questions",
+                      json={"prompt": "some long enough prompt text"}, timeout=15)
+    assert r.status_code == 401
+
+
 def test_ai_generate_short_prompt_400(owner_token):
     r = requests.post(f"{BASE_URL}/api/ai/program/generate",
                       json={"prompt": "hi"}, headers=_h(owner_token), timeout=15)
@@ -316,21 +321,21 @@ def test_ai_generate_short_prompt_400(owner_token):
     assert "минимум" in r.json().get("detail", "").lower() or "симв" in r.json().get("detail", "").lower()
 
 
-def test_ai_generate_disabled_503(owner_token):
-    r = requests.post(f"{BASE_URL}/api/ai/program/generate",
-                      json={"prompt": "Хочу программу на 4 недели, 3 дня, силовая. Присед, жим, тяга."},
-                      headers=_h(owner_token), timeout=30)
-    assert r.status_code == 503, f"expected 503 (AI disabled), got {r.status_code} {r.text[:200]}"
-    detail = r.json().get("detail", "")
-    assert any(kw in detail.lower() for kw in ("ии", "api-ключ", "не настроен")), \
-        f"detail must be Russian and explain AI disabled: {detail!r}"
+def test_ai_questions_short_prompt_400(owner_token):
+    r = requests.post(f"{BASE_URL}/api/ai/program/questions",
+                      json={"prompt": "hi"}, headers=_h(owner_token), timeout=15)
+    assert r.status_code == 400
 
 
-def test_ai_parse_disabled_503(owner_token):
-    r = requests.post(f"{BASE_URL}/api/ai/program/parse",
-                      json={"text": "Присед 5x5 100кг, Жим 5x5 60кг, Тяга 1x5 120кг" * 3},
-                      headers=_h(owner_token), timeout=30)
-    assert r.status_code == 503, f"expected 503, got {r.status_code} {r.text[:200]}"
+def test_ai_job_requires_auth():
+    r = requests.get(f"{BASE_URL}/api/ai/program/jobs/nonexistent", timeout=15)
+    assert r.status_code == 401
+
+
+def test_ai_job_not_found(owner_token):
+    r = requests.get(f"{BASE_URL}/api/ai/program/jobs/{uuid.uuid4()}",
+                     headers=_h(owner_token), timeout=15)
+    assert r.status_code == 404
 
 
 # ==================== Regression: create plan from own template ====================

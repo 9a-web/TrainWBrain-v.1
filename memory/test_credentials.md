@@ -35,6 +35,7 @@
 - Второй пользователь (импорт/403-проверки): `dbg1783466020@ex.com` / `password123` (tg 922324126010).
 - ИИ (P6): **АКТИВИРОВАН** через RouterAI (`https://routerai.ru/api/v1`, модель `deepseek/deepseek-v4-flash`). Ключ и base URL — в `backend/.env` (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`). `/api/ai/status` → `{enabled: true}`. Проверено `/api/ai/program/generate` — генерирует валидные программы с прогрессией и fuzzy-маппингом на каталог.
 - ИИ-генерация (июнь 2026): системный промпт усилен (`_AI_SYSTEM_GEN` в server.py) — 5–8 упражнений/день, недельный объём 10–20 подходов, обязательная прогрессия/разгрузка, сплиты по числу дней; `max_tokens` поднят до 16000. Проверено: 4 нед × 4 дня × 6–7 упр, волновая прогрессия 70→75→80→65%.
+- Двухшаговая генерация (июнь 2026): `POST /api/ai/program/questions` (уточняющие вопросы 3–5 с вариантами) → фронт показывает чипсы + «свой ответ» → `POST /api/ai/program/generate` с `answers`. Долгие ИИ-запросы (>60 c обрубает ingress) выполняются как фоновые задачи: generate/parse/parse-file возвращают `{job_id}`, статус — `GET /api/ai/program/jobs/{job_id}` (pending|done|error, done → поле template). Фронт поллит каждые 3 c (AiImport.js run()). Коллекция БД: `ai_jobs`.
 - Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.
 
 ## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (regenerated Jun 2026)

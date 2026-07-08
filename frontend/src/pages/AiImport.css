@@ -211,3 +211,50 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* Уточняющие вопросы (шаг 2 генерации) */
+.ai-q { margin-bottom: 18px; }
+.ai-q-title { font-size: 14px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; }
+.ai-q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ai-chip {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 12.5px; font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.ai-chip:hover { border-color: rgba(255, 138, 36, 0.45); color: #ffce8a; }
+.ai-chip.active {
+  background: linear-gradient(-34deg, #ff8a24, #ffda24);
+  border-color: transparent;
+  color: #1c1c1c;
+}
+.ai-q-custom {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #fff;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+}
+.ai-q-custom:focus { border-color: #ff8a24; }
+.ai-skip {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 13.5px; font-weight: 600;
+  border-radius: 14px;
+  padding: 12px;
+  cursor: pointer;
+}
+.ai-skip:hover { border-color: rgba(255, 138, 36, 0.4); }

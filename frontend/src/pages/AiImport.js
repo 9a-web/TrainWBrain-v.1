@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile,
+  getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile, aiProgramQuestions, getAiJob,
 } from "@/api";
 import { hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
@@ -24,23 +24,27 @@ const BUSY_STEPS = [
   "Расставляем веса и подходы…",
   "Почти готово…",
 ];
+const QUESTIONS_BUSY_STEPS = [
+  "Изучаем ваш запрос…",
+  "Готовим уточняющие вопросы…",
+];
 
 const errText = (e, fallback) => {
   const d = e?.response?.data?.detail;
   return typeof d === "string" ? d : fallback;
 };
 
-function BusyOverlay() {
+function BusyOverlay({ steps = BUSY_STEPS, sub = "Обычно занимает 30–90 секунд" }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setStep((s) => (s + 1) % BUSY_STEPS.length), 2600);
+    const t = setInterval(() => setStep((s) => (s + 1) % steps.length), 2600);
     return () => clearInterval(t);
-  }, []);
+  }, [steps]);
   return (
     <div className="ai-busy" data-testid="ai-busy">
       <span className="ai-busy-orb"><Sparkles size={26} /></span>
-      <p>{BUSY_STEPS[step]}</p>
-      <span className="ai-busy-sub">Обычно занимает 20–60 секунд</span>
+      <p>{steps[step]}</p>
+      <span className="ai-busy-sub">{sub}</span>
     </div>
   );
 }
@@ -55,7 +59,11 @@ export default function AiImport() {
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState("program"); // program | questions
   const [result, setResult] = useState(null);
+  const [questions, setQuestions] = useState(null);
+  const [picked, setPicked] = useState({});
+  const [custom, setCustom] = useState({});
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -65,11 +73,36 @@ export default function AiImport() {
   const enabled = !!status?.enabled;
 
   const run = async (fn) => {
+    setBusyKind("program");
     setBusy(true);
     setResult(null);
     try {
-      const tpl = await fn();
+      const started = await fn();
+      let tpl = started;
+      if (started?.job_id) {
+        let fails = 0;
+        const deadline = Date.now() + 5 * 60 * 1000;
+        for (;;) {
+          if (Date.now() > deadline) {
+            throw { response: { data: { detail: "ИИ отвечает слишком долго — попробуйте ещё раз" } } };
+          }
+          await new Promise((r) => setTimeout(r, 3000));
+          let job;
+          try {
+            job = await getAiJob(started.job_id);
+            fails = 0;
+          } catch (e) {
+            if (++fails >= 3) throw e;
+            continue;
+          }
+          if (job.status === "done") { tpl = job.template; break; }
+          if (job.status === "error") {
+            throw { response: { data: { detail: job.error } } };
+          }
+        }
+      }
       setResult(tpl);
+      setQuestions(null);
       hapticNotify("success");
       toast.success(`Программа «${tpl.name}» сохранена в «Мои программы»`);
     } catch (e) {
@@ -80,13 +113,38 @@ export default function AiImport() {
     }
   };
 
-  const generate = () => {
+  const askQuestions = async () => {
     if (prompt.trim().length < 10) {
       toast.error("Опишите пожелания подробнее");
       return;
     }
-    run(() => aiGenerateProgram(prompt.trim()));
+    setBusyKind("questions");
+    setBusy(true);
+    try {
+      const res = await aiProgramQuestions(prompt.trim());
+      if (res?.questions?.length) {
+        setQuestions(res.questions);
+        setPicked({});
+        setCustom({});
+        setBusy(false);
+      } else {
+        await run(() => aiGenerateProgram(prompt.trim()));
+      }
+    } catch {
+      await run(() => aiGenerateProgram(prompt.trim()));
+    }
   };
+
+  const collectAnswers = () =>
+    (questions || [])
+      .map((q, i) => {
+        const a = (custom[i] || "").trim() || picked[i] || "";
+        return a ? { question: q.question, answer: a } : null;
+      })
+      .filter(Boolean);
+
+  const generate = (withAnswers) =>
+    run(() => aiGenerateProgram(prompt.trim(), withAnswers ? collectAnswers() : []));
 
   const parse = () => {
     if (file) {
@@ -141,7 +199,10 @@ export default function AiImport() {
       </div>
 
       {busy ? (
-        <BusyOverlay />
+        <BusyOverlay
+          steps={busyKind === "questions" ? QUESTIONS_BUSY_STEPS : BUSY_STEPS}
+          sub={busyKind === "questions" ? "Обычно занимает 5–15 секунд" : "Обычно занимает 20–60 секунд"}
+        />
       ) : result ? (
         <div className="ai-result" data-testid="ai-result">
           <span className="ai-result-ok"><CheckCircle2 size={24} /></span>
@@ -165,13 +226,54 @@ export default function AiImport() {
               <Dumbbell size={15} /> К программам
             </button>
           </div>
-          <button className="ai-again" onClick={() => setResult(null)} data-testid="ai-again">
+          <button className="ai-again"
+            onClick={() => { setResult(null); setQuestions(null); setPicked({}); setCustom({}); }}
+            data-testid="ai-again">
             Создать ещё одну
+          </button>
+        </div>
+      ) : tab === "generate" && questions ? (
+        <div className="ai-panel" data-testid="ai-questions">
+          <p className="ai-hint">
+            Пара уточнений — программа получится точнее. Выберите вариант или впишите свой ответ.
+          </p>
+          {questions.map((q, i) => (
+            <div className="ai-q" key={i} data-testid={`ai-question-${i}`}>
+              <p className="ai-q-title">{q.question}</p>
+              {q.options?.length ? (
+                <div className="ai-q-opts">
+                  {q.options.map((o) => (
+                    <button key={o}
+                      className={`ai-chip ${picked[i] === o && !(custom[i] || "").trim() ? "active" : ""}`}
+                      onClick={() => {
+                        setPicked((p) => ({ ...p, [i]: p[i] === o ? null : o }));
+                        setCustom((c) => ({ ...c, [i]: "" }));
+                      }}
+                      data-testid={`ai-q${i}-opt`}>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <input className="ai-q-custom" placeholder="Свой ответ…" value={custom[i] || ""}
+                onChange={(e) => setCustom((c) => ({ ...c, [i]: e.target.value }))}
+                data-testid={`ai-q${i}-custom`} />
+            </div>
+          ))}
+          <button className="ai-btn-primary ai-submit" onClick={() => generate(true)}
+            data-testid="ai-generate-with-answers">
+            <Sparkles size={16} /> Сгенерировать программу
+          </button>
+          <button className="ai-skip" onClick={() => generate(false)} data-testid="ai-generate-skip">
+            Сгенерировать без ответов
+          </button>
+          <button className="ai-again" onClick={() => setQuestions(null)} data-testid="ai-edit-prompt">
+            ← Изменить запрос
           </button>
         </div>
       ) : tab === "generate" ? (
         <div className="ai-panel">
-          <p className="ai-hint">Опишите цель, опыт, сколько дней в неделю и что любите делать — ИИ соберёт программу.</p>
+          <p className="ai-hint">Опишите цель, опыт, сколько дней в неделю и что любите делать — ИИ задаст пару уточняющих вопросов и соберёт программу.</p>
           <textarea className="ai-textarea" rows={5} value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Например: хочу программу на силу, 3 дня в неделю, приседаю 120 кг…"
@@ -181,9 +283,9 @@ export default function AiImport() {
               <button key={ex} className="ai-example" onClick={() => setPrompt(ex)}>{ex}</button>
             ))}
           </div>
-          <button className="ai-btn-primary ai-submit" onClick={generate}
+          <button className="ai-btn-primary ai-submit" onClick={askQuestions}
             disabled={!enabled || prompt.trim().length < 10} data-testid="ai-generate-btn">
-            <Sparkles size={16} /> Сгенерировать программу
+            <Sparkles size={16} /> Продолжить
           </button>
         </div>
       ) : (
