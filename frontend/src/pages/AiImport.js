@@ -63,6 +63,7 @@ export default function AiImport() {
   const [busyKind, setBusyKind] = useState("program"); // program | questions
   const [result, setResult] = useState(null);
   const [questions, setQuestions] = useState(null);
+  const [qStep, setQStep] = useState("basic"); // basic | advanced
   const [picked, setPicked] = useState({});
   const [custom, setCustom] = useState({});
   const fileRef = useRef(null);
@@ -125,6 +126,7 @@ export default function AiImport() {
       const res = await aiProgramQuestions(prompt.trim());
       if (res?.questions?.length) {
         setQuestions(res.questions);
+        setQStep("basic");
         setPicked({});
         setCustom({});
         setBusy(false);
@@ -229,53 +231,92 @@ export default function AiImport() {
             </button>
           </div>
           <button className="ai-again"
-            onClick={() => { setResult(null); setQuestions(null); setPicked({}); setCustom({}); }}
+            onClick={() => { setResult(null); setQuestions(null); setQStep("basic"); setPicked({}); setCustom({}); }}
             data-testid="ai-again">
             Создать ещё одну
           </button>
         </div>
       ) : tab === "generate" && questions ? (
-        <div className="ai-panel" data-testid="ai-questions">
-          <p className="ai-hint">
-            Пара уточнений — программа получится точнее. Выберите вариант или впишите свой ответ.
-          </p>
-          {questions.map((q, i) => (
-            <div className="ai-q" key={i} data-testid={`ai-question-${i}`}>
-              <p className="ai-q-title">{q.question}</p>
-              {q.options?.length ? (
-                <div className="ai-q-opts">
-                  {q.options.map((o) => (
-                    <button key={o}
-                      className={`ai-chip ${picked[i] === o && !(custom[i] || "").trim() ? "active" : ""}`}
-                      onClick={() => {
-                        setPicked((p) => ({ ...p, [i]: p[i] === o ? null : o }));
-                        setCustom((c) => ({ ...c, [i]: "" }));
-                      }}
-                      data-testid={`ai-q${i}-opt`}>
-                      {o}
-                    </button>
-                  ))}
+        (() => {
+          const basicIdx = questions.map((q, i) => (q.tier !== "advanced" ? i : -1)).filter((i) => i >= 0);
+          const advIdx = questions.map((q, i) => (q.tier === "advanced" ? i : -1)).filter((i) => i >= 0);
+          const hasAdv = advIdx.length > 0;
+          const shown = qStep === "basic" || !hasAdv ? basicIdx : advIdx;
+          const stepNum = qStep === "basic" ? 1 : 2;
+          const totalSteps = hasAdv ? 2 : 1;
+          return (
+            <div className="ai-panel" data-testid="ai-questions">
+              {hasAdv ? (
+                <div className="ai-q-stepper" data-testid="ai-q-stepper">
+                  <span className={`ai-q-step ${qStep === "basic" ? "active" : "done"}`}>1 · Основное</span>
+                  <span className="ai-q-step-sep">→</span>
+                  <span className={`ai-q-step ${qStep === "advanced" ? "active" : ""}`}>2 · Тонкая настройка</span>
                 </div>
               ) : null}
-              <input className="ai-q-custom" placeholder="Свой ответ…" value={custom[i] || ""}
-                onChange={(e) => setCustom((c) => ({ ...c, [i]: e.target.value }))}
-                data-testid={`ai-q${i}-custom`} />
+              <p className="ai-hint">
+                {qStep === "basic"
+                  ? `Шаг ${stepNum}/${totalSteps}. Ключевые вопросы — от них зависит структура программы.`
+                  : `Шаг ${stepNum}/${totalSteps}. Опциональные уточнения. Пропустите — программа всё равно получится хорошей.`}
+              </p>
+              {shown.map((i) => {
+                const q = questions[i];
+                return (
+                  <div className="ai-q" key={i} data-testid={`ai-question-${i}`}>
+                    <p className="ai-q-title">{q.question}</p>
+                    {q.options?.length ? (
+                      <div className="ai-q-opts">
+                        {q.options.map((o) => (
+                          <button key={o}
+                            className={`ai-chip ${picked[i] === o && !(custom[i] || "").trim() ? "active" : ""}`}
+                            onClick={() => {
+                              setPicked((p) => ({ ...p, [i]: p[i] === o ? null : o }));
+                              setCustom((c) => ({ ...c, [i]: "" }));
+                            }}
+                            data-testid={`ai-q${i}-opt`}>
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <input className="ai-q-custom" placeholder="Свой ответ…" value={custom[i] || ""}
+                      onChange={(e) => setCustom((c) => ({ ...c, [i]: e.target.value }))}
+                      data-testid={`ai-q${i}-custom`} />
+                  </div>
+                );
+              })}
+              {qStep === "basic" && hasAdv ? (
+                <>
+                  <button className="ai-btn-primary ai-submit" onClick={() => setQStep("advanced")}
+                    data-testid="ai-q-next">
+                    Далее — тонкая настройка →
+                  </button>
+                  <button className="ai-skip" onClick={() => generate(true)} data-testid="ai-generate-basic-only">
+                    Сгенерировать без продвинутых
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="ai-btn-primary ai-submit" onClick={() => generate(true)}
+                    data-testid="ai-generate-with-answers">
+                    <Sparkles size={16} /> Сгенерировать программу
+                  </button>
+                  <button className="ai-skip" onClick={() => generate(false)} data-testid="ai-generate-skip">
+                    Сгенерировать без ответов
+                  </button>
+                </>
+              )}
+              <button
+                className="ai-again"
+                onClick={() => (qStep === "advanced" && hasAdv ? setQStep("basic") : setQuestions(null))}
+                data-testid="ai-edit-prompt">
+                ← {qStep === "advanced" && hasAdv ? "Назад" : "Изменить запрос"}
+              </button>
             </div>
-          ))}
-          <button className="ai-btn-primary ai-submit" onClick={() => generate(true)}
-            data-testid="ai-generate-with-answers">
-            <Sparkles size={16} /> Сгенерировать программу
-          </button>
-          <button className="ai-skip" onClick={() => generate(false)} data-testid="ai-generate-skip">
-            Сгенерировать без ответов
-          </button>
-          <button className="ai-again" onClick={() => setQuestions(null)} data-testid="ai-edit-prompt">
-            ← Изменить запрос
-          </button>
-        </div>
+          );
+        })()
       ) : tab === "generate" ? (
         <div className="ai-panel">
-          <p className="ai-hint">Опишите цель, опыт, сколько дней в неделю и что любите делать — ИИ задаст пару уточняющих вопросов и соберёт программу.</p>
+          <p className="ai-hint">Опишите цель, опыт, сколько дней в неделю и что любите делать — ИИ задаст 8–10 уточняющих вопросов в 2 шага и соберёт программу под вас.</p>
           <textarea className="ai-textarea" rows={5} value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Например: хочу программу на силу, 3 дня в неделю, приседаю 120 кг…"
