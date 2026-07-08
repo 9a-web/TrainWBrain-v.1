@@ -33,7 +33,7 @@
 - Использовать для проверки /stats и /streak. Пересоздать данные: `python /app/scripts/setup_stats_demo.py`.
 - Демо-шаблон P6: «Силовая база 5×5» id `b85dbff0-ef78-48f6-805d-2a6417e912df`, share code `TWB-ZZB5ZS` (НЕ удалять — используется тестами импорта/landing).
 - Второй пользователь (импорт/403-проверки): `dbg1783466020@ex.com` / `password123` (tg 922324126010).
-- ИИ (P6): ключа НЕТ — `/api/ai/*` отдаёт 503, UI показывает «ИИ пока не подключён». Для активации заполнить в backend/.env: AI_BASE_URL, AI_API_KEY (AI_MODEL=deepseek-v4-flash) и перезапустить backend.
+- ИИ (P6): **АКТИВИРОВАН** через RouterAI (`https://routerai.ru/api/v1`, модель `deepseek/deepseek-v4-flash`). Ключ и base URL — в `backend/.env` (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`). `/api/ai/status` → `{enabled: true}`. Проверено `/api/ai/program/generate` — генерирует валидные 3-нед. программы с прогрессией и fuzzy-маппингом на каталог.
 - Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.
 
 ## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (regenerated Jun 2026)
