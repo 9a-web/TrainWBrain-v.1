@@ -700,6 +700,113 @@ def _template_exercise_count(doc):
     return total
 
 
+def _template_first_week_preview(doc):
+    """Компактное превью 1-й недели: карточки дней со списком упражнений."""
+    weeks = doc.get("weeks") or []
+    if not weeks:
+        return []
+    days = weeks[0].get("days") or []
+    out = []
+    for d in days:
+        if d.get("is_rest"):
+            continue
+        exs = []
+        for e in (d.get("exercises") or [])[:12]:
+            scheme = [
+                {"weight": s.get("weight"), "sets": s.get("sets"), "reps": s.get("reps")}
+                for s in (e.get("sets_scheme") or [])
+            ]
+            exs.append({
+                "name": e.get("exercise_name") or "",
+                "muscle_group": e.get("muscle_group"),
+                "lift_group": e.get("lift_group"),
+                "is_accessory": bool(e.get("is_accessory")),
+                "target_sets": e.get("target_sets"),
+                "target_reps": e.get("target_reps"),
+                "sets_scheme": scheme,
+            })
+        out.append({
+            "day_index": d.get("day_index"),
+            "title": d.get("title") or "",
+            "exercises": exs,
+        })
+    return out
+
+
+def _template_forecast(doc):
+    """Прогноз прогресса. Для программ в кг — тоннаж по неделям + рост %.
+    Для программ на %1ПМ (requires_maxes=True) — интенсивность (доля от base_max
+    основного движения) по неделям.
+    """
+    weeks = doc.get("weeks") or []
+    is_percent = bool(doc.get("requires_maxes"))
+    base = doc.get("base_maxes") or {}
+    weekly_tonnage = []
+    weekly_intensity = []
+    for idx, w in enumerate(weeks):
+        wi = int(w.get("week_index") or (idx + 1))
+        tonnage = 0.0
+        pct_top = 0.0
+        pct_sum = 0.0
+        pct_n = 0
+        for d in (w.get("days") or []):
+            if d.get("is_rest"):
+                continue
+            for e in (d.get("exercises") or []):
+                lg = e.get("lift_group")
+                base_max = base.get(lg) if lg else None
+                for s in (e.get("sets_scheme") or []):
+                    try:
+                        w_val = float(s.get("weight") or 0)
+                        n_sets = int(s.get("sets") or 0)
+                        reps = int(s.get("reps") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if w_val and n_sets and reps:
+                        tonnage += w_val * n_sets * reps
+                    if is_percent and lg and w_val:
+                        bm = float(base_max) if base_max else 100.0
+                        pct = (w_val / bm) * 100.0 if bm else 0.0
+                        if pct > 0:
+                            pct_top = max(pct_top, pct)
+                            pct_sum += pct
+                            pct_n += 1
+        weekly_tonnage.append({"week": wi, "tonnage": round(tonnage, 1)})
+        if is_percent:
+            weekly_intensity.append({
+                "week": wi,
+                "top_percent": round(pct_top, 1),
+                "avg_percent": round(pct_sum / pct_n, 1) if pct_n else 0.0,
+            })
+
+    if is_percent:
+        non_empty = [x for x in weekly_intensity if x["top_percent"] > 0]
+        first_p = non_empty[0]["top_percent"] if non_empty else None
+        last_p = non_empty[-1]["top_percent"] if non_empty else None
+        growth = round(last_p - first_p, 1) if (first_p is not None and last_p is not None) else None
+        return {
+            "is_percent_based": True,
+            "weekly_intensity": weekly_intensity,
+            "first_percent": first_p,
+            "last_percent": last_p,
+            "growth_points": growth,
+        }
+
+    non_empty = [x for x in weekly_tonnage if x["tonnage"] > 0]
+    first_t = non_empty[0]["tonnage"] if non_empty else None
+    last_t = non_empty[-1]["tonnage"] if non_empty else None
+    growth = None
+    if first_t and last_t is not None:
+        growth = round((last_t - first_t) / first_t * 100, 1)
+    return {
+        "is_percent_based": False,
+        "weekly_tonnage": weekly_tonnage,
+        "first_tonnage": first_t,
+        "last_tonnage": last_t,
+        "growth_pct": growth,
+    }
+
+
 async def _get_own_template_or_403(template_id: str, current: dict):
     doc = await db.programs.find_one({"id": template_id}, {"_id": 0})
     if not doc:
@@ -813,6 +920,8 @@ async def get_shared_program(code: str):
         "exercises_count": _template_exercise_count(doc),
         "requires_maxes": bool(doc.get("requires_maxes")),
         "author_name": (owner or {}).get("first_name") or doc.get("author") or "Пользователь TWB",
+        "week1_days": _template_first_week_preview(doc),
+        "forecast": _template_forecast(doc),
         "tg_link": f"https://t.me/{bot}?startapp=import_{norm.replace('-', '_')}" if bot else None,
     }
 

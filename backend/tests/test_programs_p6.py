@@ -199,6 +199,34 @@ def test_shared_preview_public_no_auth():
     assert d["author_name"]
 
 
+def test_shared_preview_includes_week1_and_forecast():
+    """Публичный preview должен возвращать превью 1-й недели + прогноз."""
+    r = requests.get(f"{BASE_URL}/api/programs/shared/{DEMO_SHARE_CODE}", timeout=15)
+    assert r.status_code == 200
+    d = r.json()
+    # week1_days — список дней с упражнениями
+    assert "week1_days" in d
+    week1 = d["week1_days"]
+    assert isinstance(week1, list) and len(week1) >= 1
+    day = week1[0]
+    assert "day_index" in day and "title" in day and "exercises" in day
+    assert isinstance(day["exercises"], list) and len(day["exercises"]) >= 1
+    ex = day["exercises"][0]
+    for field in ("name", "muscle_group", "lift_group", "is_accessory",
+                  "target_sets", "target_reps", "sets_scheme"):
+        assert field in ex, f"missing {field} in exercise preview"
+    # forecast — либо тоннаж, либо интенсивность
+    assert "forecast" in d
+    fc = d["forecast"]
+    assert "is_percent_based" in fc
+    if fc["is_percent_based"]:
+        assert "weekly_intensity" in fc
+    else:
+        assert "weekly_tonnage" in fc
+        assert isinstance(fc["weekly_tonnage"], list)
+        assert all("week" in x and "tonnage" in x for x in fc["weekly_tonnage"])
+
+
 def test_shared_preview_accepts_variants():
     # lowercase / no prefix / underscore
     for variant in [DEMO_SHARE_CODE.lower(), "twb_zzb5zs", "ZZB5ZS", "zzb5zs"]:
