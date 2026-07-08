@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Sparkles, FileText, Wand2, Upload, KeyRound,
-  CheckCircle2, PencilLine, Dumbbell,
+  CheckCircle2, PencilLine, Dumbbell, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { GrainGradient } from "@paper-design/shaders-react";
@@ -12,6 +12,7 @@ import {
 import { hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import { AiProgressChart } from "@/components/AiProgressChart";
+import { AiProgramPreview } from "@/components/AiProgramPreview";
 import "./AiImport.css";
 
 const EXAMPLES = [
@@ -80,6 +81,7 @@ export default function AiImport() {
   const [qStep, setQStep] = useState("basic"); // basic | advanced
   const [picked, setPicked] = useState({});
   const [custom, setCustom] = useState({});
+  const [showPreview, setShowPreview] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -234,6 +236,10 @@ export default function AiImport() {
             {result.requires_maxes ? (<><span>·</span><span className="ai-pct">%1ПМ</span></>) : null}
           </div>
           <AiProgressChart tpl={result} />
+          <button className="ai-preview-btn" onClick={() => setShowPreview(true)}
+            data-testid="ai-preview-open">
+            <Eye size={16} /> Посмотреть программу
+          </button>
           <div className="ai-result-actions">
             <button className="ai-btn-secondary"
               onClick={() => navigate(`/programs/builder/${result.id}`)} data-testid="ai-open-builder">
@@ -249,6 +255,7 @@ export default function AiImport() {
             data-testid="ai-again">
             Создать ещё одну
           </button>
+          <AiProgramPreview open={showPreview} tpl={result} onClose={() => setShowPreview(false)} />
         </div>
       ) : tab === "generate" && questions ? (
         (() => {
