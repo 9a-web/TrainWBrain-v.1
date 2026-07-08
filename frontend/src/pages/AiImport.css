@@ -161,25 +161,68 @@
 
 /* Busy */
 .ai-busy {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 60px 20px;
+  padding: 90px 20px;
   text-align: center;
+  border-radius: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid rgba(255, 138, 36, 0.18);
+  min-height: 340px;
+  justify-content: center;
+  background: #1c1c1c;
+  animation: twb-fade-in 0.4s ease both;
+}
+.ai-busy-shader {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.85;
+  pointer-events: none;
+}
+.ai-busy-shader > canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.ai-busy-shader::after {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 100%, rgba(28, 28, 28, 0.55) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(28, 28, 28, 0.15) 0%, rgba(28, 28, 28, 0.55) 100%);
 }
 .ai-busy-orb {
-  width: 68px; height: 68px;
+  position: relative;
+  z-index: 1;
+  width: 76px; height: 76px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  color: #ff8a24;
-  background: rgba(255, 138, 36, 0.12);
-  box-shadow: 0 0 0 8px rgba(255, 138, 36, 0.05), 0 0 40px rgba(255, 138, 36, 0.25);
+  color: #fff;
+  background: rgba(28, 28, 28, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 0 0 6px rgba(255, 138, 36, 0.08);
   animation: ai-pulse 2s ease-in-out infinite;
 }
 @keyframes ai-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.08); }
 }
-.ai-busy p { font-size: 15px; font-weight: 600; }
-.ai-busy-sub { font-size: 12px; color: rgba(255, 255, 255, 0.45); }
+.ai-busy p {
+  position: relative; z-index: 1;
+  font-size: 15.5px; font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+}
+.ai-busy-sub {
+  position: relative; z-index: 1;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
 
 /* Result */
 .ai-result {

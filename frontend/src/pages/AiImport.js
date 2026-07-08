@@ -5,6 +5,7 @@ import {
   CheckCircle2, PencilLine, Dumbbell,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GrainGradient } from "@paper-design/shaders-react";
 import {
   getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile, aiProgramQuestions, getAiJob,
 } from "@/api";
@@ -43,6 +44,19 @@ function BusyOverlay({ steps = BUSY_STEPS, sub = "Обычно занимает 
   }, [steps]);
   return (
     <div className="ai-busy" data-testid="ai-busy">
+      <div className="ai-busy-shader" aria-hidden="true">
+        <GrainGradient
+          width="100%"
+          height="100%"
+          colors={["#ff8a24", "#ffda24", "#ff5e00", "#7a1a00"]}
+          colorBack="#1c1c1c"
+          softness={0.85}
+          intensity={0.55}
+          noise={0.35}
+          shape="wave"
+          speed={1.1}
+        />
+      </div>
       <span className="ai-busy-orb"><Sparkles size={26} /></span>
       <p>{steps[step]}</p>
       <span className="ai-busy-sub">{sub}</span>
