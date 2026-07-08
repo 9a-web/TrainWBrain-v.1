@@ -10,7 +10,9 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: app-fade 0.25s ease both;
+  transition: background 0.35s ease;
 }
+.app-modal.fullscreen { background: rgba(0, 0, 0, 0.92); }
 @keyframes app-fade {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -28,17 +30,39 @@
   background: #1c1c1c;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px 24px 0 0;
-  padding: 20px 18px 24px;
+  padding: 0 18px 24px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
   animation: app-slide-up 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+  transition:
+    max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.app-sheet.fullscreen {
+  max-width: 100%;
+  max-height: 100vh;
+  max-height: 100dvh;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  padding-bottom: env(safe-area-inset-bottom, 24px);
 }
 @media (min-width: 768px) {
   .app-modal { align-items: center; }
   .app-sheet { border-radius: 24px; max-height: 88vh; }
+  .app-sheet.fullscreen {
+    border-radius: 20px;
+    max-height: 96vh;
+    max-width: 760px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
 }
 
+/* Хват (grabber) — плавно исчезает при fullscreen */
 .app-sheet::before {
   content: "";
   position: absolute;
@@ -47,15 +71,33 @@
   background: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   transform: translateX(-50%);
+  opacity: 1;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.app-sheet.fullscreen::before {
+  opacity: 0;
+  transform: translateX(-50%) scaleX(0.4);
 }
 
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -18px 10px;
+  padding: 16px 18px 12px;
+  background: linear-gradient(180deg, #1c1c1c 82%, rgba(28, 28, 28, 0) 100%);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  padding-top: 10px;
-  margin-bottom: 6px;
+  transition: padding 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+}
+.app-sheet.fullscreen .app-header {
+  padding: 14px 18px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(28, 28, 28, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .app-header-info { flex: 1; min-width: 0; }
 .app-title {

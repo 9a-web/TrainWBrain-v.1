@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X, Dumbbell, CalendarDays, Flame, TrendingUp, Coffee, Play } from "lucide-react";
 import "./AiProgramPreview.css";
 
@@ -54,15 +54,25 @@ const dayStats = (day, isPct) => {
 
 export function AiProgramPreview({ open, tpl, onClose, onUse }) {
   const [weekIdx, setWeekIdx] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const sheetRef = useRef(null);
 
   useEffect(() => {
     if (open) {
       setWeekIdx(0);
+      setFullscreen(false);
       document.body.style.overflow = "hidden";
       return () => { document.body.style.overflow = ""; };
     }
     return undefined;
   }, [open]);
+
+  const onSheetScroll = (e) => {
+    const st = e.currentTarget.scrollTop;
+    // разворачиваем в fullscreen после ~48px скролла, сворачиваем обратно у самого верха
+    if (!fullscreen && st > 48) setFullscreen(true);
+    else if (fullscreen && st < 6) setFullscreen(false);
+  };
 
   const weeks = useMemo(() => (tpl?.weeks || []).filter((w) => (w.days || []).length), [tpl]);
   const isPct = !!tpl?.requires_maxes;
@@ -72,8 +82,9 @@ export function AiProgramPreview({ open, tpl, onClose, onUse }) {
   const currentWeek = weeks[Math.min(weekIdx, weeks.length - 1)];
 
   return (
-    <div className="app-modal" data-testid="ai-program-preview" onClick={onClose}>
-      <div className="app-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`app-modal ${fullscreen ? "fullscreen" : ""}`} data-testid="ai-program-preview" onClick={onClose}>
+      <div ref={sheetRef} className={`app-sheet ${fullscreen ? "fullscreen" : ""}`}
+        onClick={(e) => e.stopPropagation()} onScroll={onSheetScroll}>
         <header className="app-header">
           <div className="app-header-info">
             <h2 className="app-title">{tpl.name}</h2>
