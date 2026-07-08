@@ -29,8 +29,11 @@
 ## Stats demo account (актуальный, июнь 2026, redesign статистики)
 - Email: `statsdemo@twb.dev`  Password: `password123`
 - telegram_id: 961727460933; активный план: pl-autumn-3m (maxes 200/130/230, дни [1,3,5]); план id 53f7f538-3db2-4b04-a147-289dcb2bcbbf
-- 9 завершённых тренировок за 3 микроцикла, даты раскиданы по 3 календарным неделям (последняя = текущая).
+- 9 завершённых тренировок за 3 микроцикла (после ре-сидов тест-агентом может быть больше; актуальный план см. ниже), даты раскиданы по 3 календарным неделям.
 - Использовать для проверки /stats и /streak. Пересоздать данные: `python /app/scripts/setup_stats_demo.py`.
+- Демо-шаблон P6: «Силовая база 5×5» id `b85dbff0-ef78-48f6-805d-2a6417e912df`, share code `TWB-ZZB5ZS` (НЕ удалять — используется тестами импорта/landing).
+- Второй пользователь (импорт/403-проверки): `dbg1783466020@ex.com` / `password123` (tg 922324126010).
+- ИИ (P6): ключа НЕТ — `/api/ai/*` отдаёт 503, UI показывает «ИИ пока не подключён». Для активации заполнить в backend/.env: AI_BASE_URL, AI_API_KEY (AI_MODEL=deepseek-v4-flash) и перезапустить backend.
 - Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.
 
 ## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (regenerated Jun 2026)

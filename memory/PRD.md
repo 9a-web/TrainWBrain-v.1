@@ -42,6 +42,15 @@ React 19 (CRACO) + FastAPI + MongoDB (Motor). Backend — монолит `server
 - **Инфраструктура:** `frontend/.env` REACT_APP_BACKEND_URL обновлён под текущий контейнер (7fa95d68-…); демо-аккаунт `statsdemo@twb.dev` (скрипт `/app/scripts/setup_stats_demo.py`).
 - **Тестирование:** testing agent — 23/23 backend pytest PASS, frontend 100%, регрессий нет (`test_reports/iteration_4.json`; suite `/app/backend/tests/test_stats.py`).
 
+## P6: Импорт своих программ (Июнь 2026, эта сессия)
+- **Конструктор** (`/programs/builder/:id`): недели → дни → упражнения; выбор из каталога (29 + свои через модалку создания), схемы подходов (вес×подходы×повторы), отдых, подсобные, lift_group; дублирование недель/дней; перемещение упражнений; автосохранение (debounce 900мс, PATCH) с индикатором.
+- **Шаринг и импорт по коду/ссылке:** POST `/programs/templates/{id}/share` → стабильный код `TWB-XXXXXX` + web-ссылка `/import/{code}` + Telegram deep-link (`t.me/TrainWbrain_bot?startapp=import_TWB_XXXXXX`, username бота через getMe с кэшем). Публичное превью `GET /programs/shared/{code}` (нормализация кода: регистр/подчёркивания/без префикса). `POST /programs/import/{code}` — копия в «Мои программы» (dedup по shared_from, own=true для своей).
+- **Landing `/import/{code}`:** доступна БЕЗ входа; превью программы + выбор платформы (сайт / Telegram); «Продолжить на сайте» сохраняет `twb_pending_import` → после логина авто-редирект обратно и импорт; Telegram start_param `import_*` тоже обрабатывается (App.js).
+- **ИИ-анализ** (`/programs/ai`, DeepSeek V4 Flash): генерация по промпту + разбор готового плана (текст / файл .xlsx/.csv/.txt через openpyxl). OpenAI-совместимый клиент на httpx, конфиг из .env: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL=deepseek-v4-flash` (подойдут api.deepseek.com / openmodel.ai / routerai.ru). ⚠️ КЛЮЧ ПОЛЬЗОВАТЕЛЬ ПРИШЛЁТ ПОЗЖЕ — сейчас функция видима, но неактивна (503 + плашка). Проценты 1ПМ маппятся через base_maxes=100 → масштабирование под максимумы пользователя работает из коробки. Фуззи-матчинг упражнений на каталог (difflib).
+- **Programs.js:** секция «Мои программы» (бейджи Конструктор/Импорт/ИИ, действия изменить/поделиться/удалить с двухшаговым подтверждением), 3 кнопки создания, модалки шаринга и импорта по коду.
+- **Безопасность:** все template-роуты auth-based; PATCH/DELETE/share только владельцу (403); списки = builtins + свои. Тренер видит свои программы в списке назначения (CoachClient) — может назначить подопечному.
+- **Тестирование:** testing agent — 24/24 backend pytest PASS, frontend E2E 100% (`test_reports/iteration_5.json`; suite `/app/backend/tests/test_programs_p6.py`). Демо: шаблон `b85dbff0-…`, код `TWB-ZZB5ZS`.
+
 ## Бэклог / приоритеты
 - **P1 (рекомендация):** сократить путь тренера к LIVE-экрану (ярлык «Кабинет тренера» на Home для coach-режима).
 - **P5** Доступ по неделям (`week_access`) + опц. оплата (Telegram Stars/Stripe) — не начато.
