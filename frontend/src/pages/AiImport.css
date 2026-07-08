@@ -258,3 +258,46 @@
   cursor: pointer;
 }
 .ai-skip:hover { border-color: rgba(255, 138, 36, 0.4); }
+
+/* --- прогноз прогресса (графики после генерации) --- */
+.ai-charts {
+  margin: 16px 0 6px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+.ai-charts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+.ai-charts-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: #ffce8a;
+}
+.ai-charts-delta {
+  font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+}
+.ai-charts-delta.up { color: #34d399; background: rgba(52, 211, 153, 0.12); }
+.ai-charts-delta.down { color: #fb7185; background: rgba(251, 113, 133, 0.12); }
+.ai-charts-chips {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px;
+  scrollbar-width: none;
+}
+.ai-charts-chips::-webkit-scrollbar { display: none; }
+.ai-chip.sm {
+  font-size: 12px; padding: 5px 11px; white-space: nowrap; flex-shrink: 0;
+}
+.ai-chart-box { margin: 4px -4px 0; }
+.ai-charts-note {
+  margin: 6px 0 0; font-size: 11px; color: rgba(255, 255, 255, 0.4);
+}
+.ai-chart-tip {
+  display: flex; flex-direction: column; gap: 2px;
+  background: #2c2c2c; border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px; padding: 7px 10px; font-size: 12px;
+}
+.ai-chart-tip span { color: rgba(255, 255, 255, 0.5); }
+.ai-chart-tip b { color: #ffce8a; }
+

@@ -10,6 +10,7 @@ import {
 } from "@/api";
 import { hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
+import { AiProgressChart } from "@/components/AiProgressChart";
 import "./AiImport.css";
 
 const EXAMPLES = [
@@ -216,6 +217,7 @@ export default function AiImport() {
             <span>{totalEx} упражнений</span>
             {result.requires_maxes ? (<><span>·</span><span className="ai-pct">%1ПМ</span></>) : null}
           </div>
+          <AiProgressChart tpl={result} />
           <div className="ai-result-actions">
             <button className="ai-btn-secondary"
               onClick={() => navigate(`/programs/builder/${result.id}`)} data-testid="ai-open-builder">
