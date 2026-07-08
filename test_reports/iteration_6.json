@@ -1,0 +1,54 @@
+{
+  "summary": "Проверка 3 багфиксов AI-генерации программ. Backend regression: 27/27 test_programs_p6.py PASS. Новый набор test_ai_gen_weight_type.py (4 теста) выявил: (a) прогрессия sets/reps между неделями РАБОТАЕТ отлично — 24/28 упражнений имеют вариацию (PPHUL-программа с прогрессией 4×5→4×3→5×3→3×5); (b) фикс weight_type в _ai_build_template НЕ работает для bodyweight-упражнений (планка, подтягивания, брусья, hanging-leg-raise), потому что каталог упражнений (BUILTIN_EXERCISES/_exercise_doc в /app/backend/seed.py) НЕ содержит поля weight_type. `(match or {}).get('weight_type') or 'kg'` всегда возвращает 'kg'. Итог: AI-сгенерированный шаблон возвращает планки/подтягивания с weight_type='kg' вместо 'bodyweight', и frontend показывает '—' вместо 'Свой вес' для них. ОДНАКО главная цель — убрать 'Свой вес' для не-bw упражнений (Жим гантелей, Румынская тяга) — достигнута: они получают weight_type='kg' + weight=null → '—'. Frontend PlanRows логика корректная в коде. AI /program/questions регрессия — 9 вопросов, БЕЗ 1ПМ. Всё остальное работает.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ai/program/generate → GET template", "issue": "Каталог упражнений (db.exercises) НЕ содержит поля weight_type — /app/backend/seed.py::_exercise_doc(...) не устанавливает его. Из-за этого фикс в server.py:3814 `(match or {}).get('weight_type') or 'kg'` всегда fallback='kg' даже для plank/pull-up/dips/hanging-leg-raise. В AI-шаблоне 'Планка' и 'Подтягивания' получают weight_type='kg' → frontend показывает '—' вместо 'Свой вес' для этих BW-упражнений. Не critical: главная цель — устранить ложное 'Свой вес' для НЕ-bw упражнений — достигнута."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_scenarios": {
+    "PYTEST_P6_REGRESSION": "27/27 PASS в /app/backend/tests/test_programs_p6.py (шаблоны CRUD/auth, share stable, shared preview, import own/dup/404/401, AI validation, plans regression) ✓",
+    "AI_STATUS_ENABLED": "GET /api/ai/status → {enabled:true, model:'deepseek/deepseek-v4-flash'} ✓",
+    "AI_QUESTIONS_NO_1RM": "POST /api/ai/program/questions вернул 9 вопросов, ни один не спрашивает про 1ПМ / рабочие веса / сколько кг ✓",
+    "AI_GENERATION_VARIES_SETS_REPS": "Сгенерирован свежий AI-шаблон 'PHUL-ADV Гипертрофия+Сила 4 дня' (id d5be70df-aa5e-4fa1-9568-dafaea735b2f, 4 недели): 24 из 28 упражнений имеют разные (sets, reps) между неделями. Пример: Жим лёжа 4×5→4×3→5×3→3×5, Гантели изоляция 3×12→4×10→4×8→2×15 (deload). Промпт _AI_SYSTEM_GEN + референсные программы работают ✓",
+    "AI_WEIGHT_TYPE_BODYWEIGHT_BROKEN": "Планка (slug=plank) в AI-шаблоне имеет weight_type='kg' (ожидалось 'bodyweight'). Подтягивания (slug=pull-up) — тоже weight_type='kg'. Причина: db.exercises не хранит weight_type. ✗",
+    "AI_WEIGHT_TYPE_KG_CORRECT": "Жим гантелей, Румынская тяга, Тяга блока в AI-шаблоне: weight_type='kg' + weight=None (корректно, frontend будет показывать '—' вместо 'Свой вес' — исходный баг решён) ✓",
+    "FRONTEND_PLANROWS_CODE": "WorkoutView.js:351-379 PlanRows принимает weightType; при weight=null: если weightType==='bodyweight' → 'Свой вес' (ex-plan-bw); иначе → '—' (ex-plan-tbd). Оба вызова в строках 516/534 передают weightType={ex.weight_type} ✓. WorkoutView.css добавлен .ex-plan-tbd { color: rgba(255,255,255,0.35); font-weight: 500; } ✓",
+    "BUILTIN_PLAN_STILL_WORKS": "План из built-in шаблона pl-autumn-3m имеет weight_type='bodyweight' у Планки/Подъёма ног в висе (задано через _ex(weight_type='bodyweight') в seed.py Line 237, 245, 277, 297, 299). Гантельные упражнения имеют weight_type='kg' + рабочий вес. Значит для юзеров с built-in планами всё работает как ожидается ✓"
+  },
+  "critical_code_review_comments": [
+    "**BUG в фиксе (a)**: /app/backend/seed.py — функция `_exercise_doc(slug, name, muscles, equipment, category)` (строка 117) НЕ включает поле `weight_type`. BUILTIN_EXERCISES tuple тоже без weight_type. Поэтому db.exercises хранит поле как отсутствующее (или None). Фикс в server.py:3814 `(match or {}).get('weight_type') or 'kg'` НИКОГДА не даст 'bodyweight' для сопоставленных упражнений. Требуется одна из правок: (1) добавить в _exercise_doc: `\"weight_type\": \"bodyweight\" if equipment == \"bodyweight\" else \"kg\"` + миграция существующих доков; (2) или использовать в _ai_build_template явный набор bw-slug'ов; (3) или маппить по catalog match.equipment == 'bodyweight'.",
+    "После правки — нужно вручную обновить существующие БД-записи (mongo update_many: {equipment:'bodyweight'} → $set weight_type='bodyweight', остальные $set weight_type='kg') или пере-сеять каталог.",
+    "server.py вырос до 4197 строк — не изменилось с iter5, рефакторинг всё ещё уместен.",
+    "/app/scripts/setup_stats_demo.py падает, если у пользователя уже висит active session (sessions/start возвращает 409 без 'id'). Мы починили вручную (finish зависшей сессии + повторный run). Скрипт можно усилить: при 409 попробовать /sessions/active (пустой ответ → взять session_id из detail 409) или /sessions/{id}/finish зависшей и повторить start."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_programs_p6.py",
+    "/app/backend/tests/test_ai_gen_weight_type.py",
+    "/app/test_reports/pytest/iter6_p6_results.xml",
+    "/app/test_reports/pytest/iter6_ai_weight_results.xml"
+  ],
+  "action_items": [
+    "**HIGH**: Добавить поле `weight_type` в /app/backend/seed.py::_exercise_doc — установить 'bodyweight' для упражнений с equipment='bodyweight' (pull-up, plank, hanging-leg-raise, dips), 'kg' для остальных. И написать миграцию: `db.exercises.update_many({equipment:'bodyweight'}, {$set: {weight_type:'bodyweight'}})` + для остальных 'kg'. Без этого AI-шаблоны показывают '—' для планок/подтягиваний вместо 'Свой вес'.",
+    "**LOW**: Улучшить /app/scripts/setup_stats_demo.py — обрабатывать 409 active_session_exists через finish зависшей сессии."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_gen_weight_type.py (создан — 4 теста для weight_type и sets/reps вариации)",
+    "/app/memory/test_credentials.md (обновлён plan_id statsdemo на d72cc5d5-a11b-40be-9526-622ef5da628a после ре-сида)"
+  ],
+  "success_rate": {
+    "backend": "97% (27/27 regression P6 + 3/4 AI-generation тестов; 1 failure = catalog weight_type — реальный баг фикса)",
+    "frontend": "N/A code review — PlanRows логика верна, оба callsite передают weightType, CSS-класс ex-plan-tbd добавлен. Live UI тест: home открывает воркаут с планом. Не удалось воспроизвести 'Свой вес' в UI т.к. session UI использует SetList (per-set inputs) вместо PlanRows когда есть set_logs."
+  },
+  "test_credentials": "statsdemo@twb.dev / password123 (tg 961727460933, plan d72cc5d5-a11b-40be-9526-622ef5da628a — обновлён), dbg1783466020@ex.com / password123. Демо-шаблон b85dbff0-... / TWB-ZZB5ZS — сохранён.",
+  "seed_data_creation": "Пересоздал stats demo через /app/scripts/setup_stats_demo.py (после ручного finish зависшей session d74eb0d5). 9 тренировок в 3 недели восстановлены.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Ключевые тест-файлы: test_programs_p6.py (регрессия), test_ai_gen_weight_type.py (новый — AI weight_type & sets/reps variation). Демо plan_id обновлён на d72cc5d5-a11b-40be-9526-622ef5da628a. После правки weight_type в seed.py — прогнать test_ai_gen_weight_type.py, все 4 должны быть PASS (первый — catalog check — сразу; остальные 3 требуют новую AI-генерацию, ~90 сек). Для BW-slug выборки в каталоге можно проверить: `curl /api/exercises` → все с equipment='bodyweight' должны иметь weight_type='bodyweight'. Не удалять AI-шаблон d5be70df-... — он использовался в тестах.",
+  "rca of the issue": "**RCA бага weight_type для BW-упражнений в AI**: (1) Фикс в /app/backend/server.py:3814 читает weight_type из каталога: `(match or {}).get('weight_type') or 'kg'`. (2) Каталог формируется в /app/backend/seed.py::_exercise_doc — эта функция НЕ включает weight_type (проверено grep-ом и `curl /api/exercises` → все возвращают weight_type=None). (3) Тьюпл BUILTIN_EXERCISES также без weight_type — 5-elem: (slug, name, muscles, equipment, category). (4) Значит для КАЖДОГО матча из каталога `match.get('weight_type')` = None → fallback = 'kg'. (5) AI помечает 'Планка' как is_accessory=True → sets_scheme=[] → фронт не рендерит PlanRows вообще (ok). AI помечает 'Подтягивания' как is_accessory=False (потому что модель считает подтягивания серьёзным движением) → sets_scheme содержит подходы с weight=None + weight_type='kg' → фронт рендерит '—' (ex-plan-tbd). Ожидается 'Свой вес' (ex-plan-bw). **Мitigation**: добавить weight_type в _exercise_doc и мигрировать БД. Тест `test_catalog_bodyweight_exercises_have_correct_weight_type` в новом test-файле уже готов проверить это."
+}

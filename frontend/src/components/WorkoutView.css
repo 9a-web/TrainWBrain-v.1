@@ -292,6 +292,7 @@
 }
 .ex-plan-weight { text-align: left; }
 .ex-plan-bw { color: #bdbdbd; font-weight: 500; }
+.ex-plan-tbd { color: rgba(255, 255, 255, 0.35); font-weight: 500; }
 .ex-plan-dash { color: #6f6f6f; }
 .ex-plan-scheme { text-align: left; }
 /* удалённый из плана подход — зачёркнут и тусклый */

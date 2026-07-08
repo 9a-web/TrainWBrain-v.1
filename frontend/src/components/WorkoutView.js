@@ -348,15 +348,17 @@ const ForecastChart = ({ series, currentWeek }) => {
 };
 
 // ---------- строки подходов с диффом (карандаш/зачёркивание) ----------
-const PlanRows = ({ sets, planSets }) => (
+const PlanRows = ({ sets, planSets, weightType }) => (
   <>
     <div className="ex-plan-label">План:</div>
     {diffSets(sets, planSets).map((s, i) => (
       <div className={`ex-plan-row ${s._state === "deleted" ? "ex-plan-deleted" : ""}`} key={i}>
         {s.weight !== null && s.weight !== undefined ? (
           <span className="ex-plan-weight">{fmtWeight(s.weight)}кг</span>
-        ) : (
+        ) : weightType === "bodyweight" ? (
           <span className="ex-plan-weight ex-plan-bw">Свой вес</span>
+        ) : (
+          <span className="ex-plan-weight ex-plan-tbd">—</span>
         )}
         <span className="ex-plan-dash">—</span>
         <span className="ex-plan-scheme">{s.sets}×{s.reps}</span>
@@ -511,7 +513,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, 
             <div className="ex-acc-body">
               {ex.sets_scheme && ex.sets_scheme.length > 0 ? (
                 <div className="ex-plan">
-                  <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                  <PlanRows sets={ex.sets_scheme} planSets={planSets} weightType={ex.weight_type} />
                 </div>
               ) : (
                 <div className="ex-acc-rec"><b>4 подхода</b></div>
@@ -529,7 +531,7 @@ const ExerciseCard = ({ ex, isPreview, onAction, onEdit, onSetLog, onStartRest, 
                     restSec={ex.rest_seconds}
                   />
                 ) : (
-                  <PlanRows sets={ex.sets_scheme} planSets={planSets} />
+                  <PlanRows sets={ex.sets_scheme} planSets={planSets} weightType={ex.weight_type} />
                 )}
                 <div className="ex-meta">
                   <div className="ex-meta-row">Тоннаж: <b>{ex.tonnage}кг</b></div>
