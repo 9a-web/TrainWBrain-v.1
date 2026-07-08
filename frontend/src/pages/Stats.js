@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft, Dumbbell, Flame, CalendarDays, Target, Layers, Clock,
-  TrendingUp, ChevronDown, Activity, Trophy, CheckCircle2, XCircle,
-  PauseCircle, ShieldCheck, CalendarClock,
+  ArrowLeft, Dumbbell, Flame, CalendarDays, Clock,
+  ChevronDown, Activity, Trophy, CheckCircle2, XCircle,
+  PauseCircle, ShieldCheck, CalendarClock, Zap,
 } from "lucide-react";
 import {
-  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer, BarChart, Bar, AreaChart, Area, Line, ComposedChart,
+  PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { useUser } from "@/context/UserContext";
 import { useBackButton } from "@/hooks/useTelegramUI";
@@ -18,7 +18,7 @@ import {
 } from "@/api";
 import "./Stats.css";
 
-const PIE_COLORS = ["#FF8A24", "#FFC24B", "#36C5F0", "#A78BFA", "#34D399", "#FB7185"];
+const PIE_COLORS = ["#FF8A24", "#FFDA24", "#36C5F0", "#A78BFA", "#34D399", "#FB7185"];
 
 const fmtTon = (kg) => {
   const n = Number(kg) || 0;
@@ -31,7 +31,7 @@ const fmtDur = (s) => {
   if (m < 60) return `${m} мин`;
   const h = Math.floor(m / 60);
   const r = m % 60;
-  return r ? `${h} ч ${r} мин` : `${h} ч`;
+  return r ? `${h} ч ${r} м` : `${h} ч`;
 };
 const shortWeek = (w) => (typeof w === "string" ? w.replace(/^\d{4}-W/, "W") : w);
 const avatarFallback = (name) =>
@@ -44,6 +44,16 @@ const SKIP_META = {
   excused: { label: "Уважит.", color: "#36C5F0", Icon: ShieldCheck },
   rescheduled: { label: "Перенос", color: "#A78BFA", Icon: CalendarClock },
 };
+
+const DYN_TABS = [
+  { key: "tonnage", label: "Тоннаж" },
+  { key: "frequency", label: "Частота" },
+];
+const PROG_METRICS = [
+  { key: "weight", label: "Вес" },
+  { key: "orm", label: "1ПМ" },
+  { key: "tonnage", label: "Тоннаж" },
+];
 
 function ChartTooltip({ active, payload, label, unit }) {
   if (!active || !payload || !payload.length) return null;
@@ -64,14 +74,49 @@ function ChartTooltip({ active, payload, label, unit }) {
   );
 }
 
-function KpiCard({ icon: Icon, value, label, accent, testid }) {
+function RingGauge({ value }) {
+  const v = Math.max(0, Math.min(100, Math.round(value || 0)));
+  const size = 84;
+  const stroke = 8;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
   return (
-    <div className="stats-kpi" data-testid={testid}>
-      <span className="stats-kpi-ic" style={accent ? { color: accent } : undefined}>
-        <Icon size={18} />
-      </span>
-      <span className="stats-kpi-val">{value}</span>
-      <span className="stats-kpi-label">{label}</span>
+    <div className="stats-ring-wrap" data-testid="kpi-completion">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <linearGradient id="twbRingGrad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stopColor="#FF8A24" />
+            <stop offset="100%" stopColor="#FFDA24" />
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke="rgba(255,255,255,0.07)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke="url(#twbRingGrad)" strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={`${(c * v) / 100} ${c}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          className="stats-ring-arc" />
+      </svg>
+      <div className="stats-ring-center">
+        <b>{v}<i>%</i></b>
+      </div>
+    </div>
+  );
+}
+
+function TabChips({ tabs, active, onChange, testPrefix }) {
+  return (
+    <div className="stats-chips-row">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          className={`stats-tab-chip ${active === t.key ? "active" : ""}`}
+          onClick={() => onChange(t.key)}
+          data-testid={`${testPrefix}-${t.key}`}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -93,13 +138,29 @@ function SectionCard({ title, hint, action, children, testid }) {
   );
 }
 
-function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, fetchDetailed, fetchProgress }) {
+function Skeleton() {
+  return (
+    <div className="stats-skel" data-testid="stats-loading">
+      <div className="stats-skel-block h150" />
+      <div className="stats-skel-row">
+        <div className="stats-skel-block h96" />
+        <div className="stats-skel-block h96" />
+      </div>
+      <div className="stats-skel-block h220" />
+      <div className="stats-skel-block h220" />
+    </div>
+  );
+}
+
+function StatsView({ name, avatar, subtitle, onBack, fetchPlanId, fetchDetailed, fetchProgress }) {
   const [scope, setScope] = useState("plan"); // 'plan' | 'all'
   const [planId, setPlanId] = useState(undefined); // undefined=loading, null=none
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);
   const [selectedSlug, setSelectedSlug] = useState(null);
+  const [dynTab, setDynTab] = useState("tonnage");
+  const [progMetric, setProgMetric] = useState("weight");
 
   useEffect(() => {
     let alive = true;
@@ -149,6 +210,7 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
 
   const summary = data?.summary || {};
   const empty = !loading && (!data || (summary.total_workouts || 0) === 0);
+  const byMicro = scope === "plan" && !!planId; // B10: «микроциклы» только при реальном плане
 
   const tonnage = data?.tonnage_by_week || [];
   const frequency = data?.frequency_by_week || [];
@@ -161,15 +223,26 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
   const exercises = progress?.exercises || [];
 
   const totalMuscleSets = muscles.reduce((a, m) => a + (m.sets || 0), 0);
+  const avgTonnage = tonnage.length
+    ? Math.round(tonnage.reduce((a, r) => a + (r.tonnage || 0), 0) / tonnage.length)
+    : 0;
+  const streakVal = summary.workout_streak ?? summary.streak_days ?? 0;
+
+  const progColor = progMetric === "weight" ? "#FF8A24" : progMetric === "orm" ? "#FFDA24" : "#36C5F0";
+  const progKey = progMetric === "weight" ? "top_weight" : progMetric === "orm" ? "one_rm" : "tonnage";
+  const progName = progMetric === "weight" ? "Рабочий вес" : progMetric === "orm" ? "1ПМ (оценка)" : "Тоннаж";
 
   return (
     <div className="stats-page" data-testid="stats-page">
+      <div className="stats-ambient" aria-hidden="true" />
       <header className="stats-header">
         <button className="stats-back" onClick={onBack} aria-label="Назад" data-testid="stats-back">
           <ArrowLeft size={22} />
         </button>
         <div className="stats-head-id">
-          <img className="stats-head-ava" src={avatar || avatarFallback(name)} alt="" />
+          <span className="stats-head-ava-ring">
+            <img className="stats-head-ava" src={avatar || avatarFallback(name)} alt="" />
+          </span>
           <div className="stats-head-text">
             <h1 className="stats-title">{name}</h1>
             <span className="stats-subtitle">{subtitle}</span>
@@ -197,13 +270,10 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
       ) : null}
 
       {loading ? (
-        <div className="stats-loading" data-testid="stats-loading">
-          <div className="stats-spinner" />
-          <span>Считаем статистику…</span>
-        </div>
+        <Skeleton />
       ) : empty ? (
         <div className="stats-empty" data-testid="stats-empty">
-          <Activity size={34} />
+          <span className="stats-empty-ic"><Activity size={30} /></span>
           <p className="stats-empty-title">Пока нет завершённых тренировок</p>
           <p className="stats-empty-sub">
             Заверши хотя бы одну тренировку — здесь появятся тоннаж, прогресс и графики.
@@ -211,31 +281,89 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
         </div>
       ) : (
         <>
-          {/* KPI */}
-          <div className="stats-kpis" data-testid="stats-kpis">
-            <KpiCard icon={Dumbbell} value={summary.total_workouts || 0} label="тренировок" testid="kpi-workouts" />
-            <KpiCard icon={Flame} value={summary.workout_streak ?? summary.streak_days ?? 0} label="серия" accent="#FF8A24" testid="kpi-streak" />
-            <KpiCard icon={CalendarDays} value={summary.avg_per_week || 0} label="в неделю" testid="kpi-freq" />
-            <KpiCard icon={Target} value={`${summary.completion_pct || 0}%`} label="выполнение" testid="kpi-completion" />
-            <KpiCard icon={Layers} value={fmtTon(summary.total_tonnage)} label="общий тоннаж" testid="kpi-tonnage" />
-            <KpiCard icon={Clock} value={fmtDur(summary.total_duration_sec)} label="в зале" testid="kpi-duration" />
+          {/* ===== Hero bento ===== */}
+          <div className="stats-bento" data-testid="stats-kpis">
+            <div className="stats-hero" data-testid="kpi-tonnage">
+              <div className="stats-hero-info">
+                <span className="stats-metric-label">Общий тоннаж</span>
+                <div className="stats-hero-val">
+                  {fmtTon(summary.total_tonnage)}
+                </div>
+                <span className="stats-hero-sub">
+                  {data?.plan_name && byMicro ? data.plan_name : "за всё время"}
+                </span>
+              </div>
+              <div className="stats-hero-spark">
+                {tonnage.length > 1 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={tonnage} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#FF8A24" stopOpacity={0.5} />
+                          <stop offset="100%" stopColor="#FF8A24" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="tonnage" stroke="#FF8A24" strokeWidth={2}
+                        fill="url(#sparkGrad)" isAnimationActive animationDuration={1200} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="stats-cell stats-cell-ring">
+              <RingGauge value={summary.completion_pct} />
+              <span className="stats-metric-label">выполнение плана</span>
+            </div>
+
+            <div className="stats-cell stats-cell-flame" data-testid="kpi-streak">
+              <span className={`stats-flame ${streakVal > 0 ? "lit" : ""}`}>
+                <Flame size={26} />
+              </span>
+              <div className="stats-cell-val">{streakVal}</div>
+              <span className="stats-metric-label">серия</span>
+            </div>
+
+            <div className="stats-mini" data-testid="kpi-workouts">
+              <Dumbbell size={16} />
+              <b>{summary.total_workouts || 0}</b>
+              <span>тренировок</span>
+            </div>
+            <div className="stats-mini" data-testid="kpi-freq">
+              <CalendarDays size={16} />
+              <b>{summary.avg_per_week || 0}</b>
+              <span>{byMicro ? "за микроцикл" : "в неделю"}</span>
+            </div>
+            <div className="stats-mini" data-testid="kpi-duration">
+              <Clock size={16} />
+              <b>{fmtDur(summary.total_duration_sec)}</b>
+              <span>в зале</span>
+            </div>
           </div>
 
-          {/* 1ПМ по плану */}
+          {/* ===== 1ПМ ===== */}
           {orm.length ? (
-            <SectionCard title="Одноповторный максимум" hint="по плану · факт" testid="stats-orm">
+            <SectionCard title="Одноповторный максимум" hint="факт (Эпли) · план" testid="stats-orm">
               <div className="stats-orm-grid">
                 {orm.map((l) => {
-                  const main = l.planned ?? l.achieved;
+                  const main = l.achieved ?? l.planned;
+                  const ratio = l.achieved && l.planned
+                    ? Math.min(100, Math.round((l.achieved / l.planned) * 100))
+                    : null;
                   return (
                     <div className="stats-orm-card" key={l.lift} data-testid={`orm-${l.lift}`}>
-                      <Trophy size={16} className="stats-orm-ic" />
+                      <Trophy size={15} className="stats-orm-ic" />
                       <div className="stats-orm-name">{l.name}</div>
                       <div className="stats-orm-val">{main != null ? `${main}` : "—"}<span>кг</span></div>
                       <div className="stats-orm-sub">
-                        {l.achieved != null ? <>факт <b>{l.achieved}</b></> : "—"}
+                        {l.planned != null ? <>план <b>{l.planned}</b></> : "—"}
                         {l.top_weight != null ? <span className="stats-orm-top"> · топ {l.top_weight}</span> : null}
                       </div>
+                      {ratio != null ? (
+                        <div className="stats-orm-bar">
+                          <i style={{ width: `${ratio}%` }} />
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -243,23 +371,61 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
             </SectionCard>
           ) : null}
 
-          {/* Тоннаж по неделям */}
-          <SectionCard title="Тоннаж" hint={scope === "plan" ? "по микроциклам" : "по неделям"} testid="stats-tonnage-chart">
-            {tonnage.length ? (
-              <div className="stats-chart">
+          {/* ===== Динамика: тоннаж / частота ===== */}
+          <SectionCard
+            title="Динамика"
+            hint={byMicro ? "по микроциклам" : "по неделям"}
+            testid="stats-dynamics"
+            action={<TabChips tabs={DYN_TABS} active={dynTab} onChange={setDynTab} testPrefix="dyn-tab" />}
+          >
+            {dynTab === "tonnage" ? (
+              tonnage.length ? (
+                <div className="stats-chart" data-testid="stats-tonnage-chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={tonnage} margin={{ top: 14, right: 4, left: -16, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="tonGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#FFDA24" />
+                          <stop offset="100%" stopColor="#FF8A24" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="week" tickFormatter={shortWeek}
+                        tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false}
+                        width={44} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}т` : v)} />
+                      <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={<ChartTooltip unit="кг" />} />
+                      {avgTonnage > 0 ? (
+                        <ReferenceLine y={avgTonnage} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4"
+                          label={{ value: `сред. ${fmtTon(avgTonnage)}`, position: "insideTopRight",
+                                   fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                      ) : null}
+                      <Bar dataKey="tonnage" name="Тоннаж" fill="url(#tonGrad)" radius={[6, 6, 2, 2]}
+                        maxBarSize={44} isAnimationActive animationDuration={1200} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="stats-nodata">Недостаточно данных</p>
+              )
+            ) : frequency.length ? (
+              <div className="stats-chart" data-testid="stats-frequency-chart">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={tonnage} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                  <BarChart data={frequency} margin={{ top: 14, right: 4, left: -24, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="tonGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#FFDA24" />
-                        <stop offset="100%" stopColor="#FF8A24" />
+                      <linearGradient id="freqGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#7BD8F7" />
+                        <stop offset="100%" stopColor="#36C5F0" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} width={44} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}т` : v)} />
-                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<ChartTooltip unit="кг" />} />
-                    <Bar dataKey="tonnage" name="Тоннаж" fill="url(#tonGrad)" radius={[6, 6, 0, 0]} maxBarSize={46} />
+                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="week" tickFormatter={shortWeek}
+                      tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }}
+                      axisLine={false} tickLine={false} width={28} />
+                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={<ChartTooltip unit="трен." />} />
+                    <Bar dataKey="count" name="Тренировок" fill="url(#freqGrad)" radius={[6, 6, 2, 2]}
+                      maxBarSize={36} isAnimationActive animationDuration={1200} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -268,29 +434,9 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
             )}
           </SectionCard>
 
-          {/* Частота */}
-          <SectionCard title="Частота тренировок" hint={scope === "plan" ? "по микроциклам" : "по неделям"} testid="stats-frequency-chart">
-            {frequency.length ? (
-              <div className="stats-chart stats-chart-sm">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={frequency} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
-                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} content={<ChartTooltip unit="трен." />} />
-                    <Bar dataKey="count" name="Тренировок" fill="#36C5F0" radius={[6, 6, 0, 0]} maxBarSize={38} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="stats-nodata">Недостаточно данных</p>
-            )}
-          </SectionCard>
-
-          {/* Прогресс упражнения */}
+          {/* ===== Прогресс упражнения ===== */}
           <SectionCard
             title="Прогресс упражнения"
-            hint="рабочий вес: факт / план"
             testid="stats-exercise-progress"
             action={
               exercises.length ? (
@@ -310,17 +456,33 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
               ) : null
             }
           >
+            <TabChips tabs={PROG_METRICS} active={progMetric} onChange={setProgMetric} testPrefix="prog-metric" />
             {series.length ? (
-              <div className="stats-chart">
+              <div className="stats-chart" style={{ marginTop: 10 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={series} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} axisLine={false} tickLine={false} width={40} domain={["auto", "auto"]} />
+                  <ComposedChart data={series} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="progGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={progColor} stopOpacity={0.45} />
+                        <stop offset="100%" stopColor={progColor} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }}
+                      axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false}
+                      tickLine={false} width={40} domain={["auto", "auto"]} />
                     <Tooltip content={<ChartTooltip unit="кг" />} />
-                    <Line type="monotone" dataKey="plan_weight" name="План" stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                    <Line type="monotone" dataKey="top_weight" name="Факт" stroke="#FF8A24" strokeWidth={3} dot={{ r: 3, fill: "#FF8A24" }} activeDot={{ r: 5 }} />
-                  </LineChart>
+                    {progMetric === "weight" ? (
+                      <Line type="monotone" dataKey="plan_weight" name="План"
+                        stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                    ) : null}
+                    <Area type="monotone" dataKey={progKey} name={progName} stroke={progColor}
+                      strokeWidth={3} fill="url(#progGrad)"
+                      dot={{ r: 3, fill: progColor, strokeWidth: 0 }}
+                      activeDot={{ r: 5, stroke: "#1C1C1C", strokeWidth: 2 }}
+                      isAnimationActive animationDuration={1200} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             ) : (
@@ -328,7 +490,7 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
             )}
           </SectionCard>
 
-          {/* Группы мышц */}
+          {/* ===== Группы мышц ===== */}
           {muscles.length ? (
             <SectionCard title="Распределение по группам" hint="подходы" testid="stats-muscles">
               <div className="stats-pie-wrap">
@@ -341,10 +503,13 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
                         nameKey="label"
                         cx="50%"
                         cy="50%"
-                        innerRadius="58%"
-                        outerRadius="92%"
+                        innerRadius="62%"
+                        outerRadius="94%"
                         paddingAngle={2}
-                        stroke="none"
+                        stroke="#242424"
+                        strokeWidth={3}
+                        isAnimationActive
+                        animationDuration={1000}
                       >
                         {muscles.map((m, i) => (
                           <Cell key={m.group} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -359,19 +524,28 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
                   </div>
                 </div>
                 <ul className="stats-legend">
-                  {muscles.map((m, i) => (
-                    <li key={m.group} data-testid={`muscle-${m.group}`}>
-                      <span className="stats-legend-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="stats-legend-name">{m.label}</span>
-                      <b className="stats-legend-val">{m.sets}</b>
-                    </li>
-                  ))}
+                  {muscles.map((m, i) => {
+                    const pct = totalMuscleSets ? Math.round((m.sets / totalMuscleSets) * 100) : 0;
+                    return (
+                      <li key={m.group} data-testid={`muscle-${m.group}`}>
+                        <div className="stats-legend-top">
+                          <span className="stats-legend-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                          <span className="stats-legend-name">{m.label}</span>
+                          <b className="stats-legend-val">{m.sets}</b>
+                          <span className="stats-legend-pct">{pct}%</span>
+                        </div>
+                        <div className="stats-legend-bar">
+                          <i style={{ width: `${pct}%`, background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </SectionCard>
           ) : null}
 
-          {/* Adherence — соответствие плану */}
+          {/* ===== Соответствие плану ===== */}
           <SectionCard title="Соответствие плану" hint="план ↔ факт" testid="stats-adherence">
             <div className="stats-bars">
               <AdherenceBar label="Объём (подходы)" value={adherence.volume_pct} />
@@ -383,12 +557,13 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
             {Object.keys(skipCounts).length ? (
               <div className="stats-chips" data-testid="stats-skip-chips">
                 {Object.entries(SKIP_META).map(([k, meta]) => {
-                  const n = skipCounts[k] || 0;
-                  if (!n) return null;
+                  const cnt = skipCounts[k] || 0;
+                  if (!cnt) return null;
                   const Ic = meta.Icon;
                   return (
-                    <span className="stats-chip" key={k} style={{ color: meta.color, borderColor: `${meta.color}55`, background: `${meta.color}18` }}>
-                      <Ic size={13} /> {meta.label} <b>{n}</b>
+                    <span className="stats-chip" key={k}
+                      style={{ color: meta.color, borderColor: `${meta.color}55`, background: `${meta.color}18` }}>
+                      <Ic size={13} /> {meta.label} <b>{cnt}</b>
                     </span>
                   );
                 })}
@@ -396,7 +571,7 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
             ) : null}
           </SectionCard>
 
-          {/* Последние тренировки */}
+          {/* ===== Последние тренировки ===== */}
           {recent.length ? (
             <SectionCard title="Последние тренировки" testid="stats-recent">
               <ul className="stats-recent">
@@ -406,9 +581,7 @@ function StatsView({ name, avatar, subtitle, onBack, hasPlanFetch, fetchPlanId, 
                       <span>{s.progress_pct || 0}<i>%</i></span>
                     </div>
                     <div className="stats-recent-main">
-                      <div className="stats-recent-title">
-                        {s.title || "Тренировка"}
-                      </div>
+                      <div className="stats-recent-title">{s.title || "Тренировка"}</div>
                       <div className="stats-recent-meta">
                         {s.group ? <span className="stats-recent-group">{s.group}</span> : null}
                         <span>{fmtTon(s.tonnage)}</span>
@@ -452,7 +625,7 @@ function DeviationRow({ label, value }) {
   const pos = v >= 0;
   return (
     <div className="stats-dev">
-      <span>{label}</span>
+      <span><Zap size={13} style={{ marginRight: 5, verticalAlign: -2 }} />{label}</span>
       <b className={pos ? "up" : "down"}>{pos ? "+" : ""}{v}%</b>
     </div>
   );

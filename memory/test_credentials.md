@@ -21,10 +21,17 @@
 - **username**: `testtg`
 
 ## URLs
-- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com`
+- Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://7fa95d68-09f5-4c1c-a975-7595ef3af056.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
-- `frontend/.env` → `REACT_APP_BACKEND_URL=https://e85f3b80-9cd5-4258-b364-92e2bfe58807.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`; в склонированном репо был устаревший `avatar-loader-1`). Менять не нужно.
+- `frontend/.env` → `REACT_APP_BACKEND_URL=https://7fa95d68-09f5-4c1c-a975-7595ef3af056.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`). Менять не нужно.
 - ⚠️ Google OAuth: в текущем `backend/.env` НЕТ `GOOGLE_CLIENT_ID/SECRET` → прямой Google-вход не работает без ключей и без обновления redirect_uri под новый домен. Email-вход работает.
+
+## Stats demo account (актуальный, июнь 2026, redesign статистики)
+- Email: `statsdemo@twb.dev`  Password: `password123`
+- telegram_id: 961727460933; активный план: pl-autumn-3m (maxes 200/130/230, дни [1,3,5]); план id 32a9362c-a8c5-4dd0-89ba-6d9717d0feef
+- 9 завершённых тренировок за 3 микроцикла, даты раскиданы по 3 календарным неделям (последняя = текущая).
+- Использовать для проверки /stats и /streak. Пересоздать данные: `python /app/scripts/setup_stats_demo.py`.
+- Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.
 
 ## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (regenerated Jun 2026)
 - COACH: `coachlive_1783465140@twb.dev` / `password123` (tg 963560813038, active_mode=coach, linked to athlete below)

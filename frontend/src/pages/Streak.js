@@ -7,6 +7,7 @@ import { getStreakData } from "@/api";
 import "./Streak.css";
 
 const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -57,14 +58,23 @@ export default function StreakPage() {
   const cur = data?.current_streak || 0;
   const best = data?.best_streak || 0;
   const total = data?.total_workouts || 0;
+  const activeDays = data?.active_days ?? total;
   const goal = data?.weekly_goal || 0;
   const thisWeek = data?.trained_this_week || 0;
   const weekDays = data?.week?.days || [];
   const calendar = data?.calendar || [];
   const rewardActive = goal > 0 && thisWeek >= goal;
 
+  // Метки месяцев над колонками хитмапа
+  const monthLabels = calendar.map((wk, i) => {
+    const m = new Date(wk.week_start).getMonth();
+    const prev = i > 0 ? new Date(calendar[i - 1].week_start).getMonth() : null;
+    return m !== prev ? MONTHS[m] : "";
+  });
+
   return (
     <div className="sk-page" data-testid="streak-page">
+      <div className="sk-ambient" aria-hidden="true" />
       <header className="sk-header">
         <button className="sk-back" onClick={() => navigate(-1)} aria-label="Назад" data-testid="streak-back">
           <ArrowLeft size={22} />
@@ -73,7 +83,11 @@ export default function StreakPage() {
       </header>
 
       {loading ? (
-        <div className="sk-loading"><div className="sk-spinner" /></div>
+        <div className="sk-skel" data-testid="streak-loading">
+          <div className="sk-skel-block h230" />
+          <div className="sk-skel-block h140" />
+          <div className="sk-skel-block h170" />
+        </div>
       ) : (
         <>
           {/* Hero */}
@@ -87,17 +101,17 @@ export default function StreakPage() {
               {pluralize(cur, ["день", "дня", "дней"])} подряд
             </div>
             <div className="sk-substats">
-              <div className="sk-sub">
+              <div className="sk-sub" data-testid="streak-best">
                 <Trophy size={15} />
                 <b>{best}</b>
                 <span>рекорд</span>
               </div>
-              <div className="sk-sub">
+              <div className="sk-sub" data-testid="streak-total">
                 <Dumbbell size={15} />
                 <b>{total}</b>
-                <span>тренировок</span>
+                <span>{pluralize(total, ["тренировка", "тренировки", "тренировок"])}</span>
               </div>
-              <div className="sk-sub">
+              <div className="sk-sub" data-testid="streak-week-goal">
                 <Target size={15} />
                 <b>{goal ? `${thisWeek}/${goal}` : thisWeek}</b>
                 <span>за неделю</span>
@@ -125,11 +139,16 @@ export default function StreakPage() {
               </div>
             </div>
             {goal ? (
-              <p className="sk-reward-note">
-                {rewardActive
-                  ? "Цель недели выполнена — так держать! 🎉"
-                  : `Ещё ${goal - thisWeek} ${pluralize(goal - thisWeek, ["тренировка", "тренировки", "тренировок"])} до награды за неделю`}
-              </p>
+              <>
+                <div className="sk-goal-track" data-testid="streak-goal-bar">
+                  <i style={{ width: `${Math.min(100, Math.round((thisWeek / goal) * 100))}%` }} />
+                </div>
+                <p className="sk-reward-note">
+                  {rewardActive
+                    ? "Цель недели выполнена — так держать! 🎉"
+                    : `Ещё ${goal - thisWeek} ${pluralize(goal - thisWeek, ["тренировка", "тренировки", "тренировок"])} до награды за неделю`}
+                </p>
+              </>
             ) : null}
           </section>
 
@@ -137,26 +156,42 @@ export default function StreakPage() {
           <section className="sk-card" data-testid="streak-history">
             <div className="sk-card-head">
               <h3 className="sk-card-title">История</h3>
-              <span className="sk-card-hint">последние {calendar.length} нед.</span>
+              <span className="sk-card-hint">
+                {activeDays} {pluralize(activeDays, ["активный день", "активных дня", "активных дней"])} · {calendar.length} нед.
+              </span>
             </div>
             <div className="sk-heatmap-wrap">
               <div className="sk-hm-labels">
+                <span className="sk-hm-label sk-hm-month-spacer" />
                 {WD.map((w) => (
                   <span key={w} className="sk-hm-label">{w}</span>
                 ))}
               </div>
-              <div className="sk-heatmap" data-testid="streak-heatmap">
-                {calendar.map((wk) => (
-                  <div className="sk-hm-week" key={wk.week_start}>
-                    {wk.days.map((d) => {
-                      let cls = "sk-hm-cell";
-                      if (d.trained) cls += " done";
-                      else if (d.is_future) cls += " future";
-                      else if (d.is_today) cls += " today";
-                      return <span key={d.date} className={cls} title={d.date} />;
-                    })}
-                  </div>
-                ))}
+              <div className="sk-hm-body">
+                <div className="sk-hm-months">
+                  {monthLabels.map((m, i) => (
+                    <span key={`${m}-${i}`} className="sk-hm-month">{m}</span>
+                  ))}
+                </div>
+                <div className="sk-heatmap" data-testid="streak-heatmap">
+                  {calendar.map((wk) => (
+                    <div className="sk-hm-week" key={wk.week_start}>
+                      {wk.days.map((d) => {
+                        let cls = "sk-hm-cell";
+                        if (d.trained) cls += (d.count || 0) >= 2 ? " done hot" : " done";
+                        else if (d.is_future) cls += " future";
+                        if (d.is_today) cls += " today";
+                        return (
+                          <span
+                            key={d.date}
+                            className={cls}
+                            title={`${d.date}${d.count ? ` · ${d.count} трен.` : ""}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="sk-hm-legend">
@@ -164,6 +199,7 @@ export default function StreakPage() {
               <i className="sk-hm-cell" />
               <i className="sk-hm-cell done dim" />
               <i className="sk-hm-cell done" />
+              <i className="sk-hm-cell done hot" />
               <span>больше</span>
             </div>
           </section>

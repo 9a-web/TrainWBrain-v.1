@@ -1,0 +1,48 @@
+{
+  "summary": "Полное тестирование модуля Статистика после исправления багов B1-B11 и редизайна /stats + /streak. Backend: 23/23 pytest PASS. Frontend: все селекторы найдены, интерактив работает, JS ошибок нет.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_scenarios": {
+    "B1_IDOR": "PASS — /api/stats/{tg}, /detailed, /exercise-progress, /streak возвращают 401 без токена (4/4), 403 для чужого пользователя (4/4), 200 для владельца (4/4). Coach-gated /api/coach/{coach_id}/clients/{ath}/stats и /exercise-progress: 401 без токена, 403 когда caller != coach_id.",
+    "B3_Epley_1RM": "PASS — /detailed.one_rep_max_est: присед achieved=197.3 при planned=200 (formula: 177.5×(1+2/30)=189.3? — actual 197.3 из top set 185×2). Жим 135 vs 130. Становая 226.7 vs 230. Все achieved отличаются от planned.",
+    "B4_scope_all_vs_plan": "PASS — /exercise-progress без plan_id: scope='all', labels dd.mm (22.06, 29.06, 06.07). С plan_id: scope='plan', labels 'Нед N'.",
+    "B5_only_weighted": "PASS — exercises[] содержит только упражнения с рабочим весом (12 позиций), top-level series[] все точки > 0кг (167.5-177.5).",
+    "B6_B7_clamps_avg_per_week": "PASS — completion_pct=96 (в границах 0-100), volume_pct в границах, avg_per_week=3.0 (9 сессий / 3 недели микроцикла).",
+    "B11_streak_fields": "PASS — /streak: total_workouts=9, active_days=8, calendar[].days[] содержат поле count.",
+    "B2_short_stats_consistency": "PASS — /stats/{tg} возвращает streak_days=2, total_workouts=9, active_days=8; полностью согласовано с /streak.",
+    "FRONTEND_/stats": "PASS — stats-page рендерится. Все KPI на месте: kpi-tonnage (97 т + спарклайн), kpi-completion (кольцо 96%), kpi-streak (9), kpi-workouts (9 тренировок), kpi-freq (3 за микроцикл / 3 в неделю), kpi-duration (10ч 48м). Scope toggle (scope-plan / scope-all) работает: подпись меняется '3 мес Подготовка на осень' -> 'за всё время', freq label 'за микроцикл' -> 'в неделю'. ORM карточки orm-squat=197.3(план 200), orm-bench=135(130), orm-deadlift=226.7(230) с прогресс-барами. Динамика: dyn-tab-tonnage/frequency работают, графики переключаются (stats-tonnage-chart / stats-frequency-chart). exercise-select — 12 опций, смена работает. Метрик-чипы prog-metric-weight/orm/tonnage присутствуют. stats-muscles, stats-adherence, stats-recent — все секции рендерятся.",
+    "FRONTEND_/streak": "PASS — streak-page, streak-hero, streak-current=2, streak-best=2, streak-total=9 тренировок, streak-week-goal=2/3. Карточка 'Эта неделя' с чекнутыми Пн/Вт кружками (streak-week) + прогресс-бар (streak-goal-bar). streak-history и streak-heatmap отрисованы, метки месяцев сверху (апр/май/июн/июл), лейблы дней Пн..Вс слева выровнены с рядами, легенда меньше/больше внизу справа, хинт '8 активных дней · 12 нед.' присутствует.",
+    "REGRESSION": "PASS — Home (/) грузится после логина, показывает streak-виджет 'Тренировочная серия в течение 2 дней' (использует GET /api/stats/{tg} с auth). Логин по email работает."
+  },
+  "critical_code_review_comments": [
+    "Все 11 багов B1-B11 исправлены и подтверждены автоматизированными тестами.",
+    "Response schema для /exercise-progress: series — top-level (для дефолтного упражнения), exercises — список метаданных (slug/name/lift_group). Это нужно учитывать при документации API.",
+    "Warnings 'Telegram.WebApp X is not supported in version 6.0' — ожидаемо в обычном браузере (не Telegram Mini App), не влияют на работу.",
+    "Файл /app/backend/server.py уже 3362 строки — рекомендуется разбить на модули (stats/, auth/, coach/) — это technical debt, не блокер."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_stats.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "updated_files": [
+    "/app/backend/tests/test_stats.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 pytest)",
+    "frontend": "100% (все селекторы найдены, 0 JS pageerrors, интерактив работает)"
+  },
+  "test_credentials": "statsdemo@twb.dev / password123 (owner tg 961727460933, plan 32a9362c-a8c5-4dd0-89ba-6d9717d0feef), dbg1783466020@ex.com / password123 (stranger tg 922324126010)",
+  "seed_data_creation": "Не создавал — demo-данные уже присутствовали (9 завершённых тренировок, 8 активных дней).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite для Stats модуля лежит в /app/backend/tests/test_stats.py (23 теста). Ключевые селекторы Stats: stats-page, scope-plan, scope-all, kpi-{tonnage,completion,streak,workouts,freq,duration}, orm-{squat,bench,deadlift}, dyn-tab-{tonnage,frequency}, exercise-select, prog-metric-{weight,orm,tonnage}, stats-{dynamics,exercise-progress,muscles,adherence,recent}. Streak: streak-{page,hero,current,best,total,week-goal,week,goal-bar,history,heatmap}. Route /api/coach/{coach_id}/clients/{ath}/exercise-progress НЕ /stats/exercise-progress.",
+  "rca of the issue": "N/A — редизайн и багфиксы выполнены чисто, регрессий не обнаружено."
+}

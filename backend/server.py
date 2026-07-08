@@ -1041,6 +1041,16 @@ async def _is_coach_of(coach_tgid: int, athlete_tgid: int) -> bool:
     return bool(link)
 
 
+async def _assert_can_read_stats(current: dict, athlete_tgid: int):
+    """Статистику видит только сам спортсмен или его активный тренер."""
+    tgid = current.get("telegram_id")
+    if tgid == athlete_tgid:
+        return
+    if await _is_coach_of(tgid, athlete_tgid):
+        return
+    raise HTTPException(status_code=403, detail="Нет доступа к этой статистике")
+
+
 async def _assert_can_edit_plan(current: dict, plan: dict):
     """Право на изменение плана: владелец-спортсмен ИЛИ активный тренер спортсмена
     (привязанный или указанный в plan.coach_telegram_id). Иначе 403."""
@@ -1589,19 +1599,19 @@ def _build_session_exercises(day_obj, orm):
 
 
 def _est_1rm(weight, percent_1rm, reps):
-    """Оценка одноповторного максимума «как в таблице».
-
-    В программе (Excel) вес = % от 1ПМ, поэтому 1ПМ = вес ÷ (% / 100) — это
-    восстанавливает референсный 1ПМ плана. Если % неизвестен (план без
-    максимумов) — запасной вариант по формуле Эпли: вес × (1 + повт/30).
-    """
+    """Оценка 1ПМ по фактическому исполнению (формула Эпли): вес × (1 + повт/30).
+    Если повторы неизвестны — fallback: вес ÷ (плановый % / 100)."""
     if not weight:
         return None
     try:
+        r = int(reps or 0)
+        if r == 1:
+            return round(float(weight), 1)
+        if r > 1:
+            return round(float(weight) * (1 + r / 30.0), 1)
         if percent_1rm:
-            return round(weight / (float(percent_1rm) / 100.0), 1)
-        r = int(reps or 1)
-        return round(weight * (1 + r / 30.0), 1)
+            return round(float(weight) / (float(percent_1rm) / 100.0), 1)
+        return round(float(weight), 1)
     except Exception:
         return None
 
@@ -1661,7 +1671,7 @@ def _muscle_sets(exs):
         ltr = e.get("muscle_letter") or muscle_letter(e.get("muscle_group"))
         if not ltr:
             continue
-        n = _sets_count(e.get("sets_scheme")) or (0 if e.get("is_accessory") else 1)
+        n = _sets_count(e.get("sets_scheme")) or 1
         dist[ltr] = dist.get(ltr, 0) + n
     return dist
 
@@ -2499,34 +2509,18 @@ async def pause_session(session_id: str, resume: bool = False, current_user: dic
 
 # ---- Сводная статистика спортсмена (серия/streak) ----
 @api_router.get("/stats/{telegram_id}")
-async def get_athlete_stats(telegram_id: int):
+async def get_athlete_stats(telegram_id: int, current: dict = Depends(get_current_user)):
+    await _assert_can_read_stats(current, telegram_id)
     sessions = await db.workout_sessions.find(
         {"athlete_telegram_id": telegram_id, "status": "finished"},
-        {"_id": 0, "finished_at": 1, "exercises": 1},
+        {"_id": 0, "finished_at": 1, "date": 1, "exercises": 1},
     ).to_list(2000)
-
-    dates = set()
-    for s in sessions:
-        # Засчитываем тренировку только если реально выполнено хотя бы одно упражнение
-        # (полностью пропущенная сессия не должна формировать серию/счётчик).
-        if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
-            continue
-        fa = s.get("finished_at")
-        if fa:
-            try:
-                dates.add(datetime.fromisoformat(fa).date())
-            except Exception:
-                pass
-
-    streak = 0
-    if dates:
-        today = datetime.now(timezone.utc).date()
-        cur = today if today in dates else (today - timedelta(days=1))
-        while cur in dates:
-            streak += 1
-            cur = cur - timedelta(days=1)
-
-    return {"telegram_id": telegram_id, "streak_days": streak, "total_workouts": len(dates)}
+    # Засчитываем тренировку только если реально выполнено хотя бы одно упражнение
+    valid = [s for s in sessions
+             if any(e.get("status") == "done" for e in (s.get("exercises") or []))]
+    streak, active_days = _calendar_streak(valid)
+    return {"telegram_id": telegram_id, "streak_days": streak,
+            "total_workouts": len(valid), "active_days": active_days}
 
 
 # ===========================================================================
@@ -2552,6 +2546,11 @@ def _parse_date(s):
             return date.fromisoformat(str(s)[:10])
         except Exception:
             return None
+
+
+def _session_day(s):
+    """Единый календарный день сессии: date (день по плану) → finished_at."""
+    return _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
 
 
 def _iso_week_key(d):
@@ -2677,7 +2676,7 @@ def _calendar_streak(sessions):
     for s in sessions:
         if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
             continue
-        d = _parse_date(s.get("finished_at")) or _parse_date(s.get("date"))
+        d = _session_day(s)
         if d:
             dates.add(d)
     streak = 0
@@ -2701,10 +2700,12 @@ async def _finished_sessions(tg, plan_id=None, frm=None, to=None):
     for s in docs:
         if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
             continue
-        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
-        if fr and d and d < fr:
+        d = _session_day(s)
+        if (fr or tt) and not d:
             continue
-        if tt and d and d > tt:
+        if fr and d < fr:
+            continue
+        if tt and d > tt:
             continue
         out.append(s)
     return out
@@ -2747,18 +2748,22 @@ async def _athlete_detailed_stats(tg, frm=None, to=None, plan_id=None):
             wi = s.get("week_index") or 1
             key, label, srt = wi, f"Нед {wi}", (wi,)
         else:
-            d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+            d = _session_day(s)
             key = _iso_week_key(d) or "—"
             label, srt = key, (key,)
         a = week_agg.setdefault(key, {"tonnage": 0, "count": 0, "label": label, "sort": srt})
         a["tonnage"] += st.get("tonnage", 0) or 0
         a["count"] += 1
 
-        for ltr, n in (st.get("muscle_sets") or {}).items():
-            muscle_agg[ltr] = muscle_agg.get(ltr, 0) + n
-        for lg, info in (st.get("lifts") or {}).items():
+        # Считаем свежо из упражнений (а не из замороженного снимка), чтобы
+        # исправленные формулы применялись и к историческим данным.
+        for ltr, cnt in _muscle_sets(s.get("exercises") or []).items():
+            muscle_agg[ltr] = muscle_agg.get(ltr, 0) + cnt
+        for lg, info in _lift_summary(s.get("exercises") or []).items():
             cur = lift_best.get(lg)
-            if not cur or (info.get("top_weight") or 0) > (cur.get("top_weight") or 0):
+            if not cur or (info.get("one_rm") or info.get("top_weight") or 0) > (
+                cur.get("one_rm") or cur.get("top_weight") or 0
+            ):
                 lift_best[lg] = info
 
     n = len(sessions)
@@ -2796,22 +2801,25 @@ async def _athlete_detailed_stats(tg, frm=None, to=None, plan_id=None):
         sched = await _schedule_and_streak(plan, await _streak_mode(tg))
         workout_streak = sched["workout_streak"]
 
-    completion_pct = round(total_sets_done / total_sets_planned * 100) if total_sets_planned else (
-        round(progress_acc / n) if n else 0
+    completion_pct = min(100, round(total_sets_done / total_sets_planned * 100)) if total_sets_planned else (
+        min(100, round(progress_acc / n)) if n else 0
     )
     tonnage_dev_pct = round(
         (total_tonnage - total_tonnage_planned) / total_tonnage_planned * 100
     ) if total_tonnage_planned else 0
-    volume_pct = round(total_sets_done / total_sets_planned * 100) if total_sets_planned else 0
+    volume_pct = min(100, round(total_sets_done / total_sets_planned * 100)) if total_sets_planned else 0
 
-    # Частота/нед по календарным неделям
-    cal_weeks = {}
-    for s in sessions:
-        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
-        wk = _iso_week_key(d)
-        if wk:
-            cal_weeks[wk] = cal_weeks.get(wk, 0) + 1
-    avg_per_week = round(sum(cal_weeks.values()) / len(cal_weeks), 1) if cal_weeks else 0
+    # Частота: по микроциклам выбранного плана или по календарным неделям
+    if use_plan_week:
+        avg_per_week = round(n / len(week_agg), 1) if week_agg else 0
+    else:
+        cal_weeks = {}
+        for s in sessions:
+            d = _session_day(s)
+            wk = _iso_week_key(d)
+            if wk:
+                cal_weeks[wk] = cal_weeks.get(wk, 0) + 1
+        avg_per_week = round(sum(cal_weeks.values()) / len(cal_weeks), 1) if cal_weeks else 0
 
     recent = []
     for s in sorted(sessions, key=lambda x: x.get("finished_at") or "", reverse=True)[:10]:
@@ -2861,20 +2869,29 @@ async def _athlete_detailed_stats(tg, frm=None, to=None, plan_id=None):
 
 
 async def _athlete_exercise_progress(tg, slug=None, plan_id=None):
-    plan = await _resolve_stats_plan(tg, plan_id)
+    # B4: без явного plan_id считаем «за всё время» (по всем планам, группировка по датам)
+    plan = (await _resolve_stats_plan(tg, plan_id)) if plan_id else None
+    by_plan = bool(plan)
     sessions = await _finished_sessions(tg, plan["id"] if plan else None)
 
     avail = {}
+    weighted = set()
     for s in sessions:
         for e in (s.get("exercises") or []):
             sg = e.get("exercise_slug") or e.get("exercise_name")
-            if sg and sg not in avail:
+            if not sg:
+                continue
+            if sg not in avail:
                 avail[sg] = {
                     "slug": e.get("exercise_slug"),
                     "key": sg,
                     "name": e.get("exercise_name"),
                     "lift_group": e.get("lift_group"),
                 }
+            if e.get("status") == "done" and _top_set(e.get("sets_scheme")):
+                weighted.add(sg)
+    # B5: в выпадающем списке — только упражнения с рабочим весом
+    avail = {k: v for k, v in avail.items() if k in weighted}
 
     target = slug
     if not target:
@@ -2887,7 +2904,17 @@ async def _athlete_exercise_progress(tg, slug=None, plan_id=None):
 
     series_map = {}
     for s in sessions:
-        wi = s.get("week_index") or 1
+        if by_plan:
+            key = s.get("week_index") or 1
+            label = f"Нед {key}"
+            sort_key = (key,)
+        else:
+            d = _session_day(s)
+            if not d:
+                continue
+            key = d.isoformat()
+            label = d.strftime("%d.%m")
+            sort_key = (key,)
         for e in (s.get("exercises") or []):
             if e.get("status") != "done":
                 continue
@@ -2902,17 +2929,22 @@ async def _athlete_exercise_progress(tg, slug=None, plan_id=None):
             pct = (plan_top or {}).get("percent_1rm") or fact_top.get("percent_1rm")
             one_rm = _est_1rm(fw, pct, fact_top.get("reps"))
             cand = {
-                "week_index": wi, "label": f"Нед {wi}",
+                "label": label, "sort": sort_key,
+                "week_index": s.get("week_index") if by_plan else None,
+                "date": None if by_plan else key,
                 "top_weight": fw, "plan_weight": (plan_top or {}).get("weight"),
                 "reps": fact_top.get("reps"), "one_rm": one_rm,
                 "tonnage": e.get("tonnage", 0),
             }
-            row = series_map.get(wi)
+            row = series_map.get(key)
             if not row or (fw or 0) > (row.get("top_weight") or 0):
-                series_map[wi] = cand
-    series = sorted(series_map.values(), key=lambda x: x["week_index"])
+                series_map[key] = cand
+    series = sorted(series_map.values(), key=lambda x: x["sort"])
+    for r in series:
+        r.pop("sort", None)
     return {
         "telegram_id": tg, "slug": target,
+        "scope": "plan" if by_plan else "all",
         "name": (avail.get(target) or {}).get("name") if target else None,
         "exercises": list(avail.values()),
         "series": series,
@@ -3055,13 +3087,17 @@ async def get_session_deviation(session_id: str, current_user: dict = Depends(ge
 
 @api_router.get("/stats/{telegram_id}/detailed")
 async def stats_detailed(telegram_id: int, from_: Optional[str] = Query(default=None, alias="from"),
-                         to: Optional[str] = None, plan_id: Optional[str] = None):
+                         to: Optional[str] = None, plan_id: Optional[str] = None,
+                         current: dict = Depends(get_current_user)):
+    await _assert_can_read_stats(current, telegram_id)
     return await _athlete_detailed_stats(telegram_id, from_, to, plan_id)
 
 
 @api_router.get("/stats/{telegram_id}/exercise-progress")
 async def stats_exercise_progress(telegram_id: int, slug: Optional[str] = None,
-                                  plan_id: Optional[str] = None):
+                                  plan_id: Optional[str] = None,
+                                  current: dict = Depends(get_current_user)):
+    await _assert_can_read_stats(current, telegram_id)
     return await _athlete_exercise_progress(telegram_id, slug, plan_id)
 
 
@@ -3071,13 +3107,16 @@ async def _athlete_streak_data(tg, weeks=12):
         {"athlete_telegram_id": tg, "status": "finished"},
         {"_id": 0, "finished_at": 1, "date": 1, "exercises": 1},
     ).to_list(3000)
-    dates = set()
+    day_counts = {}
+    total_sessions = 0
     for s in sessions:
         if not any(e.get("status") == "done" for e in (s.get("exercises") or [])):
             continue
-        d = _parse_date(s.get("date")) or _parse_date(s.get("finished_at"))
+        total_sessions += 1
+        d = _session_day(s)
         if d:
-            dates.add(d)
+            day_counts[d] = day_counts.get(d, 0) + 1
+    dates = set(day_counts)
 
     today = datetime.now(timezone.utc).date()
     # текущая серия (подряд идущие дни до сегодня/вчера)
@@ -3116,6 +3155,7 @@ async def _athlete_streak_data(tg, weeks=12):
                 "date": dd.isoformat(),
                 "weekday": i + 1,            # 1=Пн .. 7=Вс
                 "trained": dd in dates,
+                "count": day_counts.get(dd, 0),
                 "is_today": dd == today,
                 "is_future": dd > today,
             })
@@ -3126,7 +3166,8 @@ async def _athlete_streak_data(tg, weeks=12):
         "telegram_id": tg,
         "current_streak": cur,
         "best_streak": best,
-        "total_workouts": len(dates),
+        "total_workouts": total_sessions,
+        "active_days": len(dates),
         "weekly_goal": weekly_goal,
         "trained_this_week": trained_this_week,
         "week": grid[-1] if grid else {"days": []},
@@ -3135,14 +3176,19 @@ async def _athlete_streak_data(tg, weeks=12):
 
 
 @api_router.get("/stats/{telegram_id}/streak")
-async def stats_streak(telegram_id: int, weeks: int = 12):
+async def stats_streak(telegram_id: int, weeks: int = 12,
+                       current: dict = Depends(get_current_user)):
+    await _assert_can_read_stats(current, telegram_id)
     return await _athlete_streak_data(telegram_id, weeks)
 
 
 @api_router.get("/coach/{coach_id}/clients/{athlete_id}/stats")
 async def coach_client_stats(coach_id: int, athlete_id: int,
                              from_: Optional[str] = Query(default=None, alias="from"),
-                             to: Optional[str] = None, plan_id: Optional[str] = None):
+                             to: Optional[str] = None, plan_id: Optional[str] = None,
+                             current: dict = Depends(get_current_user)):
+    if current.get("telegram_id") != coach_id:
+        raise HTTPException(status_code=403, detail="Доступ от имени другого тренера запрещён")
     await _assert_coach_of(coach_id, athlete_id)
     return await _athlete_detailed_stats(athlete_id, from_, to, plan_id)
 
@@ -3150,7 +3196,10 @@ async def coach_client_stats(coach_id: int, athlete_id: int,
 @api_router.get("/coach/{coach_id}/clients/{athlete_id}/exercise-progress")
 async def coach_client_exercise_progress(coach_id: int, athlete_id: int,
                                          slug: Optional[str] = None,
-                                         plan_id: Optional[str] = None):
+                                         plan_id: Optional[str] = None,
+                                         current: dict = Depends(get_current_user)):
+    if current.get("telegram_id") != coach_id:
+        raise HTTPException(status_code=403, detail="Доступ от имени другого тренера запрещён")
     await _assert_coach_of(coach_id, athlete_id)
     return await _athlete_exercise_progress(athlete_id, slug, plan_id)
 
