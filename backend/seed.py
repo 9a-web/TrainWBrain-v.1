@@ -122,6 +122,7 @@ def _exercise_doc(slug, name, muscles, equipment, category) -> dict:
         "muscle_groups": muscles,
         "equipment": equipment,
         "category": category,
+        "weight_type": "bodyweight" if equipment == "bodyweight" else "kg",
         "is_builtin": True,
         "owner_telegram_id": None,
         "created_at": _iso_now(),

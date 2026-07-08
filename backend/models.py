@@ -43,6 +43,7 @@ class Exercise(BaseModel):
     muscle_groups: List[str] = Field(default_factory=list)
     equipment: Optional[str] = None
     category: Optional[str] = None
+    weight_type: Optional[str] = "kg"
     is_builtin: bool = False
     owner_telegram_id: Optional[int] = None
     created_at: datetime = Field(default_factory=_now)

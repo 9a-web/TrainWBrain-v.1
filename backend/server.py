@@ -4190,6 +4190,20 @@ async def startup_seed():
         logger.info(f"Seed builtins complete: {res}")
     except Exception as e:
         logger.warning(f"seed_builtins failed: {e}")
+    # Миграция: заполнить weight_type для существующих упражнений без него
+    try:
+        r1 = await db.exercises.update_many(
+            {"weight_type": {"$exists": False}, "equipment": "bodyweight"},
+            {"$set": {"weight_type": "bodyweight"}},
+        )
+        r2 = await db.exercises.update_many(
+            {"weight_type": {"$exists": False}},
+            {"$set": {"weight_type": "kg"}},
+        )
+        if r1.modified_count or r2.modified_count:
+            logger.info(f"weight_type backfill: bw={r1.modified_count}, kg={r2.modified_count}")
+    except Exception as e:
+        logger.warning(f"weight_type backfill failed: {e}")
 
 
 @app.on_event("shutdown")

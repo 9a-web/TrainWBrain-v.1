@@ -1,0 +1,43 @@
+{
+  "summary": "Ретест 3 багфиксов AI-генерации после доработки weight_type в каталоге и Pydantic-модели. РЕЗУЛЬТАТ: ВСЕ 31 ТЕСТА ПРОШЛИ (27 P6 regression + 4 AI weight_type/variation). БД mongo: 4 bodyweight упражнения (pull-up, plank, hanging-leg-raise, dips) имеют weight_type='bodyweight'; 25 non-BW — weight_type='kg'; missing=0. API GET /api/exercises возвращает weight_type в JSON. Свежий AI-шаблон (82ac8611-f47b-418a-9d72-1dc72ea0049a): 3 BW-упражнения корректно смаплены на weight_type='bodyweight'; 13 KG-упражнений — weight_type='kg' (никаких mismatch); sets/reps варьируются между неделями у 24/26 упражнений (92%). Исходный баг (Свой вес для НЕ-bw + однообразие недель) полностью устранён.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_scenarios": {
+    "CATALOG_WEIGHT_TYPE_IN_DB": "MongoDB db.exercises: 4/4 BW правильно (weight_type='bodyweight'), 25/25 non-BW правильно (weight_type='kg'), 0 missing. Миграция при старте backend отработала (seed.py::_exercise_doc + server.py:4193 update_many).",
+    "API_EXERCISES_RETURNS_WEIGHT_TYPE": "GET /api/exercises возвращает поле weight_type для всех 29 упражнений (Pydantic Exercise.weight_type добавлен в models.py:46).",
+    "AI_TEMPLATE_BODYWEIGHT_MATCH": "Свежий AI-шаблон 82ac8611-f47b-418a-9d72-1dc72ea0049a: 3 BW-упражнения (pull-up/plank/hanging-leg-raise) в шаблоне имеют weight_type='bodyweight' (было kg). ✓",
+    "AI_TEMPLATE_KG_CORRECT": "13 non-BW упражнений (Жим гантелей, Румынская тяга и т.д.) в AI-шаблоне: weight_type='kg' + weight=null → фронт покажет '—' а не ложное 'Свой вес'. ✓",
+    "AI_SETS_REPS_VARIATION": "24/26 упражнений (92%) варьируют sets/reps между неделями — референсные лифтерские программы в системном промпте работают. ✓",
+    "PYTEST_P6_REGRESSION_27_27": "test_programs_p6.py — 27/27 PASS за 5.97s (шаблоны CRUD/auth, share stable, shared preview, import own/dup/404/401, AI validation, plans regression).",
+    "PYTEST_AI_WEIGHT_TYPE_4_4": "test_ai_gen_weight_type.py — 4/4 PASS за 95.84s (catalog check + AI generation match + sets/reps variation + no-bw-wrong-kg)."
+  },
+  "critical_code_review_comments": [
+    "Фикс полный: (1) seed.py::_exercise_doc теперь ставит weight_type; (2) server.py:4193 миграция update_many покрывает существующие БД; (3) models.py::Exercise.weight_type — Pydantic сериализует поле в API-ответ; (4) server.py:3814 `_ai_build_template` корректно читает weight_type из match. Дополнительных правок не требуется.",
+    "server.py всё ещё 4211 строк — рефакторинг остаётся уместным (не блокер)."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_programs_p6.py",
+    "/app/backend/tests/test_ai_gen_weight_type.py",
+    "/app/test_reports/pytest/iter7_p6_results.xml",
+    "/app/test_reports/pytest/iter7_ai_weight_results.xml"
+  ],
+  "action_items": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (31/31: 27 P6 regression + 4 AI weight_type)",
+    "frontend": "N/A — skip frontend по запросу"
+  },
+  "test_credentials": "statsdemo@twb.dev / password123 (tg 961727460933, plan d72cc5d5-a11b-40be-9526-622ef5da628a). Демо-шаблон b85dbff0-... / TWB-ZZB5ZS сохранён. Новый AI-шаблон iter7: 82ac8611-f47b-418a-9d72-1dc72ea0049a.",
+  "seed_data_creation": "Не создавал — использовал существующие данные statsdemo. Каталог упражнений обновлён через seed при старте backend + backfill миграция.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Все 3 бага полностью устранены и подтверждены тестами. Каталог db.exercises хранит weight_type корректно; API отдаёт поле; AI-шаблоны сохраняют bodyweight для pull-up/plank/dips/hanging-leg-raise; sets/reps варьируется между неделями. Тестовые файлы стабильны — используй /app/backend/tests/test_ai_gen_weight_type.py как регрессию (первый тест — 1 секунда, остальные 3 требуют ~90с AI-генерации).",
+  "rca of the issue": "N/A — все баги устранены. RCA прошлой итерации (weight_type=None в каталоге) решена: seed.py::_exercise_doc теперь ставит поле, server.py:4193 миграция заполняет старые записи, models.py::Exercise включает weight_type в Pydantic-модели, server.py:3814 _ai_build_template маппит его в AI-шаблон."
+}
