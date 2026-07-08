@@ -69,6 +69,32 @@ export const getTemplate = (id) =>
   client.get(`/programs/templates/${id}`).then((r) => r.data);
 export const createTemplate = (payload) =>
   client.post(`/programs/templates`, payload).then((r) => r.data);
+export const updateTemplate = (id, body) =>
+  client.patch(`/programs/templates/${id}`, body).then((r) => r.data);
+export const deleteTemplate = (id) =>
+  client.delete(`/programs/templates/${id}`).then((r) => r.data);
+
+// --- P6: шаринг и импорт программ ---
+export const shareTemplate = (id) =>
+  client.post(`/programs/templates/${id}/share`).then((r) => r.data);
+export const getSharedProgram = (code) =>
+  client.get(`/programs/shared/${encodeURIComponent(code)}`).then((r) => r.data);
+export const importSharedProgram = (code) =>
+  client.post(`/programs/import/${encodeURIComponent(code)}`).then((r) => r.data);
+
+// --- P6: ИИ-анализ программ ---
+export const getAiStatus = () => client.get(`/ai/status`).then((r) => r.data);
+export const aiGenerateProgram = (prompt) =>
+  client.post(`/ai/program/generate`, { prompt }).then((r) => r.data);
+export const aiParseProgram = (text) =>
+  client.post(`/ai/program/parse`, { text }).then((r) => r.data);
+export const aiParseProgramFile = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return client
+    .post(`/ai/program/parse-file`, fd, { headers: { "Content-Type": "multipart/form-data" } })
+    .then((r) => r.data);
+};
 
 // --- Планы ---
 export const createPlan = (payload) =>

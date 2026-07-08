@@ -111,6 +111,24 @@ class ProgramTemplateCreate(BaseModel):
     tags: List[str] = Field(default_factory=list)
     weeks: List[ProgramWeek] = Field(default_factory=list)
     owner_telegram_id: Optional[int] = None
+    source: Optional[str] = None        # constructor | import | ai
+    requires_maxes: bool = False
+    base_maxes: dict = Field(default_factory=dict)
+    default_one_rep_max: dict = Field(default_factory=dict)
+
+
+class ProgramTemplateUpdate(BaseModel):
+    """Частичное обновление своего шаблона (конструктор, автосохранение)."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    level: Optional[str] = None
+    goal: Optional[str] = None
+    days_per_week: Optional[int] = None
+    tags: Optional[List[str]] = None
+    weeks: Optional[List[ProgramWeek]] = None
+    requires_maxes: Optional[bool] = None
+    base_maxes: Optional[dict] = None
+    default_one_rep_max: Optional[dict] = None
 
 
 class ProgramTemplate(BaseModel):
@@ -128,6 +146,9 @@ class ProgramTemplate(BaseModel):
     weeks: List[ProgramWeek] = Field(default_factory=list)
     is_builtin: bool = False
     owner_telegram_id: Optional[int] = None
+    source: Optional[str] = None              # constructor | import | ai | None (builtin)
+    share_code: Optional[str] = None          # код для шаринга (TWB-XXXXXX)
+    shared_from: Optional[str] = None         # id исходного шаблона при импорте
     tags: List[str] = Field(default_factory=list)
     default_one_rep_max: dict = Field(default_factory=dict)  # slug -> кг (референсные максимумы)
     requires_maxes: bool = False                  # требует ввода 1ПМ (присед/жим/тяга) при выборе

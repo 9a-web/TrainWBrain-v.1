@@ -28,7 +28,7 @@
 
 ## Stats demo account (актуальный, июнь 2026, redesign статистики)
 - Email: `statsdemo@twb.dev`  Password: `password123`
-- telegram_id: 961727460933; активный план: pl-autumn-3m (maxes 200/130/230, дни [1,3,5]); план id 32a9362c-a8c5-4dd0-89ba-6d9717d0feef
+- telegram_id: 961727460933; активный план: pl-autumn-3m (maxes 200/130/230, дни [1,3,5]); план id 53f7f538-3db2-4b04-a147-289dcb2bcbbf
 - 9 завершённых тренировок за 3 микроцикла, даты раскиданы по 3 календарным неделям (последняя = текущая).
 - Использовать для проверки /stats и /streak. Пересоздать данные: `python /app/scripts/setup_stats_demo.py`.
 - Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.

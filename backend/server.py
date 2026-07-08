@@ -1,12 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Body, Depends, Header, Cookie, Response, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Body, Depends, Header, Cookie, Response, WebSocket, WebSocketDisconnect, Query, UploadFile, File
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 import re
 import copy
 import json
+import secrets
+import difflib
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
@@ -16,7 +19,7 @@ import httpx
 
 from models import (
     Exercise, ExerciseCreate,
-    ProgramTemplate, ProgramTemplateCreate,
+    ProgramTemplate, ProgramTemplateCreate, ProgramTemplateUpdate,
     Plan, PlanCreate,
     WorkoutSession, SessionStartReq,
     CoachLink,
@@ -647,43 +650,209 @@ async def create_exercise(payload: ExerciseCreate):
     return ex
 
 
-# ---- Шаблоны программ (библиотека / конструктор) ----
+# ---- Шаблоны программ (библиотека / конструктор / импорт / шаринг) ----
+_SHARE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def _new_share_code():
+    return "TWB-" + "".join(secrets.choice(_SHARE_ALPHABET) for _ in range(6))
+
+
+_bot_username_cache = {"value": None, "checked": False}
+
+
+async def _get_bot_username():
+    """Username бота (для deep-link t.me/<bot>?startapp=...). Ленивый кэш getMe."""
+    if _bot_username_cache["checked"]:
+        return _bot_username_cache["value"]
+    _bot_username_cache["checked"] = True
+    if not TELEGRAM_BOT_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=6) as c:
+            r = await c.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe")
+            d = r.json()
+            if d.get("ok"):
+                _bot_username_cache["value"] = (d.get("result") or {}).get("username")
+    except Exception:
+        pass
+    return _bot_username_cache["value"]
+
+
+def _template_recount(doc):
+    """Пересчёт производных полей шаблона (weeks_count / days_per_week)."""
+    weeks = doc.get("weeks") or []
+    doc["weeks_count"] = len(weeks)
+    dpw = 0
+    for w in weeks:
+        n = len([d for d in (w.get("days") or []) if not d.get("is_rest")])
+        dpw = max(dpw, n)
+    if dpw:
+        doc["days_per_week"] = dpw
+    return doc
+
+
+def _template_exercise_count(doc):
+    total = 0
+    for w in (doc.get("weeks") or []):
+        for d in (w.get("days") or []):
+            total += len(d.get("exercises") or [])
+    return total
+
+
+async def _get_own_template_or_403(template_id: str, current: dict):
+    doc = await db.programs.find_one({"id": template_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Программа не найдена")
+    if doc.get("is_builtin") or doc.get("owner_telegram_id") != current.get("telegram_id"):
+        raise HTTPException(status_code=403, detail="Можно изменять только свои программы")
+    return doc
+
+
 @api_router.get("/programs/templates", response_model=List[ProgramTemplate])
-async def list_templates(level: Optional[str] = None, goal: Optional[str] = None, owner: Optional[int] = None):
-    filt = {}
+async def list_templates(level: Optional[str] = None, goal: Optional[str] = None,
+                         current: dict = Depends(get_current_user)):
+    filt = {"$or": [{"is_builtin": True}, {"owner_telegram_id": current.get("telegram_id")}]}
     if level:
         filt["level"] = level
     if goal:
         filt["goal"] = goal
-    if owner is not None:
-        filt["$or"] = [{"is_builtin": True}, {"owner_telegram_id": owner}]
-    else:
-        filt["is_builtin"] = True
     docs = await db.programs.find(filt, {"_id": 0}).to_list(1000)
+    docs.sort(key=lambda t: (not t.get("is_builtin"), t.get("created_at") or ""))
     return docs
 
 
 @api_router.get("/programs/templates/{template_id}", response_model=ProgramTemplate)
-async def get_template(template_id: str):
+async def get_template(template_id: str, current: dict = Depends(get_current_user)):
     doc = await db.programs.find_one({"id": template_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Template not found")
+    if not doc.get("is_builtin") and doc.get("owner_telegram_id") != current.get("telegram_id"):
+        raise HTTPException(status_code=403, detail="Нет доступа к этой программе")
     return doc
 
 
 @api_router.post("/programs/templates", response_model=ProgramTemplate)
-async def create_template(payload: ProgramTemplateCreate):
+async def create_template(payload: ProgramTemplateCreate,
+                          current: dict = Depends(get_current_user)):
     tpl = ProgramTemplate(
-        **payload.model_dump(),
+        **{**payload.model_dump(), "owner_telegram_id": current.get("telegram_id")},
         is_builtin=False,
-        weeks_count=len(payload.weeks or []),
     )
     doc = tpl.model_dump()
+    if not doc.get("source"):
+        doc["source"] = "constructor"
+    _template_recount(doc)
     doc["created_at"] = doc["created_at"].isoformat()
     doc["updated_at"] = doc["updated_at"].isoformat()
-    await db.programs.insert_one(doc)
-    logger.info(f"Custom template created: {tpl.name} (owner={tpl.owner_telegram_id})")
-    return tpl
+    await db.programs.insert_one(dict(doc))
+    logger.info(f"Custom template created: {tpl.name} (owner={current.get('telegram_id')})")
+    return doc
+
+
+@api_router.patch("/programs/templates/{template_id}", response_model=ProgramTemplate)
+async def update_template(template_id: str, payload: ProgramTemplateUpdate,
+                          current: dict = Depends(get_current_user)):
+    doc = await _get_own_template_or_403(template_id, current)
+    upd = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    doc.update(upd)
+    _template_recount(doc)
+    doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.programs.update_one({"id": template_id}, {"$set": {k: doc[k] for k in
+        list(upd.keys()) + ["weeks_count", "days_per_week", "updated_at"] if k in doc}})
+    return doc
+
+
+@api_router.delete("/programs/templates/{template_id}")
+async def delete_template(template_id: str, current: dict = Depends(get_current_user)):
+    await _get_own_template_or_403(template_id, current)
+    res = await db.programs.delete_one({"id": template_id})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.post("/programs/templates/{template_id}/share")
+async def share_template(template_id: str, current: dict = Depends(get_current_user)):
+    """Владелец получает короткий код и ссылки для шаринга программы."""
+    doc = await _get_own_template_or_403(template_id, current)
+    code = doc.get("share_code")
+    if not code:
+        for _ in range(10):
+            code = _new_share_code()
+            if not await db.programs.find_one({"share_code": code}, {"_id": 0, "id": 1}):
+                break
+        await db.programs.update_one({"id": template_id}, {"$set": {
+            "share_code": code, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    bot = await _get_bot_username()
+    return {
+        "code": code,
+        "web_path": f"/import/{code}",
+        "tg_link": f"https://t.me/{bot}?startapp=import_{code.replace('-', '_')}" if bot else None,
+    }
+
+
+@api_router.get("/programs/shared/{code}")
+async def get_shared_program(code: str):
+    """ПУБЛИЧНОЕ превью программы по коду (для landing-страницы ссылки)."""
+    norm = code.strip().upper().replace("_", "-")
+    if not norm.startswith("TWB-"):
+        norm = f"TWB-{norm}"
+    doc = await db.programs.find_one({"share_code": norm}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Программа по этому коду не найдена")
+    owner = await db.users.find_one(
+        {"telegram_id": doc.get("owner_telegram_id")}, {"_id": 0, "first_name": 1})
+    bot = await _get_bot_username()
+    return {
+        "code": norm,
+        "name": doc.get("name"),
+        "description": doc.get("description") or "",
+        "level": doc.get("level"),
+        "goal": doc.get("goal"),
+        "weeks_count": doc.get("weeks_count") or len(doc.get("weeks") or []),
+        "days_per_week": doc.get("days_per_week"),
+        "exercises_count": _template_exercise_count(doc),
+        "requires_maxes": bool(doc.get("requires_maxes")),
+        "author_name": (owner or {}).get("first_name") or doc.get("author") or "Пользователь TWB",
+        "tg_link": f"https://t.me/{bot}?startapp=import_{norm.replace('-', '_')}" if bot else None,
+    }
+
+
+@api_router.post("/programs/import/{code}")
+async def import_shared_program(code: str, current: dict = Depends(get_current_user)):
+    """Импорт программы по коду — копия появляется в «Моих программах»."""
+    norm = code.strip().upper().replace("_", "-")
+    if not norm.startswith("TWB-"):
+        norm = f"TWB-{norm}"
+    src = await db.programs.find_one({"share_code": norm}, {"_id": 0})
+    if not src:
+        raise HTTPException(status_code=404, detail="Программа по этому коду не найдена")
+    tgid = current.get("telegram_id")
+    if src.get("owner_telegram_id") == tgid:
+        return {"template": src, "already_imported": True, "own": True}
+    existing = await db.programs.find_one(
+        {"owner_telegram_id": tgid, "shared_from": src["id"]}, {"_id": 0})
+    if existing:
+        return {"template": existing, "already_imported": True, "own": False}
+    owner = await db.users.find_one(
+        {"telegram_id": src.get("owner_telegram_id")}, {"_id": 0, "first_name": 1})
+    now = datetime.now(timezone.utc).isoformat()
+    new_doc = {
+        **src,
+        "id": str(uuid.uuid4()),
+        "slug": None,
+        "is_builtin": False,
+        "owner_telegram_id": tgid,
+        "source": "import",
+        "shared_from": src["id"],
+        "share_code": None,
+        "author": src.get("author") or (owner or {}).get("first_name") or "",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.programs.insert_one(dict(new_doc))
+    new_doc.pop("_id", None)
+    logger.info(f"Program imported by {tgid} via code {norm}")
+    return {"template": new_doc, "already_imported": False, "own": False}
 
 
 # ---- Планы (назначенный экземпляр программы = снимок шаблона) ----
@@ -3202,6 +3371,323 @@ async def coach_client_exercise_progress(coach_id: int, athlete_id: int,
         raise HTTPException(status_code=403, detail="Доступ от имени другого тренера запрещён")
     await _assert_coach_of(coach_id, athlete_id)
     return await _athlete_exercise_progress(athlete_id, slug, plan_id)
+
+
+# ===========================================================================
+# P6 — ИИ-анализ программ (DeepSeek V4 Flash, OpenAI-совместимый API)
+# Ключ появится позже (openmodel.ai / routerai.ru / api.deepseek.com) —
+# конфигурация целиком из .env: AI_BASE_URL, AI_API_KEY, AI_MODEL.
+# ===========================================================================
+def _ai_config():
+    return {
+        "base_url": (os.environ.get("AI_BASE_URL") or "").rstrip("/"),
+        "api_key": os.environ.get("AI_API_KEY") or "",
+        "model": os.environ.get("AI_MODEL") or "deepseek-v4-flash",
+    }
+
+
+@api_router.get("/ai/status")
+async def ai_status():
+    cfg = _ai_config()
+    return {"enabled": bool(cfg["base_url"] and cfg["api_key"]), "model": cfg["model"]}
+
+
+async def _ai_chat(messages, temperature=0.3):
+    cfg = _ai_config()
+    if not (cfg["base_url"] and cfg["api_key"]):
+        raise HTTPException(status_code=503,
+                            detail="ИИ-анализ пока не настроен: не задан API-ключ сервиса")
+    headers = {"Authorization": f"Bearer {cfg['api_key']}"}
+    body = {
+        "model": cfg["model"], "messages": messages, "temperature": temperature,
+        "max_tokens": 8000, "stream": False,
+        "response_format": {"type": "json_object"},
+    }
+    url = f"{cfg['base_url']}/chat/completions"
+    try:
+        async with httpx.AsyncClient(timeout=180) as c:
+            r = await c.post(url, json=body, headers=headers)
+            if r.status_code == 400:
+                # часть провайдеров не поддерживает response_format — повтор без него
+                body.pop("response_format", None)
+                r = await c.post(url, json=body, headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"ИИ-сервис недоступен: {e.__class__.__name__}")
+    if r.status_code >= 400:
+        try:
+            msg = (r.json().get("error") or {}).get("message") or r.text
+        except Exception:
+            msg = r.text
+        raise HTTPException(status_code=502, detail=f"Ошибка ИИ-сервиса ({r.status_code}): {str(msg)[:200]}")
+    try:
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception:
+        raise HTTPException(status_code=502, detail="Некорректный ответ ИИ-сервиса")
+
+
+def _extract_json(text):
+    s = (text or "").strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s, flags=re.MULTILINE).strip()
+    start, end = s.find("{"), s.rfind("}")
+    if start == -1 or end <= start:
+        raise HTTPException(status_code=422, detail="ИИ вернул некорректный формат — попробуйте ещё раз")
+    try:
+        return json.loads(s[start:end + 1])
+    except Exception:
+        raise HTTPException(status_code=422, detail="ИИ вернул некорректный JSON — попробуйте ещё раз")
+
+
+_AI_SCHEMA = """{
+ "name": "название программы (строка)",
+ "description": "краткое описание (строка)",
+ "level": "beginner|intermediate|advanced",
+ "goal": "strength|hypertrophy|powerlifting|general",
+ "weeks": [{
+   "week_index": 1,
+   "days": [{
+     "day_index": 1,
+     "title": "название дня, например 'День 1 · Присед'",
+     "exercises": [{
+       "name": "название упражнения (строка, по-русски)",
+       "muscle_group": "legs|chest|back|shoulders|biceps|triceps|core",
+       "lift_group": "squat|bench|deadlift или null",
+       "is_accessory": false,
+       "rest_seconds": 120,
+       "sets": [{"weight": 100.0, "percent_1rm": null, "sets": 3, "reps": 5}]
+     }]
+   }]
+ }]
+}"""
+
+_AI_SYSTEM = (
+    "Ты — опытный тренер по силовым видам спорта и парсер тренировочных программ. "
+    "Отвечай ТОЛЬКО валидным JSON без пояснений и markdown, строго по схеме:\n"
+    + _AI_SCHEMA +
+    "\nПравила:\n"
+    "- week_index и day_index начинаются с 1; day_index — день недели 1..7.\n"
+    "- Дни отдыха НЕ включай в структуру.\n"
+    "- В 'sets' каждая запись — группа подходов: sets (кол-во подходов) × reps (повторы).\n"
+    "- Если вес задан процентом от 1ПМ — заполни percent_1rm числом (например 75), а weight оставь null. "
+    "percent_1rm используй только для базовых движений с lift_group (squat/bench/deadlift).\n"
+    "- Если вес известен в кг — заполни weight, percent_1rm оставь null.\n"
+    "- Если вес неизвестен (собственный вес, разминка) — weight и percent_1rm null.\n"
+    "- is_accessory=true только для подсобки без веса (планка, гиперэкстензия без веса и т.п.).\n"
+    "- lift_group: 'squat' для приседов, 'bench' для жимов лёжа, 'deadlift' для становых тяг; иначе null.\n"
+    "- Названия упражнений и дней — на русском языке."
+)
+
+
+async def _ai_build_template(data, current, source):
+    """Конвертация JSON-ответа ИИ во внутренний шаблон программы + сохранение."""
+    if not isinstance(data, dict) or not (data.get("weeks") or []):
+        raise HTTPException(status_code=422, detail="ИИ не смог построить структуру программы")
+    tgid = current.get("telegram_id")
+    catalog = await db.exercises.find(
+        {"$or": [{"is_builtin": True}, {"owner_telegram_id": tgid}]}, {"_id": 0}
+    ).to_list(1000)
+    by_name = {(ex.get("name") or "").strip().lower(): ex for ex in catalog if ex.get("name")}
+    names = list(by_name.keys())
+
+    uses_percent = False
+    orm_map = {}
+    weeks_out = []
+    for wi, w in enumerate((data.get("weeks") or [])[:16], start=1):
+        days_out = []
+        used_idx = set()
+        for di, d in enumerate((w.get("days") or [])[:7], start=1):
+            exs_out = []
+            for order, e in enumerate((d.get("exercises") or [])[:15]):
+                nm = str(e.get("name") or "").strip()
+                if not nm:
+                    continue
+                match = by_name.get(nm.lower())
+                if not match:
+                    close = difflib.get_close_matches(nm.lower(), names, n=1, cutoff=0.85)
+                    if close:
+                        match = by_name[close[0]]
+                lg = e.get("lift_group")
+                if lg not in ("squat", "bench", "deadlift"):
+                    lg = None
+                mg = e.get("muscle_group")
+                if match and (match.get("muscle_groups") or []):
+                    mg = match["muscle_groups"][0]
+
+                ex_percent = False
+                scheme = []
+                for s in (e.get("sets") or [])[:12]:
+                    try:
+                        n_sets = max(1, min(20, int(s.get("sets") or 1)))
+                        reps = max(0, min(100, int(s.get("reps") or 0)))
+                    except (TypeError, ValueError):
+                        continue
+                    w_val = s.get("weight")
+                    pct = s.get("percent_1rm")
+                    if w_val is None and pct is not None and lg:
+                        try:
+                            w_val = _round_2_5(float(pct))  # base_max = 100 кг → вес ≡ проценту
+                            ex_percent = True
+                        except (TypeError, ValueError):
+                            w_val = None
+                    elif w_val is not None:
+                        try:
+                            w_val = round(float(w_val), 2)
+                        except (TypeError, ValueError):
+                            w_val = None
+                    scheme.append({"weight": w_val, "sets": n_sets, "reps": reps})
+                has_weight = any(s.get("weight") for s in scheme)
+                is_acc = bool(e.get("is_accessory")) and not has_weight
+                if ex_percent:
+                    uses_percent = True
+                    if match and match.get("slug"):
+                        orm_map[match["slug"]] = 100.0
+                try:
+                    rest = int(e.get("rest_seconds")) if e.get("rest_seconds") else None
+                except (TypeError, ValueError):
+                    rest = None
+                exs_out.append({
+                    "exercise_id": (match or {}).get("id"),
+                    "exercise_slug": (match or {}).get("slug"),
+                    "exercise_name": (match or {}).get("name") or nm,
+                    "muscle_group": mg,
+                    "order": order,
+                    "target_sets": sum(s["sets"] for s in scheme) or (4 if is_acc else 3),
+                    "target_reps": str(scheme[0]["reps"]) if scheme else "10",
+                    "weight_type": "kg",
+                    "rest_seconds": rest,
+                    "sets_scheme": [] if is_acc else scheme,
+                    "lift_group": lg,
+                    "is_accessory": is_acc,
+                })
+            if not exs_out:
+                continue
+            try:
+                idx = int(d.get("day_index") or di)
+            except (TypeError, ValueError):
+                idx = di
+            idx = min(7, max(1, idx))
+            while idx in used_idx and idx < 7:
+                idx += 1
+            used_idx.add(idx)
+            days_out.append({
+                "day_index": idx,
+                "title": str(d.get("title") or f"День {len(days_out) + 1}")[:60],
+                "is_rest": False,
+                "exercises": exs_out,
+            })
+        if days_out:
+            days_out.sort(key=lambda x: x["day_index"])
+            weeks_out.append({"week_index": wi, "published": True, "days": days_out})
+
+    if not weeks_out:
+        raise HTTPException(status_code=422, detail="ИИ не смог распознать ни одного тренировочного дня")
+
+    level = data.get("level") if data.get("level") in ("beginner", "intermediate", "advanced") else "intermediate"
+    goal = data.get("goal") if data.get("goal") in ("strength", "hypertrophy", "powerlifting", "general") else "general"
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "slug": None,
+        "name": str(data.get("name") or "Моя программа")[:80],
+        "description": str(data.get("description") or "")[:600],
+        "author": "ИИ-анализ",
+        "level": level,
+        "goal": goal,
+        "weeks": weeks_out,
+        "is_builtin": False,
+        "owner_telegram_id": tgid,
+        "source": source,
+        "share_code": None,
+        "shared_from": None,
+        "tags": [],
+        "default_one_rep_max": orm_map,
+        "requires_maxes": uses_percent,
+        "base_maxes": {"squat": 100, "bench": 100, "deadlift": 100} if uses_percent else {},
+        "created_at": now,
+        "updated_at": now,
+    }
+    _template_recount(doc)
+    await db.programs.insert_one(dict(doc))
+    doc.pop("_id", None)
+    logger.info(f"AI template created: {doc['name']} (owner={tgid}, source={source})")
+    return doc
+
+
+class AiGenerateReq(BaseModel):
+    prompt: str
+
+
+class AiParseReq(BaseModel):
+    text: str
+
+
+@api_router.post("/ai/program/generate")
+async def ai_generate_program(payload: AiGenerateReq, current: dict = Depends(get_current_user)):
+    """Генерация программы по пожеланиям (промпту)."""
+    prompt = (payload.prompt or "").strip()
+    if len(prompt) < 10:
+        raise HTTPException(status_code=400, detail="Опишите пожелания подробнее (минимум 10 символов)")
+    content = await _ai_chat([
+        {"role": "system", "content": _AI_SYSTEM},
+        {"role": "user", "content":
+            "Составь тренировочную программу по пожеланиям пользователя. "
+            "Если пользователь не указал длительность — сделай 4 недели; не более 12 недель. "
+            f"Пожелания:\n{prompt[:4000]}"},
+    ], temperature=0.5)
+    data = _extract_json(content)
+    return await _ai_build_template(data, current, "ai")
+
+
+async def _ai_parse_text(text, current):
+    content = await _ai_chat([
+        {"role": "system", "content": _AI_SYSTEM},
+        {"role": "user", "content":
+            "Разбери готовый план тренировок в структуру. Сохрани ВСЕ недели, дни, упражнения, "
+            "веса, проценты, подходы и повторы максимально близко к источнику. "
+            f"Источник:\n{text[:60000]}"},
+    ], temperature=0.1)
+    data = _extract_json(content)
+    return await _ai_build_template(data, current, "ai")
+
+
+@api_router.post("/ai/program/parse")
+async def ai_parse_program(payload: AiParseReq, current: dict = Depends(get_current_user)):
+    """Разбор готового плана (вставленный текст/таблица)."""
+    text = (payload.text or "").strip()
+    if len(text) < 20:
+        raise HTTPException(status_code=400, detail="Вставьте текст плана (минимум 20 символов)")
+    return await _ai_parse_text(text, current)
+
+
+@api_router.post("/ai/program/parse-file")
+async def ai_parse_program_file(file: UploadFile = File(...),
+                                current: dict = Depends(get_current_user)):
+    """Разбор готового плана из файла (.xlsx / .csv / .txt)."""
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Файл слишком большой (до 5 МБ)")
+    fname = (file.filename or "").lower()
+    if fname.endswith(".xlsx"):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Не удалось прочитать Excel-файл")
+        lines = []
+        for ws in wb.worksheets[:5]:
+            lines.append(f"### Лист: {ws.title}")
+            for row in ws.iter_rows(values_only=True):
+                cells = ["" if v is None else str(v) for v in row]
+                if any(c.strip() for c in cells):
+                    lines.append("\t".join(cells))
+        text = "\n".join(lines)
+    elif fname.endswith((".csv", ".txt", ".tsv", ".md")):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        raise HTTPException(status_code=400, detail="Поддерживаются файлы .xlsx, .csv, .txt")
+    text = text.strip()
+    if len(text) < 20:
+        raise HTTPException(status_code=400, detail="Файл пуст или не содержит плана")
+    return await _ai_parse_text(text, current)
 
 
 # ---- Настройки пользователя (streak_mode / единицы) ----

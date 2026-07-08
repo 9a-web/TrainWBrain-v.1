@@ -15,7 +15,11 @@ import { UserProvider, useUser } from "@/context/UserContext";
 import { getStats } from "@/api";
 import DateSelector from "@/components/DateSelector";
 import Programs from "@/pages/Programs";
+import ProgramBuilder from "@/pages/ProgramBuilder";
+import AiImport from "@/pages/AiImport";
+import ImportLanding from "@/pages/ImportLanding";
 import Login from "@/pages/Login";
+import { getStartParam } from "@/lib/platform";
 import Profile from "@/pages/Profile";
 import Coach from "@/pages/Coach";
 import CoachClient from "@/pages/CoachClient";
@@ -193,14 +197,48 @@ const GoogleCallback = () => {
 const AppShell = () => {
   const { loading, isAuthenticated } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const importHandledRef = useRef(false);
+
+  // Отложенный импорт по ссылке/коду: после логина или из Telegram start_param
+  useEffect(() => {
+    if (!isAuthenticated || importHandledRef.current) return;
+    let code = null;
+    try {
+      code = window.localStorage.getItem("twb_pending_import");
+    } catch (e) {
+      /* no-op */
+    }
+    if (!code) {
+      const sp = getStartParam();
+      if (sp && sp.startsWith("import_")) code = sp.slice(7).replace(/_/g, "-");
+    }
+    if (code) {
+      importHandledRef.current = true;
+      try {
+        window.localStorage.removeItem("twb_pending_import");
+      } catch (e) {
+        /* no-op */
+      }
+      navigate(`/import/${code}`);
+    }
+  }, [isAuthenticated, navigate]);
+
   if (location.pathname === "/auth/google") return <GoogleCallback />;
   if (loading) return <SplashScreen />;
-  if (!isAuthenticated) return <Login />;
+  if (!isAuthenticated) {
+    // Публичная landing-страница импорта доступна без входа
+    if (location.pathname.startsWith("/import/")) return <ImportLanding />;
+    return <Login />;
+  }
   return (
     <UserProvider>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/programs" element={<Programs />} />
+        <Route path="/programs/builder/:templateId" element={<ProgramBuilder />} />
+        <Route path="/programs/ai" element={<AiImport />} />
+        <Route path="/import/:code" element={<ImportLanding />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/streak" element={<StreakPage />} />

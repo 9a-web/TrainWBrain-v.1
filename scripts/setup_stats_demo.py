@@ -19,7 +19,7 @@ def main():
     tok, tg = d["token"], d["user"]["telegram_id"]
     print("tg:", tg)
 
-    tpls = requests.get(f"{BASE}/programs/templates").json()
+    tpls = requests.get(f"{BASE}/programs/templates", headers=H(tok)).json()
     tpl = next((t for t in tpls if t["slug"] == "pl-autumn-3m"), tpls[0])
     plan = requests.post(f"{BASE}/plans", json={
         "template_id": tpl["id"], "athlete_telegram_id": tg,

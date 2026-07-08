@@ -1,0 +1,59 @@
+{
+  "summary": "Полное независимое тестирование P6 «Импорт своих программ». Backend: 24/24 pytest PASS (шаблоны CRUD+auth, share стабилен, публичное preview с вариантами кода, импорт own/dup/404/401, AI 503+400+401 disabled, регрессия plans). Frontend: E2E конструктора (создать→редактировать→автосохранить→добавить неделю/день/упр→редактор→persist после reload) — PASS; share-модалка со всеми 3 копи-кнопками — PASS; code-import 'своя программа' — PASS; landing без auth→login→auto-redirect→authed import-btn — PASS; /import/UNKNOWN→import-error — PASS; AI-page (ai-disabled notice, disabled кнопки, табы) — PASS; регрессия /stats /streak Home — PASS после восстановления демо-данных.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_scenarios": {
+    "TEMPLATES_AUTH": "GET /api/programs/templates без токена → 401 ✓; с токеном возвращает builtins+свои ✓; демо шаблон b85dbff0... присутствует в списке владельца ✓",
+    "TEMPLATES_CRUD": "POST создаёт с source='constructor', owner=caller, weeks_count/days_per_week пересчитаны ✓; PATCH со сменой weeks пересчитывает weeks_count=2/days_per_week=2 ✓; PATCH чужой→403 ✓; PATCH builtin→403 ✓; DELETE чужой→403 ✓",
+    "SHARE": "POST /share (владелец) → code=TWB-ZZB5ZS, web_path=/import/TWB-ZZB5ZS ✓; повторный вызов возвращает тот же код (stable) ✓; POST /share чужим → 403 ✓; tg_link=null (bot username не резолвится в этом контейнере — не блокер, если у бота нет токена)",
+    "SHARED_PREVIEW": "GET /api/programs/shared/{code} БЕЗ токена работает ✓; возвращает name/weeks_count/exercises_count/author_name ✓; принимает варианты: 'twb-zzb5zs', 'twb_zzb5zs', 'ZZB5ZS', 'zzb5zs' — все нормализуются ✓; неизвестный код → 404 ✓",
+    "IMPORT": "POST /api/programs/import/{code} (auth) чужим — копирует с source='import', shared_from=<src.id>, share_code=null, owner=caller ✓; повторный импорт — already_imported=true, тот же id (dedup) ✓; импорт своего — own=true ✓; неверный код → 404 ✓; без токена → 401 ✓",
+    "AI_DISABLED": "GET /api/ai/status → {enabled:false, model:'deepseek-v4-flash'} (публичный) ✓; POST /ai/program/generate без auth → 401 ✓; POST /ai/program/parse без auth → 401 ✓; generate короткий prompt (<10) → 400 с русским detail ✓; generate/parse с валидными данными → 503 с detail 'ИИ-анализ пока не настроен: не задан API-ключ сервиса' ✓",
+    "REGRESSION_PLANS": "POST /plans с собственным шаблоном (source='constructor') — работает, weeks-снимок, source_template_id заполнено ✓; POST /plans с builtin+maxes — работает ✓",
+    "FRONTEND_PROGRAMS_PAGE": "/programs после логина: 3 кнопки action-constructor/action-code-import/action-ai ✓; my-programs-list с 'Силовая база 5×5' + бейдж 'Конструктор' + кнопки edit-{id}/share-{id}/delete-{id} ✓; 4 builtin в 'Готовые программы' ✓",
+    "FRONTEND_BUILDER_E2E": "action-constructor → создаёт новую программу и переходит на /programs/builder/{new_id} ✓; заполнение builder-name → builder-save-state 'saving'→'saved' за ~2с ✓; builder-add-day-0 добавляет день ✓; builder-add-ex-0-0 → exercise-picker → picker-search 'присед' → 4 pick-опции → клик pick-back-squat → упражнение появляется в builder-ex-0-0-0 ✓; клик по упр → exercise-editor → editor-save закрывает ✓; builder-dup-week-0 → week2 появилась ✓; builder-add-week → week3 появилась ✓; reload — имя/недели ПЕРСИСТЯТ ✓; builder-done → /programs, программа в списке ✓",
+    "FRONTEND_SHARE_MODAL": "share-{id} → share-modal со share-code (TWB-ZZB5ZS) и всеми 3 кнопками копирования (share-copy-code, share-copy-link, share-copy-tg) ✓",
+    "FRONTEND_CODE_IMPORT": "action-code-import → code-import-modal → ввод TWB-ZZB5ZS → code-import-submit → тост 'ваша собственная программа' для владельца ✓; вторым пользователем (dbg1783466020) импорт TWB-ZZB5ZS — 'Силовая база 5×5' добавляется в его my-programs-list ✓",
+    "FRONTEND_LANDING_UNAUTHED": "БЕЗ токена /import/TWB-ZZB5ZS → import-landing → import-preview (название, автор Демо Атлет, мета '1 нед · 2 дн./нед · 3 упражнений') ✓; import-open-web + import-open-tg присутствуют (tg-btn может отсутствовать в тестовом env — bot username не резолвится, деградация корректная) ✓; import-btn отсутствует без токена (корректно) ✓; клик import-open-web → localStorage.twb_pending_import='TWB-ZZB5ZS' + переход на /(логин) ✓; после логина авто-редирект на /import/TWB-ZZB5ZS с уже видимым authed import-btn 'Импортировать в мои программы' ✓",
+    "FRONTEND_LANDING_UNKNOWN": "/import/TWB-NOSUCH → import-landing → import-error визуально показан ✓",
+    "FRONTEND_AI_PAGE": "/programs/ai → ai-page ✓; после загрузки GET /api/ai/status: ai-disabled notice 'ИИ пока не подключён. Функция станет активной после добавления API-ключа сервиса (DeepSeek / openmodel / routerai)' ✓; ai-tab-generate/ai-tab-parse переключаются ✓; ai-generate-btn.disabled=true, ai-parse-btn.disabled=true ✓",
+    "REGRESSION_STATS_STREAK_HOME": "Home /: main-content, greeting-text, streak-row загружаются ✓; /stats: stats-page + kpi-tonnage/kpi-streak/kpi-workouts/kpi-completion + scope-plan/scope-all ✓; /streak: streak-page + streak-current=1, streak-best=1, streak-total=18 тренировок + heatmap ✓ (данные восстановлены после regression pytest)"
+  },
+  "critical_code_review_comments": [
+    "Скрипт /app/scripts/setup_stats_demo.py вызывал GET /api/programs/templates БЕЗ токена, что после P6 (auth required) стало ломаться. Исправлено — теперь передаёт Authorization header. Демо-данные пересозданы.",
+    "test_regression_plan_from_builtin в моих pytest побочно завершает предыдущий active-план владельца (backend помечает старые active/draft как completed при создании published). После delete созданного тест-плана — старый план НЕ восстанавливается. Это ожидаемое поведение backend, но тесты нужно писать так, чтобы не портить долгоживущие демо-данные. Мы пересоздали demo через setup_stats_demo.py.",
+    "Endpoint /api/programs/shared/{code} — публичный (правильно для landing без auth) и элегантно нормализует code (upper/underscore→dash/prefix TWB-).",
+    "AI-эндпоинты корректно разделяют 401 (auth) → 400 (валидация) → 503 (disabled) → 502 (ошибка провайдера). Русский detail на 503.",
+    "server.py вырос до 3848 строк — рекомендуется рефакторинг по модулям (programs/, ai/, coach/, stats/) для поддерживаемости.",
+    "Warnings [Telegram.WebApp] X is not supported in version 6.0 — ожидаемо в обычном браузере (не Telegram Mini App), не блокер."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_programs_p6.py",
+    "/app/test_reports/pytest/pytest_p6_results.xml"
+  ],
+  "action_items": [
+    "Ничего критического. Скрипт setup_stats_demo.py уже поправлен на auth-based get templates."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_programs_p6.py (создан)",
+    "/app/scripts/setup_stats_demo.py (передаёт auth header в GET /programs/templates)",
+    "/app/memory/test_credentials.md (актуализирован plan id владельца)"
+  ],
+  "success_rate": {
+    "backend": "100% (24/24 pytest)",
+    "frontend": "100% (все критические селекторы найдены, E2E конструктора без сбоев, landing→login→auto-redirect работает end-to-end, 0 JS pageerrors)"
+  },
+  "test_credentials": "statsdemo@twb.dev / password123 (tg 961727460933, plan теперь 53f7f538-3db2-4b04-a147-289dcb2bcbbf), dbg1783466020@ex.com / password123 (tg 922324126010). Демо-шаблон b85dbff0-ef78-48f6-805d-2a6417e912df / TWB-ZZB5ZS — сохранён.",
+  "seed_data_creation": "Пересоздал stats demo через /app/scripts/setup_stats_demo.py (18 тренировок, plan 53f7f538...); не удалял b85dbff0.../TWB-ZZB5ZS.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Регрессионные test-файлы: /app/backend/tests/test_programs_p6.py (24 теста P6), /app/backend/tests/test_stats.py (23 теста Stats). ВАЖНО: если запускать test_regression_plan_from_builtin — он побочно завершает предыдущий active-план владельца; после этого нужно пересоздать демо-данные через `python /app/scripts/setup_stats_demo.py`. plan_id в test_credentials.md обновлён (53f7f538-...). Ключевые UI-селекторы P6: /programs — action-constructor/action-code-import/action-ai, my-programs-list, share-{id}/edit-{id}/delete-{id}, share-modal → share-code+share-copy-{code,link,tg}, code-import-modal → code-input+code-import-submit. /programs/builder/{id} — builder-page, builder-name, builder-save-state (класс pb-save-saved/saving), builder-add-day-{wi}, builder-add-ex-{wi}-{di}, exercise-picker → picker-search + pick-{slug}, exercise-editor → editor-save/editor-delete, builder-dup-week-{wi}/builder-add-week/builder-done. /import/{code} — import-landing, import-preview/import-error, import-open-web/import-open-tg (без auth), import-btn (после auth). /programs/ai — ai-page, ai-disabled, ai-tab-generate/ai-tab-parse, ai-generate-btn/ai-parse-btn (disabled без ключа).",
+  "rca of the issue": "N/A — фича P6 работает штатно, никаких блокеров не обнаружено. Единственный обнаруженный script-level баг (setup_stats_demo без auth) был минорный и исправлен."
+}
