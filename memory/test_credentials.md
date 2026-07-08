@@ -33,7 +33,8 @@
 - Использовать для проверки /stats и /streak. Пересоздать данные: `python /app/scripts/setup_stats_demo.py`.
 - Демо-шаблон P6: «Силовая база 5×5» id `b85dbff0-ef78-48f6-805d-2a6417e912df`, share code `TWB-ZZB5ZS` (НЕ удалять — используется тестами импорта/landing).
 - Второй пользователь (импорт/403-проверки): `dbg1783466020@ex.com` / `password123` (tg 922324126010).
-- ИИ (P6): **АКТИВИРОВАН** через RouterAI (`https://routerai.ru/api/v1`, модель `deepseek/deepseek-v4-flash`). Ключ и base URL — в `backend/.env` (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`). `/api/ai/status` → `{enabled: true}`. Проверено `/api/ai/program/generate` — генерирует валидные 3-нед. программы с прогрессией и fuzzy-маппингом на каталог.
+- ИИ (P6): **АКТИВИРОВАН** через RouterAI (`https://routerai.ru/api/v1`, модель `deepseek/deepseek-v4-flash`). Ключ и base URL — в `backend/.env` (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`). `/api/ai/status` → `{enabled: true}`. Проверено `/api/ai/program/generate` — генерирует валидные программы с прогрессией и fuzzy-маппингом на каталог.
+- ИИ-генерация (июнь 2026): системный промпт усилен (`_AI_SYSTEM_GEN` в server.py) — 5–8 упражнений/день, недельный объём 10–20 подходов, обязательная прогрессия/разгрузка, сплиты по числу дней; `max_tokens` поднят до 16000. Проверено: 4 нед × 4 дня × 6–7 упр, волновая прогрессия 70→75→80→65%.
 - Прочие аккаунты из прошлых сессий (coachdemo/athdemo/phase1demo/statsdemo1782072251) в БД текущего форка ОТСУТСТВУЮТ.
 
 ## Phase 3 LIVE demo (coach-led session start) — fresh pair, plan PUBLISHED, NO session yet (regenerated Jun 2026)
