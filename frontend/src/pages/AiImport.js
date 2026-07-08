@@ -255,7 +255,15 @@ export default function AiImport() {
             data-testid="ai-again">
             Создать ещё одну
           </button>
-          <AiProgramPreview open={showPreview} tpl={result} onClose={() => setShowPreview(false)} />
+          <AiProgramPreview
+            open={showPreview}
+            tpl={result}
+            onClose={() => setShowPreview(false)}
+            onUse={() => {
+              hapticNotify("success");
+              navigate("/programs", { state: { assignTemplateId: result.id } });
+            }}
+          />
         </div>
       ) : tab === "generate" && questions ? (
         (() => {

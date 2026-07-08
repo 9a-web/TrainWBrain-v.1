@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Check, Dumbbell, PencilLine, Link2, Sparkles,
   Share2, Trash2, Copy, Send, X,
@@ -246,6 +246,7 @@ const CodeImportModal = ({ onClose, onImported }) => {
 const Programs = () => {
   const { user } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
   useBackButton(true, () => navigate("/"));
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -280,6 +281,30 @@ const Programs = () => {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [user?.telegram_id]);
+
+  // Автоопенер конфига после навигации из ИИ-просмотра (state.assignTemplateId)
+  useEffect(() => {
+    const targetId = location.state?.assignTemplateId;
+    if (!targetId || !templates.length || !user?.telegram_id) return;
+    const tpl = templates.find((t) => t.id === targetId);
+    // очистить state, чтобы не сработало повторно
+    navigate(location.pathname, { replace: true, state: {} });
+    if (!tpl) return;
+    if (tpl.requires_maxes) {
+      // нужны 1ПМ — открываем конфиг-модалку
+      setConfigTpl(tpl);
+    } else {
+      // одним кликом: дефолтные дни (Пн/Ср/Пт для 3, Пн/Вт/Чт/Пт для 4 и т.д.)
+      const daysNeeded = tpl.days_per_week || 3;
+      const defaultDays = daysNeeded === 3 ? [1, 3, 5]
+        : daysNeeded === 4 ? [1, 2, 4, 5]
+        : daysNeeded === 2 ? [1, 4]
+        : daysNeeded === 5 ? [1, 2, 3, 4, 5]
+        : daysNeeded === 6 ? [1, 2, 3, 4, 5, 6]
+        : [1];
+      assign(tpl, { training_days: defaultDays });
+    }
+  }, [templates, location.state, user?.telegram_id]);
 
   const myTemplates = templates.filter((t) => !t.is_builtin);
   const builtins = templates.filter((t) => t.is_builtin);

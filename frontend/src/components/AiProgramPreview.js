@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { X, Dumbbell, CalendarDays, Flame, TrendingUp, Coffee } from "lucide-react";
+import { X, Dumbbell, CalendarDays, Flame, TrendingUp, Coffee, Play } from "lucide-react";
 import "./AiProgramPreview.css";
 
 const MUSCLE_LABELS = {
@@ -52,7 +52,7 @@ const dayStats = (day, isPct) => {
   return { tonnage, sets, avgIntensity: intensities.length ? intensities.reduce((a, b) => a + b, 0) / intensities.length : 0 };
 };
 
-export function AiProgramPreview({ open, tpl, onClose }) {
+export function AiProgramPreview({ open, tpl, onClose, onUse }) {
   const [weekIdx, setWeekIdx] = useState(0);
 
   useEffect(() => {
@@ -177,7 +177,23 @@ export function AiProgramPreview({ open, tpl, onClose }) {
         </div>
 
         <footer className="app-footer">
-          <span>Программу можно доработать в конструкторе — веса, подходы и повторы редактируются.</span>
+          {onUse ? (
+            <>
+              <button className="app-use-btn" onClick={onUse} data-testid="ai-preview-use">
+                <Play size={16} />
+                <span>Использовать эту программу</span>
+              </button>
+              <span className="app-footer-note">
+                {isPct
+                  ? "Дальше — вы укажете свои 1ПМ (присед / жим / тяга) и дни тренировок."
+                  : "Программа будет назначена как активная. Дни тренировок — Пн/Ср/Пт по умолчанию, можно поменять в настройках."}
+              </span>
+            </>
+          ) : (
+            <span className="app-footer-note">
+              Программу можно доработать в конструкторе — веса, подходы и повторы редактируются.
+            </span>
+          )}
         </footer>
       </div>
     </div>
