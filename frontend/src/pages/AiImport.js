@@ -535,10 +535,43 @@ export default function AiImport() {
         </div>
       ) : (
         <div className="ai-panel">
-          <p className="ai-hint">
-            Загрузите до {MAX_PHOTOS} фото — скриншоты чатов, таблиц, страниц из тетради.
-            Gemini считает содержимое, DeepSeek соберёт из него структурированную программу.
-          </p>
+          <div className="ai-photo-hero" data-testid="ai-photo-hero">
+            <div className="ai-photo-hero-glow" aria-hidden="true" />
+            <img src="/img/3d/eye.png" alt="" className="ai-photo-hero-eye" />
+            <div className="ai-photo-hero-body">
+              <h3 className="ai-photo-hero-title">
+                Фото → <span className="ai-photo-hero-accent">программа</span>
+              </h3>
+              <p className="ai-photo-hero-sub">
+                Загрузите до {MAX_PHOTOS} фото — скриншоты чатов, таблицы, страницы из тетради.
+                ИИ распознает всё и соберёт готовую программу.
+              </p>
+              <ol className="ai-photo-steps">
+                <li>
+                  <span className="ai-photo-step-num">1</span>
+                  <div>
+                    <b>Загружаете фото</b>
+                    <small>Любые скрины — из чатов, Excel, тетради</small>
+                  </div>
+                </li>
+                <li>
+                  <span className="ai-photo-step-num">2</span>
+                  <div>
+                    <b>Gemini читает</b>
+                    <small>Распознаёт упражнения, подходы, веса</small>
+                  </div>
+                </li>
+                <li>
+                  <span className="ai-photo-step-num">3</span>
+                  <div>
+                    <b>DeepSeek собирает</b>
+                    <small>Полноценный шаблон в «Моих программах»</small>
+                  </div>
+                </li>
+              </ol>
+            </div>
+          </div>
+
           <input ref={photoRef} type="file" accept="image/*" multiple
             style={{ display: "none" }}
             onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }}
