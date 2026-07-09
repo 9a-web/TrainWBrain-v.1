@@ -1,0 +1,27 @@
+{
+  "summary": "Iter10 — UI-регрессия двух мобильных багов на /programs/ai (viewport 360x800 + 480x900). Оба бага ИСПРАВЛЕНЫ и подтверждены. (1) Табы 'По описанию' / 'Готовый план' / 'По фото' @360w: все три имеют идентичные размеры 99×36px, computed white-space:nowrap, текст на одной строке (высоты min=max=36px). @480w — 139×38px, тоже nowrap. (2) Кружки .ai-photo-step-num @360w: все три ровно 26×26px, diff w−h=0 (идеально круглые), border-radius:999px, aspect-ratio:1/1 — размеры полностью идентичны между тремя кружками. Media-query <380px активирован: grid-template-columns='242px' (одна колонка → вертикальный layout), стрелки .ai-photo-step-arrow → display:none. @480w — грид горизонтальный '102px 16px 102px 16px 102px', стрелки display:block. Регрессия табов: клики по всем трём переключают панели (generate→textarea, parse→file-btn, photo→hero-card), в консоли нет ошибок (только некритичные warnings Telegram WebApp 6.0).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_scenarios": {
+    "MOBILE_360_TABS_SINGLE_LINE": "3 таба [ai-tab-generate|ai-tab-parse|ai-tab-photo] на 360w: w=99px, h=36px (все одинаковые), whiteSpace='nowrap', fontSize=12px, текст не переносится. PASS.",
+    "MOBILE_360_STEP_CIRCLES_UNIFORM": "3 кружка .ai-photo-step-num на 360w: все w=26 h=26 (diff=0), aspect-ratio '1 / 1', border-radius '999px'. Uniform w/h, идеальный круг. PASS.",
+    "MOBILE_360_VERTICAL_STEPS": ".ai-photo-steps grid-template-columns='242px' (single column) @360w. .ai-photo-step-arrow display='none' (обе стрелки скрыты). PASS.",
+    "DESKTOP_480_VISUAL": "Табы 139×38px все с nowrap. Кружки 26×26 uniform. Стрелки display=block. Grid '102px 16px 102px 16px 102px' (горизонтальный). Скриншот композиции цельный. PASS.",
+    "REGRESSION_TABS_SWITCHING": "generate→.ai-textarea visible; parse→.ai-file-btn visible; photo→.ai-photo-hero visible. Console: 0 errors."
+  },
+  "critical_code_review_comments": [
+    "Фикс в AiImport.css корректный: .ai-tab { white-space:nowrap; min-width:0 } + @media(max-width:400px){font-size:12px; padding:9px 4px} — гарантирует одну строку на 360w. .ai-photo-step-num имеет width/height/min-width/min-height/flex:0 0 26px + aspect-ratio:1/1 — избыточная, но защитная страховка от сжатия во flex/grid контексте, работает.",
+    "Медиа-переход на <380px корректно скрывает стрелки и переключает grid на 1fr. Внутри step переключается на row-layout (flex-direction:row, text-align:left) — визуально аккуратно.",
+    "Мелочь (не блокер): на 360w step-container внутренний width — 242px, а стрелки .ai-photo-step-arrow остаются в DOM (просто display:none). Ок для доступности."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "test_credentials": "streakdemo@twb.dev / password123 (tg 992689326272) — залогинились email/паролем, кнопку 'Войти' пришлось выбирать через exact=True (иначе матчила 'Войти через Google').",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter10 — узкая UI-регрессия табов+кружков на /programs/ai. Оба бага исправлены. Функциональный E2E parse-photo уже покрыт iter9 (не повторял). Логин: при использовании get_by_role('button', name='Войти') — ОБЯЗАТЕЛЬНО exact=True, иначе матчит 'Войти через Google'.",
+  "rca of the issue": "Bug1 (перенос текста табов на мобильном): .ai-tab не имел white-space:nowrap → при 360w три слова 'По описанию', 'Готовый план', 'По фото' + иконка не влезали в flex:1 колонку (~99px). Фикс: добавлен white-space:nowrap + min-width:0 + media@400 уменьшил font-size до 12px и padding до 9px 4px. Bug2 (кружки разного размера/кривые): .ai-photo-step-num полагался только на width/height:26px без aspect-ratio; во flex-контексте цифры внутри могли раздвинуть кружок. Фикс: добавлены min-width/min-height:26px, flex:0 0 26px, flex-shrink:0, aspect-ratio:1/1 — тройная гарантия квадратности."
+}
