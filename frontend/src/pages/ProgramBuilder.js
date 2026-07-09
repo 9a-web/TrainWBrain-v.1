@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Plus, Trash2, CopyPlus, ChevronDown, ChevronUp,
-  Search, Check, Loader2, CloudUpload, X, GripVertical, Sparkles, ArrowRight,
+  Search, Check, Loader2, CloudUpload, X, GripVertical, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PulsingBorder } from "@paper-design/shaders-react";
@@ -447,7 +447,9 @@ export default function ProgramBuilder() {
           />
         </span>
         <span className="pb-ai-promo-content">
-          <span className="pb-ai-promo-icon"><Sparkles size={18} /></span>
+          <span className="pb-ai-promo-icon">
+            <img src="/img/3d/star-dot.png" alt="" className="pb-ai-promo-img" />
+          </span>
           <span className="pb-ai-promo-text">
             <b>Создайте программу через ИИ бесплатно</b>
             <span>По вашим предпочтениям и научным исследованиям</span>

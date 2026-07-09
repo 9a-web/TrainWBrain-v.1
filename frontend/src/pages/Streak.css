@@ -100,22 +100,32 @@
 }
 .sk-flame {
   position: relative;
-  width: 74px;
-  height: 74px;
-  margin: 0 auto 10px;
-  border-radius: 50%;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.05);
+  filter: grayscale(0.5) brightness(0.85);
+  transition: filter 0.5s ease;
+}
+.sk-flame-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
 }
 .sk-flame.lit {
-  color: #ff8a24;
-  background: rgba(255, 138, 36, 0.14);
-  box-shadow: 0 0 0 7px rgba(255, 138, 36, 0.07), 0 0 34px rgba(255, 138, 36, 0.3);
-  animation: twb-flicker 3.2s ease-in-out infinite;
+  filter: grayscale(0) brightness(1) drop-shadow(0 4px 22px rgba(255, 90, 20, 0.55)) drop-shadow(0 0 40px rgba(255, 138, 36, 0.3));
+  animation: sk-flame-flicker 2.6s ease-in-out infinite;
   transform-origin: center bottom;
+}
+@keyframes sk-flame-flicker {
+  0%, 100% { transform: scale(1) rotate(-1deg); }
+  25% { transform: scale(1.03, 0.98) rotate(1.5deg); }
+  50% { transform: scale(0.98, 1.05) rotate(-1.5deg); }
+  75% { transform: scale(1.02, 1.01) rotate(1deg); }
 }
 .sk-num {
   position: relative;

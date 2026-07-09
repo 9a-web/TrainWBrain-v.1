@@ -75,14 +75,22 @@
 }
 .pb-ai-promo-icon {
   flex: 0 0 auto;
-  width: 40px; height: 40px;
-  border-radius: 12px;
+  width: 52px; height: 52px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(-34deg, #ff8a24, #ffda24);
-  color: #1c1c1c;
-  box-shadow: 0 6px 20px rgba(255, 138, 36, 0.35);
+  filter: drop-shadow(0 6px 16px rgba(255, 138, 36, 0.25));
+  animation: pb-ai-img-float 4s ease-in-out infinite;
+}
+.pb-ai-promo-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+@keyframes pb-ai-img-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-3px) rotate(-3deg); }
+  66% { transform: translateY(-1px) rotate(3deg); }
 }
 .pb-ai-promo-text {
   flex: 1;

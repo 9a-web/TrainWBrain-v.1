@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Flame, Check, Trophy, Dumbbell, Target } from "lucide-react";
+import { ArrowLeft, Check, Trophy, Dumbbell, Target } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useBackButton } from "@/hooks/useTelegramUI";
 import { getStreakData } from "@/api";
@@ -109,7 +109,7 @@ export default function StreakPage() {
           <div className="sk-hero" data-testid="streak-hero">
             <div className="sk-hero-glow" />
             <div className={`sk-flame ${cur > 0 ? "lit" : ""}`}>
-              <Flame size={40} strokeWidth={2} />
+              <img src="/img/3d/fire.png" alt="" className="sk-flame-img" />
             </div>
             <div className="sk-num" data-testid="streak-current">{cur}</div>
             <div className="sk-num-label">
