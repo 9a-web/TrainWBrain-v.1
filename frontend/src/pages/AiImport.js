@@ -85,7 +85,7 @@ export default function AiImport() {
   useBackButton(true, () => navigate("/programs"));
 
   const [status, setStatus] = useState(null);
-  const [tab, setTab] = useState("generate"); // generate | parse | photo
+  const [tab, setTab] = useState("generate"); // generate | parse
   const [prompt, setPrompt] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
@@ -338,10 +338,6 @@ export default function AiImport() {
           onClick={() => setTab("parse")} data-testid="ai-tab-parse">
           <FileText size={15} /> Готовый план
         </button>
-        <button className={`ai-tab ${tab === "photo" ? "active" : ""}`}
-          onClick={() => setTab("photo")} data-testid="ai-tab-photo">
-          <Camera size={15} /> По фото
-        </button>
       </div>
 
       {busy ? (
@@ -510,31 +506,7 @@ export default function AiImport() {
         </div>
       ) : tab === "parse" ? (
         <div className="ai-panel">
-          <p className="ai-hint">Вставьте план текстом (можно прямо из Excel/заметок) или загрузите файл — ИИ разберёт его в структуру.</p>
-          <textarea className="ai-textarea" rows={7} value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={"Неделя 1\nПн: Присед 5×5 80%, Жим лёжа 5×5 75%…"}
-            data-testid="ai-text" />
-          <input ref={fileRef} type="file" accept=".xlsx,.csv,.txt,.tsv,.md"
-            style={{ display: "none" }}
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            data-testid="ai-file-input" />
-          <button className="ai-file-btn" onClick={() => fileRef.current?.click()} data-testid="ai-file-btn">
-            <Upload size={15} />
-            {file ? file.name : "Загрузить файл (.xlsx / .csv / .txt)"}
-            {file ? (
-              <span className="ai-file-clear" onClick={(e) => { e.stopPropagation(); setFile(null); fileRef.current.value = ""; }}>
-                ×
-              </span>
-            ) : null}
-          </button>
-          <button className="ai-btn-primary ai-submit" onClick={parse}
-            disabled={!enabled || (!file && text.trim().length < 20)} data-testid="ai-parse-btn">
-            <Sparkles size={16} /> Разобрать план
-          </button>
-        </div>
-      ) : (
-        <div className="ai-panel">
+          {/* Hero-карточка + загрузка фото */}
           <div className="ai-photo-hero" data-testid="ai-photo-hero">
             <div className="ai-photo-hero-glow" aria-hidden="true" />
             <div className="ai-photo-hero-eye-wrap">
@@ -628,8 +600,33 @@ export default function AiImport() {
             data-testid="ai-parse-photo-btn">
             <Sparkles size={16} /> Разобрать по фото
           </button>
+
+          {/* Разделитель: текст / файл */}
+          <div className="ai-parse-divider" aria-hidden="true"><span>или вставьте текст</span></div>
+
+          <textarea className="ai-textarea" rows={6} value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"Неделя 1\nПн: Присед 5×5 80%, Жим лёжа 5×5 75%…"}
+            data-testid="ai-text" />
+          <input ref={fileRef} type="file" accept=".xlsx,.csv,.txt,.tsv,.md"
+            style={{ display: "none" }}
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            data-testid="ai-file-input" />
+          <button className="ai-file-btn" onClick={() => fileRef.current?.click()} data-testid="ai-file-btn">
+            <Upload size={15} />
+            {file ? file.name : "Загрузить файл (.xlsx / .csv / .txt)"}
+            {file ? (
+              <span className="ai-file-clear" onClick={(e) => { e.stopPropagation(); setFile(null); fileRef.current.value = ""; }}>
+                ×
+              </span>
+            ) : null}
+          </button>
+          <button className="ai-btn-primary ai-submit" onClick={parse}
+            disabled={!enabled || (!file && text.trim().length < 20)} data-testid="ai-parse-btn">
+            <Sparkles size={16} /> Разобрать план
+          </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
