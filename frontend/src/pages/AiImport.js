@@ -508,6 +508,22 @@ export default function AiImport() {
         <div className="ai-panel">
           {/* Hero-карточка + загрузка фото */}
           <div className="ai-photo-hero" data-testid="ai-photo-hero">
+            <div className="ai-photo-hero-shader" aria-hidden="true">
+              <MeshGradient
+                width="100%"
+                height="100%"
+                colors={["#ff8a24", "#ffda24", "#ff5e00", "#3a1a4a", "#0a0f1e"]}
+                distortion={0.7}
+                swirl={0.55}
+                offsetX={0.1}
+                offsetY={-0.1}
+                speed={0.35}
+                scale={1.4}
+                grainMixer={0.22}
+                grainOverlay={0.12}
+              />
+            </div>
+            <div className="ai-photo-hero-vignette" aria-hidden="true" />
             <div className="ai-photo-hero-glow" aria-hidden="true" />
             <div className="ai-photo-hero-eye-wrap">
               <img src="/img/3d/eye.png" alt="" className="ai-photo-hero-eye" />
