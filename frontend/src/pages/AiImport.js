@@ -5,7 +5,7 @@ import {
   CheckCircle2, PencilLine, Dumbbell, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import { GrainGradient } from "@paper-design/shaders-react";
+import { GrainGradient, MeshGradient } from "@paper-design/shaders-react";
 import {
   getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile, aiProgramQuestions, getAiJob,
 } from "@/api";
@@ -206,6 +206,44 @@ export default function AiImport() {
         </div>
       ) : null}
 
+      {/* Hero — liquid mesh gradient + 3D icon (initial prompt state only) */}
+      {!busy && !questions && !result && tab === "generate" ? (
+        <div className="ai-hero" data-testid="ai-hero">
+          <div className="ai-hero-shader" aria-hidden="true">
+            <MeshGradient
+              width="100%"
+              height="100%"
+              colors={["#ff8a24", "#ffda24", "#ff5e00", "#7a1a00", "#1c1c1c"]}
+              distortion={0.95}
+              swirl={0.65}
+              offsetX={0}
+              offsetY={0}
+              speed={0.55}
+              scale={1.2}
+              grainMixer={0.28}
+              grainOverlay={0.15}
+            />
+          </div>
+          <div className="ai-hero-vignette" aria-hidden="true" />
+          <div className="ai-hero-content">
+            <img src="/img/3d/star-dot.png" alt="" className="ai-hero-icon" />
+            <h2 className="ai-hero-title">
+              Программа под вас <span className="ai-hero-accent">за 1 минуту</span>
+            </h2>
+            <p className="ai-hero-sub">
+              Опишите цель — ИИ задаст 8–10 уточняющих вопросов и соберёт программу
+              на основе <b>научных исследований</b> и топовых лифтерских методик.
+            </p>
+            <div className="ai-hero-badges">
+              <span className="ai-hero-badge"><b>Wendler</b> 5/3/1</span>
+              <span className="ai-hero-badge"><b>Sheiko</b></span>
+              <span className="ai-hero-badge"><b>PPL</b> · PHUL · PHAT</span>
+              <span className="ai-hero-badge">и ещё 7 схем</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="ai-tabs">
         <button className={`ai-tab ${tab === "generate" ? "active" : ""}`}
           onClick={() => setTab("generate")} data-testid="ai-tab-generate">
@@ -345,7 +383,6 @@ export default function AiImport() {
         })()
       ) : tab === "generate" ? (
         <div className="ai-panel">
-          <p className="ai-hint">Опишите цель, опыт, сколько дней в неделю и что любите делать — ИИ задаст 8–10 уточняющих вопросов в 2 шага и соберёт программу под вас.</p>
           <textarea className="ai-textarea" rows={5} value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Например: хочу программу на силу, 3 дня в неделю, приседаю 120 кг…"
