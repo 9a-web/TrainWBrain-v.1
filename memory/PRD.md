@@ -74,3 +74,9 @@ React 19 (CRACO) + FastAPI + MongoDB (Motor). Backend — монолит `server
 
 ## Тестовые аккаунты
 См. `/app/memory/test_credentials.md`.
+
+## Июль 2026 (continuation) — Редизайн «Тренировочной серии»: GitHub-календарь с сериями
+- **Бэкенд** (`_athlete_streak_data`, `GET /api/stats/{tg}/streak`) — аддитивно: `streaks[]` (серии >=2 дней подряд: start/end/length/is_current/is_best, свежие первыми, cap 50), аннотация дней сетки `calendar[].days[]` → `streak_len/streak_start/streak_end`, метрики `this_month`, `avg_per_week`, `first_workout_date`. Протестировано deep_testing_backend_v2 — все сценарии PASS (авторизация 401/403, clamp weeks 1..26, пустой пользователь).
+- **Фронтенд** (`Streak.js`/`Streak.css`): (1) календарь как в GitHub — над колонками ярлыки серий `🔥N` (рекорд — градиентный, текущая — pulse), дни серии соединены в вертикальные «пилюли» (run-start/run-end радиусы + conn-мостик через 4px gap); (2) тоггл периода «3 мес / 6 мес» (weeks 13/26) с автопрокруткой к свежим неделям и sticky-ярлыками дней недели; (3) новый блок «Мои серии» — список серий с диапазоном дат (fmtRange RU), тегами «сейчас»/«рекорд» (Trophy), кнопка «Показать все» при >5; (4) мини-статистика: в этом месяце / в среднем в нед / активных дней; (5) тултипы ячеек: дата + кол-во + длина серии.
+- **Демо:** `streakdemo@twb.dev` / `password123` (tg 992689326272) — серии 5/3/2 дн; пересоздать `python /app/scripts/setup_streak_demo.py`.
+- **Инфраструктура:** `frontend/.env` REACT_APP_BACKEND_URL обновлён на актуальный preview-домен контейнера (fc46ec61-...).
