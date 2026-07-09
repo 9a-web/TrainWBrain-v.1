@@ -96,12 +96,15 @@
   font-family: "Playfair Display", Georgia, serif;
   font-style: italic;
   font-weight: 500;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: baseline;
+  line-height: 1;
   white-space: nowrap;
   color: #1c1c1c;
   background: #ffce8a;
-  padding: 0 10px;
-  border-radius: 6px;
+  padding: 6px 12px 8px;
+  border-radius: 8px;
   margin-left: 6px;
   box-shadow: 0 4px 16px rgba(255, 138, 36, 0.55);
   text-shadow: none;
