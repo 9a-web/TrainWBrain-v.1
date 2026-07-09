@@ -557,13 +557,13 @@ export default function AiImport() {
               <div className="ai-photo-step-arrow" aria-hidden="true">→</div>
               <div className="ai-photo-step">
                 <span className="ai-photo-step-num">2</span>
-                <b>Gemini читает</b>
+                <b>Модель анализирует</b>
                 <small>Упражнения, подходы, веса</small>
               </div>
               <div className="ai-photo-step-arrow" aria-hidden="true">→</div>
               <div className="ai-photo-step">
                 <span className="ai-photo-step-num">3</span>
-                <b>DeepSeek собирает</b>
+                <b>Собирает тренировочный план</b>
                 <small>Шаблон в «Моих программах»</small>
               </div>
             </div>
