@@ -80,3 +80,21 @@
 - 13 завершённых тренировок: серии 5 дн (~4 нед назад), 3 дн (~2 нед назад), текущая 2 дн (вчера+сегодня) + 3 одиночных дня.
 - Использовать для проверки GET /api/stats/{tg}/streak (поля streaks, this_month, avg_per_week, streak_len/streak_start/streak_end в calendar) и экрана /streak.
 - Пересоздать: `python /app/scripts/setup_streak_demo.py` (даты привязаны к «сегодня» контейнера).
+
+## AI dual-provider (июль 2026, эта сессия)
+- **Текстовый провайдер (генерация/refine/parse):** DeepSeek V4 Flash через RouterAI.
+  - `AI_BASE_URL=https://routerai.ru/api/v1`, `AI_MODEL=deepseek/deepseek-v4-flash`,
+    `AI_API_KEY=sk-nsDjxUsUAi_WkeICOwhWIgMcwNM7IMKm` (RouterAI, не официальный DeepSeek — важно!)
+- **Vision-провайдер (разбор фото):** Google Gemini через OpenAI-совместимый эндпоинт.
+  - `AI_VISION_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`,
+    `AI_VISION_MODEL=gemini-flash-latest`, `AI_VISION_API_KEY=AQ.Ab8RN6Lm-...` (из AI Studio).
+- `GET /api/ai/status` → `{enabled: true, model: "...", vision_enabled: true, vision_model: "..."}`.
+- Новый эндпоинт `POST /api/ai/program/parse-photo` (multipart, до 8 файлов, ≤8МБ каждый, image/*):
+  двухшаговый пайплайн Gemini(текст из фото) → DeepSeek(структура) → сохранённый шаблон.
+  Фоновая задача (job_id), опрос через `GET /api/ai/program/jobs/{id}`. E2E проверено curl'ом на реальном
+  тестовом изображении с расписанием — вернулась валидная программа.
+- Frontend `AiImport.js` — третья вкладка «По фото» с фото-гридом (до 8 фото), превью с крестиками
+  удаления, счётчик N/8, «Очистить», отдельный BusyOverlay (40–90 c).
+- test IDs: `ai-tab-photo`, `ai-photo-input`, `ai-photo-pick-btn`, `ai-photo-add-more`,
+  `ai-photo-thumb-{i}`, `ai-photo-remove-{i}`, `ai-photos-grid`, `ai-photos-clear`, `ai-parse-photo-btn`,
+  `ai-vision-disabled`.

@@ -3553,22 +3553,39 @@ async def coach_client_exercise_progress(coach_id: int, athlete_id: int,
 
 
 # ===========================================================================
-# P6 — ИИ-анализ программ (DeepSeek V4 Flash, OpenAI-совместимый API)
-# Ключ появится позже (openmodel.ai / routerai.ru / api.deepseek.com) —
-# конфигурация целиком из .env: AI_BASE_URL, AI_API_KEY, AI_MODEL.
+# P6 — ИИ-анализ программ (двухмодельная архитектура)
+# - Текст/reasoning: DeepSeek V4 Flash через RouterAI (AI_BASE_URL/API_KEY/MODEL)
+# - Vision (фото): Google Gemini через OpenAI-совместимый эндпоинт
+#   (AI_VISION_BASE_URL/API_KEY/MODEL)
 # ===========================================================================
 def _ai_config():
+    """Текстовый провайдер (DeepSeek / RouterAI) — генерация, refine, parse."""
     return {
         "base_url": (os.environ.get("AI_BASE_URL") or "").rstrip("/"),
         "api_key": os.environ.get("AI_API_KEY") or "",
-        "model": os.environ.get("AI_MODEL") or "deepseek-v4-flash",
+        "model": os.environ.get("AI_MODEL") or "deepseek/deepseek-v4-flash",
+    }
+
+
+def _ai_vision_config():
+    """Vision-провайдер (Google Gemini) — разбор фото в текст."""
+    return {
+        "base_url": (os.environ.get("AI_VISION_BASE_URL") or "").rstrip("/"),
+        "api_key": os.environ.get("AI_VISION_API_KEY") or "",
+        "model": os.environ.get("AI_VISION_MODEL") or "gemini-flash-latest",
     }
 
 
 @api_router.get("/ai/status")
 async def ai_status():
     cfg = _ai_config()
-    return {"enabled": bool(cfg["base_url"] and cfg["api_key"]), "model": cfg["model"]}
+    vcfg = _ai_vision_config()
+    return {
+        "enabled": bool(cfg["base_url"] and cfg["api_key"]),
+        "model": cfg["model"],
+        "vision_enabled": bool(vcfg["base_url"] and vcfg["api_key"]),
+        "vision_model": vcfg["model"],
+    }
 
 
 async def _ai_chat(messages, temperature=0.3):
@@ -3602,6 +3619,46 @@ async def _ai_chat(messages, temperature=0.3):
         return r.json()["choices"][0]["message"]["content"]
     except Exception:
         raise HTTPException(status_code=502, detail="Некорректный ответ ИИ-сервиса")
+
+
+async def _ai_chat_vision(prompt_text, images):
+    """Отправляет промпт + список изображений в Gemini (OpenAI-совместимый vision).
+    images: list[{"mime": "image/jpeg", "data_b64": "..."}].
+    Возвращает текст-описание программы (для последующей передачи в _ai_chat)."""
+    cfg = _ai_vision_config()
+    if not (cfg["base_url"] and cfg["api_key"]):
+        raise HTTPException(status_code=503,
+                            detail="Разбор по фото недоступен: не задан ключ Gemini")
+    content = [{"type": "text", "text": prompt_text}]
+    for img in images:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{img['mime']};base64,{img['data_b64']}"},
+        })
+    headers = {"Authorization": f"Bearer {cfg['api_key']}"}
+    body = {
+        "model": cfg["model"],
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.1,
+        "max_tokens": 8000,
+        "stream": False,
+    }
+    url = f"{cfg['base_url']}/chat/completions"
+    try:
+        async with httpx.AsyncClient(timeout=180) as c:
+            r = await c.post(url, json=body, headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Vision-сервис недоступен: {e.__class__.__name__}")
+    if r.status_code >= 400:
+        try:
+            msg = (r.json().get("error") or {}).get("message") or r.text
+        except Exception:
+            msg = r.text
+        raise HTTPException(status_code=502, detail=f"Ошибка Vision-сервиса ({r.status_code}): {str(msg)[:200]}")
+    try:
+        return r.json()["choices"][0]["message"]["content"] or ""
+    except Exception:
+        raise HTTPException(status_code=502, detail="Некорректный ответ Vision-сервиса")
 
 
 def _extract_json(text):
@@ -4189,6 +4246,83 @@ async def ai_parse_program_file(file: UploadFile = File(...),
     if len(text) < 20:
         raise HTTPException(status_code=400, detail="Файл пуст или не содержит плана")
     return await _ai_parse_text(text, current)
+
+
+_VISION_EXTRACT_PROMPT = (
+    "На изображениях — фрагменты тренировочной программы (таблица, скриншот из чата, "
+    "фото тетради, экран Excel и т.п.). Твоя задача — ТОЧНО извлечь всё содержимое "
+    "программы в виде структурированного текста:\n"
+    "- сохрани разбиение по неделям и дням;\n"
+    "- для каждого упражнения выпиши: название (по-русски, как в оригинале), "
+    "количество подходов × повторов, вес (кг) или процент от 1ПМ (%), отдых если указан;\n"
+    "- если изображений несколько — предполагай, что это ПРОДОЛЖЕНИЕ одной программы "
+    "(разные недели/дни), объединяй их по порядку;\n"
+    "- если что-то нечитаемо — пропусти, ничего НЕ выдумывай;\n"
+    "- никаких пояснений, комментариев или markdown-разметки — только структурированный "
+    "текст программы, как из Excel/заметок.\n"
+    "Пример формата:\n"
+    "Неделя 1\n"
+    "Пн: Присед 5×5 80%, Жим лёжа 5×5 75%, Тяга штанги 3×8 60кг\n"
+    "Ср: ..."
+)
+
+
+@api_router.post("/ai/program/parse-photo")
+async def ai_parse_program_photo(files: list[UploadFile] = File(...),
+                                 current: dict = Depends(get_current_user)):
+    """Разбор программы по 1–8 фото: Gemini достаёт текст → DeepSeek структурирует.
+    Фоновая задача (job_id). Клиент опрашивает GET /ai/program/jobs/{job_id}."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Загрузите хотя бы одно фото")
+    if len(files) > 8:
+        raise HTTPException(status_code=400, detail="Можно загрузить не более 8 фото")
+
+    _ai_require_enabled()
+    vcfg = _ai_vision_config()
+    if not (vcfg["base_url"] and vcfg["api_key"]):
+        raise HTTPException(status_code=503,
+                            detail="Разбор по фото недоступен: не задан ключ Gemini")
+
+    import base64
+    images = []
+    for f in files:
+        raw = await f.read()
+        if not raw:
+            continue
+        if len(raw) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=400,
+                                detail=f"Фото '{f.filename or ''}' слишком большое (макс 8 МБ)")
+        mime = (f.content_type or "").lower()
+        if not mime.startswith("image/"):
+            # попробуем по расширению
+            fn = (f.filename or "").lower()
+            if fn.endswith(".jpg") or fn.endswith(".jpeg"):
+                mime = "image/jpeg"
+            elif fn.endswith(".png"):
+                mime = "image/png"
+            elif fn.endswith(".webp"):
+                mime = "image/webp"
+            elif fn.endswith(".heic"):
+                mime = "image/heic"
+            else:
+                raise HTTPException(status_code=400,
+                                    detail="Поддерживаются только изображения (jpg/png/webp/heic)")
+        images.append({"mime": mime, "data_b64": base64.b64encode(raw).decode("ascii")})
+
+    if not images:
+        raise HTTPException(status_code=400, detail="Не удалось прочитать ни одно изображение")
+
+    async def _factory():
+        # Шаг 1: Gemini достаёт текст программы из изображений
+        extracted = await _ai_chat_vision(_VISION_EXTRACT_PROMPT, images)
+        extracted = (extracted or "").strip()
+        if len(extracted) < 20:
+            raise HTTPException(status_code=422,
+                                detail="Не удалось распознать программу на фото — проверьте качество снимков")
+        # Шаг 2: DeepSeek структурирует извлечённый текст в шаблон
+        return await _ai_parse_text(extracted, current)
+
+    return await _ai_start_job(current, "parse-photo", _factory)
 
 
 # ---- Настройки пользователя (streak_mode / единицы) ----

@@ -1,0 +1,39 @@
+{
+  "summary": "Iter9 — Photo-parse (Gemini vision → DeepSeek) feature: полный backend + frontend smoke-тест. 7/7 backend-тестов PASS за 72s (status, 401, 0-files 400/422, 9-files 400, non-image 400, E2E 1-JPG → job → done + валидный шаблон + cleanup, регрессия generate+refine с cleanup). Все ключевые UI-элементы вкладки 'По фото' проверены визуально: ai-tab-photo, ai-photo-input, ai-photo-pick-btn (empty state), thumbs 0/1, счётчик '2 / 8 фото', 'Ещё фото 2/8', 'Разобрать по фото' активен при >0 фото и disabled без фото; кнопка × удаляет фото; 'Очистить' сбрасывает всё. Регрессия вкладок 'По описанию'/'Готовый план' — открываются без ошибок. Optional 60-90s ИИ-полный флоу через UI не гнал (backend E2E уже покрыл end-to-end).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_scenarios": {
+    "AI_STATUS_DUAL_PROVIDER": "GET /api/ai/status → enabled=true, model='deepseek/deepseek-v4-flash', vision_enabled=true, vision_model='gemini-flash-latest'. Публичный endpoint (без auth) → 200.",
+    "PARSE_PHOTO_401": "POST /api/ai/program/parse-photo без токена → 401.",
+    "PARSE_PHOTO_NO_FILES": "POST с пустым files=[] → 400/422 (FastAPI validation, приемлемо).",
+    "PARSE_PHOTO_9_FILES_400": "9 файлов в одном запросе → 400 с текстом содержит '8'.",
+    "PARSE_PHOTO_NON_IMAGE": "text/plain (.txt) → 400 с 'Поддерживаются только изображения'.",
+    "PARSE_PHOTO_E2E": "1 JPG (/tmp/workout_test.jpg, 20KB) → {job_id, status:'pending'} → poll ~30-40s → status='done' + template с id/name/weeks[0].days[0].exercises[0]. DELETE /api/programs/templates/{id} успешно.",
+    "GENERATE_REGRESSION": "POST /api/ai/program/generate с промптом 'база 3 дня, 2 недели, 100кг присед' → job_id → done → шаблон с weeks. Затем refine 'убери становую тягу' → job_id → done, template.id тот же. Cleanup DELETE OK.",
+    "UI_TAB_PHOTO_PRESENT": "[data-testid='ai-tab-photo'] присутствует после логина streakdemo@twb.dev, соседние 'ai-tab-generate'/'ai-tab-parse' — тоже.",
+    "UI_EMPTY_STATE": "Клик по 'По фото' → hint про 'Gemini считает содержимое, DeepSeek соберёт'; [ai-photo-pick-btn] видна; [ai-parse-photo-btn] disabled=true.",
+    "UI_UPLOAD_2_PHOTOS": "set_input_files с 2 JPG → появляются [ai-photo-thumb-0], [ai-photo-thumb-1], counter '2 / 8 фото', add-more кнопка 'Ещё фото 2/8', [ai-parse-photo-btn] disabled=false.",
+    "UI_REMOVE_PHOTO": "Клик [ai-photo-remove-0] → thumb-1 исчезает (первый переиндексируется), остаётся 1 thumb, counter '1 / 8 фото'.",
+    "UI_CLEAR_PHOTOS": "Клик [ai-photos-clear] → грид пропадает, возвращается [ai-photo-pick-btn], [ai-parse-photo-btn] disabled=true.",
+    "UI_TAB_REGRESSION": "Переключение на [ai-tab-generate] и [ai-tab-parse] — панели рендерятся без ошибок в консоли."
+  },
+  "critical_code_review_comments": [
+    "server.py 4497 строк — рефакторинг на модули (ai/programs/plans/sessions/auth/coach/stats) продолжает оставаться уместным для поддержки; сейчас не блокер.",
+    "parse-photo: аккуратно валидируется size (8MB) и content_type + fallback по расширению (.jpg/.png/.webp/.heic). Хорошо.",
+    "_ai_start_job уже используется всеми 4 kind'ами (generate/parse/parse-file/parse-photo) — общий job pipeline через ai_jobs collection, консистентно.",
+    "Тестовое /tmp/workout_test.jpg — минимальный 20KB JPEG; Gemini всё-таки распознаёт из него что-то распарсиваемое, но продовые фото гораздо тяжелее — стоит поднять лимит-предупреждение в фронте если фото >4MB (не критично)."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_ai_parse_photo.py",
+    "/app/test_reports/pytest/iter9_parse_photo.xml"
+  ],
+  "action_items": [],
+  "updated_files": ["/app/backend/tests/test_ai_parse_photo.py"],
+  "success_rate": {"backend": "100% (7/7 в test_ai_parse_photo.py за 72s)", "frontend": "100% (все 6 UI-сценариев + 2 регрессии вкладок)"},
+  "test_credentials": "streakdemo@twb.dev / password123 (tg 992689326272). Тест-фото: /tmp/workout_test.jpg (20KB JPEG).",
+  "seed_data_creation": "Не создавал новых постоянных сущностей — все AI-шаблоны, созданные тестами (parse-photo + generate/refine), удалены в teardown через DELETE /api/programs/templates/{id}. БД чиста.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Фича 'ИИ-разбор по фото' (Gemini vision → DeepSeek text) полностью работает end-to-end. Backend test-file /app/backend/tests/test_ai_parse_photo.py стабилен и покрывает: (a) статус двух провайдеров, (b) все негативные ветки валидации, (c) реальный E2E джоб (~30-40 c, до 3 мин лимит). Регрессия generate+refine включена. Cleanup сделан для всех создаваемых шаблонов. При повторной проверке для UI end-to-end pipeline можно поднять таймаут polling'а фронта в тесте до 120 c и дождаться экрана результата.",
+  "rca of the issue": "N/A — фича свежая, дефектов не выявлено."
+}

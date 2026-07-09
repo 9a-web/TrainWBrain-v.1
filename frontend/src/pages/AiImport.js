@@ -2,13 +2,13 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Sparkles, FileText, Wand2, Upload, KeyRound,
-  CheckCircle2, PencilLine, Dumbbell, Eye,
+  CheckCircle2, PencilLine, Dumbbell, Eye, Camera, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { GrainGradient, MeshGradient } from "@paper-design/shaders-react";
 import {
   getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile, aiProgramQuestions, getAiJob,
-  aiRefineProgram,
+  aiRefineProgram, aiParseProgramPhotos,
 } from "@/api";
 import { hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
@@ -38,6 +38,14 @@ const REFINE_BUSY_STEPS = [
   "Пересобираем недели и дни…",
   "Почти готово…",
 ];
+const PHOTO_BUSY_STEPS = [
+  "Распознаём фото через Gemini…",
+  "Выделяем упражнения и подходы…",
+  "Собираем структуру программы в DeepSeek…",
+  "Расставляем веса и повторы…",
+  "Почти готово…",
+];
+const MAX_PHOTOS = 8;
 
 const errText = (e, fallback) => {
   const d = e?.response?.data?.detail;
@@ -77,12 +85,14 @@ export default function AiImport() {
   useBackButton(true, () => navigate("/programs"));
 
   const [status, setStatus] = useState(null);
-  const [tab, setTab] = useState("generate"); // generate | parse
+  const [tab, setTab] = useState("generate"); // generate | parse | photo
   const [prompt, setPrompt] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
+  const [photos, setPhotos] = useState([]); // File[]
+  const [photoPreviews, setPhotoPreviews] = useState([]); // string[] (object URLs)
   const [busy, setBusy] = useState(false);
-  const [busyKind, setBusyKind] = useState("program"); // program | questions
+  const [busyKind, setBusyKind] = useState("program"); // program | questions | refine | photo
   const [result, setResult] = useState(null);
   const [questions, setQuestions] = useState(null);
   const [qStep, setQStep] = useState("basic"); // basic | advanced
@@ -91,12 +101,21 @@ export default function AiImport() {
   const [showPreview, setShowPreview] = useState(false);
   const [feedback, setFeedback] = useState("");
   const fileRef = useRef(null);
+  const photoRef = useRef(null);
 
   useEffect(() => {
     getAiStatus().then(setStatus).catch(() => setStatus({ enabled: false }));
   }, []);
 
+  // Освобождаем object URLs при размонтировании / очистке
+  useEffect(() => {
+    return () => {
+      photoPreviews.forEach((u) => { try { URL.revokeObjectURL(u); } catch { /* noop */ } });
+    };
+  }, [photoPreviews]);
+
   const enabled = !!status?.enabled;
+  const visionEnabled = !!status?.vision_enabled;
 
   const run = async (fn, kind = "program") => {
     setBusyKind(kind);
@@ -199,6 +218,50 @@ export default function AiImport() {
     run(() => aiParseProgram(text.trim()));
   };
 
+  const addPhotos = (fileList) => {
+    const incoming = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+    if (!incoming.length) {
+      toast.error("Выберите изображения (JPG / PNG / WEBP)");
+      return;
+    }
+    const room = MAX_PHOTOS - photos.length;
+    if (room <= 0) {
+      toast.error(`Максимум ${MAX_PHOTOS} фото`);
+      return;
+    }
+    const accepted = incoming.slice(0, room);
+    if (incoming.length > room) {
+      toast.message(`Добавлено ${accepted.length} из ${incoming.length} — лимит ${MAX_PHOTOS}`);
+    }
+    const urls = accepted.map((f) => URL.createObjectURL(f));
+    setPhotos((prev) => [...prev, ...accepted]);
+    setPhotoPreviews((prev) => [...prev, ...urls]);
+  };
+
+  const removePhoto = (idx) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    setPhotoPreviews((prev) => {
+      const dropped = prev[idx];
+      if (dropped) { try { URL.revokeObjectURL(dropped); } catch { /* noop */ } }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const clearPhotos = () => {
+    photoPreviews.forEach((u) => { try { URL.revokeObjectURL(u); } catch { /* noop */ } });
+    setPhotos([]);
+    setPhotoPreviews([]);
+    if (photoRef.current) photoRef.current.value = "";
+  };
+
+  const parsePhotos = () => {
+    if (!photos.length) {
+      toast.error("Добавьте хотя бы одно фото");
+      return;
+    }
+    run(() => aiParseProgramPhotos(photos), "photo");
+  };
+
   const totalEx = result
     ? (result.weeks || []).reduce(
         (a, w) => a + (w.days || []).reduce((b, d) => b + (d.exercises || []).length, 0), 0)
@@ -275,13 +338,25 @@ export default function AiImport() {
           onClick={() => setTab("parse")} data-testid="ai-tab-parse">
           <FileText size={15} /> Готовый план
         </button>
+        <button className={`ai-tab ${tab === "photo" ? "active" : ""}`}
+          onClick={() => setTab("photo")} data-testid="ai-tab-photo">
+          <Camera size={15} /> По фото
+        </button>
       </div>
 
       {busy ? (
         <BusyOverlay
-          steps={busyKind === "questions" ? QUESTIONS_BUSY_STEPS
-            : busyKind === "refine" ? REFINE_BUSY_STEPS : BUSY_STEPS}
-          sub={busyKind === "questions" ? "Обычно занимает 5–15 секунд" : "Обычно занимает 20–60 секунд"}
+          steps={
+            busyKind === "questions" ? QUESTIONS_BUSY_STEPS
+            : busyKind === "refine" ? REFINE_BUSY_STEPS
+            : busyKind === "photo" ? PHOTO_BUSY_STEPS
+            : BUSY_STEPS
+          }
+          sub={
+            busyKind === "questions" ? "Обычно занимает 5–15 секунд"
+            : busyKind === "photo" ? "Обычно занимает 40–90 секунд"
+            : "Обычно занимает 20–60 секунд"
+          }
         />
       ) : result ? (
         <div className="ai-result" data-testid="ai-result">
@@ -325,7 +400,7 @@ export default function AiImport() {
             </button>
           </div>
           <button className="ai-again"
-            onClick={() => { setResult(null); setQuestions(null); setQStep("basic"); setPicked({}); setCustom({}); setFeedback(""); }}
+            onClick={() => { setResult(null); setQuestions(null); setQStep("basic"); setPicked({}); setCustom({}); setFeedback(""); clearPhotos(); }}
             data-testid="ai-again">
             Создать ещё одну
           </button>
@@ -433,7 +508,7 @@ export default function AiImport() {
             <Sparkles size={16} /> Продолжить
           </button>
         </div>
-      ) : (
+      ) : tab === "parse" ? (
         <div className="ai-panel">
           <p className="ai-hint">Вставьте план текстом (можно прямо из Excel/заметок) или загрузите файл — ИИ разберёт его в структуру.</p>
           <textarea className="ai-textarea" rows={7} value={text}
@@ -456,6 +531,72 @@ export default function AiImport() {
           <button className="ai-btn-primary ai-submit" onClick={parse}
             disabled={!enabled || (!file && text.trim().length < 20)} data-testid="ai-parse-btn">
             <Sparkles size={16} /> Разобрать план
+          </button>
+        </div>
+      ) : (
+        <div className="ai-panel">
+          <p className="ai-hint">
+            Загрузите до {MAX_PHOTOS} фото — скриншоты чатов, таблиц, страниц из тетради.
+            Gemini считает содержимое, DeepSeek соберёт из него структурированную программу.
+          </p>
+          <input ref={photoRef} type="file" accept="image/*" multiple
+            style={{ display: "none" }}
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }}
+            data-testid="ai-photo-input" />
+
+          {photos.length ? (
+            <div className="ai-photos-grid" data-testid="ai-photos-grid">
+              {photoPreviews.map((src, i) => (
+                <div key={i} className="ai-photo-thumb" data-testid={`ai-photo-thumb-${i}`}>
+                  <img src={src} alt={`фото ${i + 1}`} />
+                  <button className="ai-photo-remove"
+                    onClick={() => removePhoto(i)}
+                    aria-label={`Удалить фото ${i + 1}`}
+                    data-testid={`ai-photo-remove-${i}`}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              {photos.length < MAX_PHOTOS ? (
+                <button className="ai-photo-add" onClick={() => photoRef.current?.click()}
+                  data-testid="ai-photo-add-more">
+                  <Camera size={22} />
+                  <span>Ещё фото</span>
+                  <small>{photos.length}/{MAX_PHOTOS}</small>
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <button className="ai-file-btn" onClick={() => photoRef.current?.click()}
+              data-testid="ai-photo-pick-btn">
+              <Camera size={16} />
+              Загрузить фото (до {MAX_PHOTOS})
+            </button>
+          )}
+
+          {photos.length ? (
+            <div className="ai-photos-meta">
+              <span>{photos.length} / {MAX_PHOTOS} фото</span>
+              <button className="ai-photos-clear" onClick={clearPhotos} data-testid="ai-photos-clear">
+                Очистить
+              </button>
+            </div>
+          ) : null}
+
+          {status && !visionEnabled ? (
+            <div className="ai-disabled" data-testid="ai-vision-disabled">
+              <KeyRound size={18} />
+              <div>
+                <b>Разбор по фото недоступен</b>
+                <p>Требуется ключ Gemini (переменные <code>AI_VISION_*</code> в backend/.env).</p>
+              </div>
+            </div>
+          ) : null}
+
+          <button className="ai-btn-primary ai-submit" onClick={parsePhotos}
+            disabled={!enabled || !visionEnabled || !photos.length}
+            data-testid="ai-parse-photo-btn">
+            <Sparkles size={16} /> Разобрать по фото
           </button>
         </div>
       )}

@@ -101,6 +101,13 @@ export const aiParseProgramFile = (file) => {
     .post(`/ai/program/parse-file`, fd, { headers: { "Content-Type": "multipart/form-data" } })
     .then((r) => r.data);
 };
+export const aiParseProgramPhotos = (files) => {
+  const fd = new FormData();
+  (files || []).forEach((f) => fd.append("files", f));
+  return client
+    .post(`/ai/program/parse-photo`, fd, { headers: { "Content-Type": "multipart/form-data" } })
+    .then((r) => r.data);
+};
 
 // --- Планы ---
 export const createPlan = (payload) =>
