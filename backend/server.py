@@ -3804,8 +3804,8 @@ _AI_QUESTIONS_SYSTEM = (
 )
 
 
-async def _ai_build_template(data, current, source):
-    """Конвертация JSON-ответа ИИ во внутренний шаблон программы + сохранение."""
+async def _ai_build_template(data, current, source, replace=None):
+    """Конвертация JSON-ответа ИИ во внутренний шаблон + сохранение (replace — обновить на месте)."""
     if not isinstance(data, dict) or not (data.get("weeks") or []):
         raise HTTPException(status_code=422, detail="ИИ не смог построить структуру программы")
     tgid = current.get("telegram_id")
@@ -3914,8 +3914,8 @@ async def _ai_build_template(data, current, source):
     doc = {
         "id": str(uuid.uuid4()),
         "slug": None,
-        "name": str(data.get("name") or "Моя программа")[:80],
-        "description": str(data.get("description") or "")[:600],
+        "name": str(data.get("name") or (replace or {}).get("name") or "Моя программа")[:80],
+        "description": str(data.get("description") or (replace or {}).get("description") or "")[:600],
         "author": "ИИ-анализ",
         "level": level,
         "goal": goal,
@@ -3932,10 +3932,20 @@ async def _ai_build_template(data, current, source):
         "created_at": now,
         "updated_at": now,
     }
+    if replace:
+        doc["id"] = replace["id"]
+        doc["created_at"] = replace.get("created_at") or now
+        doc["slug"] = replace.get("slug")
+        doc["share_code"] = replace.get("share_code")
+        doc["shared_from"] = replace.get("shared_from")
+        doc["tags"] = replace.get("tags") or []
     _template_recount(doc)
-    await db.programs.insert_one(dict(doc))
+    if replace:
+        await db.programs.update_one({"id": doc["id"]}, {"$set": dict(doc)})
+    else:
+        await db.programs.insert_one(dict(doc))
     doc.pop("_id", None)
-    logger.info(f"AI template created: {doc['name']} (owner={tgid}, source={source})")
+    logger.info(f"AI template {'refined' if replace else 'created'}: {doc['name']} (owner={tgid}, source={source})")
     return doc
 
 
@@ -3955,6 +3965,48 @@ class AiQuestionsReq(BaseModel):
 
 class AiParseReq(BaseModel):
     text: str
+
+
+class AiRefineReq(BaseModel):
+    template_id: str
+    feedback: str
+
+
+def _template_to_ai_json(doc):
+    """Обратная конвертация шаблона в JSON-схему ИИ (для правок)."""
+    pct_slugs = set((doc.get("default_one_rep_max") or {}).keys())
+    req = bool(doc.get("requires_maxes"))
+    weeks = []
+    for w in doc.get("weeks") or []:
+        days = []
+        for d in w.get("days") or []:
+            if d.get("is_rest"):
+                continue
+            exs = []
+            for e in sorted(d.get("exercises") or [], key=lambda x: x.get("order") or 0):
+                as_pct = req and e.get("lift_group") and e.get("exercise_slug") in pct_slugs
+                sets = [{
+                    "weight": None if as_pct else s.get("weight"),
+                    "percent_1rm": s.get("weight") if as_pct else None,
+                    "sets": s.get("sets"), "reps": s.get("reps"),
+                } for s in (e.get("sets_scheme") or [])]
+                if not sets:
+                    m = re.search(r"\d+", str(e.get("target_reps") or ""))
+                    sets = [{"weight": None, "percent_1rm": None,
+                             "sets": int(e.get("target_sets") or 3),
+                             "reps": int(m.group()) if m else 10}]
+                exs.append({
+                    "name": e.get("exercise_name"),
+                    "muscle_group": e.get("muscle_group"),
+                    "lift_group": e.get("lift_group"),
+                    "is_accessory": bool(e.get("is_accessory")),
+                    "rest_seconds": e.get("rest_seconds"),
+                    "sets": sets,
+                })
+            days.append({"day_index": d.get("day_index"), "title": d.get("title"), "exercises": exs})
+        weeks.append({"week_index": w.get("week_index"), "days": days})
+    return {"name": doc.get("name"), "description": doc.get("description"),
+            "level": doc.get("level"), "goal": doc.get("goal"), "weeks": weeks}
 
 
 def _ai_require_enabled():
@@ -4051,6 +4103,38 @@ async def ai_generate_program(payload: AiGenerateReq, current: dict = Depends(ge
         return await _ai_build_template(data, current, "ai")
 
     return await _ai_start_job(current, "generate", _factory)
+
+
+@api_router.post("/ai/program/refine")
+async def ai_refine_program(payload: AiRefineReq, current: dict = Depends(get_current_user)):
+    """Правки готовой ИИ-программы по замечаниям пользователя (фоновая задача, тот же id)."""
+    feedback = (payload.feedback or "").strip()
+    if len(feedback) < 5:
+        raise HTTPException(status_code=400, detail="Опишите, что исправить (минимум 5 символов)")
+    _ai_require_enabled()
+    tgid = current.get("telegram_id")
+    doc = await db.programs.find_one({"id": payload.template_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Программа не найдена")
+    if doc.get("is_builtin") or doc.get("owner_telegram_id") != tgid:
+        raise HTTPException(status_code=403, detail="Можно править только свои программы")
+    current_json = json.dumps(_template_to_ai_json(doc), ensure_ascii=False, separators=(",", ":"))
+
+    async def _factory():
+        content = await _ai_chat([
+            {"role": "system", "content": _AI_SYSTEM_GEN},
+            {"role": "user", "content":
+                "Вот ТЕКУЩАЯ тренировочная программа пользователя (JSON по схеме):\n"
+                f"{current_json[:60000]}\n\n"
+                f"Пользователь просит внести правки/уточнения:\n{feedback[:2000]}\n\n"
+                "Верни ПОЛНУЮ обновлённую программу по той же схеме. Измени ТОЛЬКО то, о чём просит "
+                "пользователь; всё остальное (название, недели, дни, упражнения, веса, подходы) сохрани "
+                "без изменений. Название и описание меняй только если пользователь явно попросил."},
+        ], temperature=0.3)
+        data = _extract_json(content)
+        return await _ai_build_template(data, current, doc.get("source") or "ai", replace=doc)
+
+    return await _ai_start_job(current, "refine", _factory)
 
 
 async def _ai_parse_text(text, current):

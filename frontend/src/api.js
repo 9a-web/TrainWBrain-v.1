@@ -92,6 +92,8 @@ export const aiGenerateProgram = (prompt, answers = []) =>
   client.post(`/ai/program/generate`, { prompt, answers }).then((r) => r.data);
 export const aiParseProgram = (text) =>
   client.post(`/ai/program/parse`, { text }).then((r) => r.data);
+export const aiRefineProgram = (templateId, feedback) =>
+  client.post(`/ai/program/refine`, { template_id: templateId, feedback }).then((r) => r.data);
 export const aiParseProgramFile = (file) => {
   const fd = new FormData();
   fd.append("file", file);

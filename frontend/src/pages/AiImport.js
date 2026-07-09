@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { GrainGradient, MeshGradient } from "@paper-design/shaders-react";
 import {
   getAiStatus, aiGenerateProgram, aiParseProgram, aiParseProgramFile, aiProgramQuestions, getAiJob,
+  aiRefineProgram,
 } from "@/api";
 import { hapticNotify } from "@/lib/platform";
 import { useBackButton } from "@/hooks/useTelegramUI";
@@ -30,6 +31,12 @@ const BUSY_STEPS = [
 const QUESTIONS_BUSY_STEPS = [
   "Изучаем ваш запрос…",
   "Готовим уточняющие вопросы…",
+];
+const REFINE_BUSY_STEPS = [
+  "Читаем ваши правки…",
+  "Вносим изменения в программу…",
+  "Пересобираем недели и дни…",
+  "Почти готово…",
 ];
 
 const errText = (e, fallback) => {
@@ -82,6 +89,7 @@ export default function AiImport() {
   const [picked, setPicked] = useState({});
   const [custom, setCustom] = useState({});
   const [showPreview, setShowPreview] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -90,10 +98,10 @@ export default function AiImport() {
 
   const enabled = !!status?.enabled;
 
-  const run = async (fn) => {
-    setBusyKind("program");
+  const run = async (fn, kind = "program") => {
+    setBusyKind(kind);
     setBusy(true);
-    setResult(null);
+    if (kind !== "refine") setResult(null);
     try {
       const started = await fn();
       let tpl = started;
@@ -122,7 +130,12 @@ export default function AiImport() {
       setResult(tpl);
       setQuestions(null);
       hapticNotify("success");
-      toast.success(`Программа «${tpl.name}» сохранена в «Мои программы»`);
+      if (kind === "refine") {
+        setFeedback("");
+        toast.success(`Программа «${tpl.name}» обновлена`);
+      } else {
+        toast.success(`Программа «${tpl.name}» сохранена в «Мои программы»`);
+      }
     } catch (e) {
       hapticNotify("error");
       toast.error(errText(e, "Не удалось обработать запрос"));
@@ -164,6 +177,15 @@ export default function AiImport() {
 
   const generate = (withAnswers) =>
     run(() => aiGenerateProgram(prompt.trim(), withAnswers ? collectAnswers() : []));
+
+  const refine = () => {
+    const fb = feedback.trim();
+    if (fb.length < 5 || !result) {
+      toast.error("Опишите, что исправить в программе");
+      return;
+    }
+    run(() => aiRefineProgram(result.id, fb), "refine");
+  };
 
   const parse = () => {
     if (file) {
@@ -257,7 +279,8 @@ export default function AiImport() {
 
       {busy ? (
         <BusyOverlay
-          steps={busyKind === "questions" ? QUESTIONS_BUSY_STEPS : BUSY_STEPS}
+          steps={busyKind === "questions" ? QUESTIONS_BUSY_STEPS
+            : busyKind === "refine" ? REFINE_BUSY_STEPS : BUSY_STEPS}
           sub={busyKind === "questions" ? "Обычно занимает 5–15 секунд" : "Обычно занимает 20–60 секунд"}
         />
       ) : result ? (
@@ -278,6 +301,19 @@ export default function AiImport() {
             data-testid="ai-preview-open">
             <Eye size={16} /> Посмотреть программу
           </button>
+          <div className="ai-refine" data-testid="ai-refine">
+            <p className="ai-refine-title">
+              <Wand2 size={14} /> Что-то не так? Напишите ИИ, что исправить
+            </p>
+            <textarea className="ai-textarea ai-refine-input" rows={3} value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Например: замени становую тягу на румынскую, добавь день на руки, сделай 3 дня вместо 4…"
+              data-testid="ai-refine-input" />
+            <button className="ai-btn-primary ai-refine-btn" onClick={refine}
+              disabled={feedback.trim().length < 5} data-testid="ai-refine-btn">
+              <Sparkles size={15} /> Исправить программу
+            </button>
+          </div>
           <div className="ai-result-actions">
             <button className="ai-btn-secondary"
               onClick={() => navigate(`/programs/builder/${result.id}`)} data-testid="ai-open-builder">
@@ -289,7 +325,7 @@ export default function AiImport() {
             </button>
           </div>
           <button className="ai-again"
-            onClick={() => { setResult(null); setQuestions(null); setQStep("basic"); setPicked({}); setCustom({}); }}
+            onClick={() => { setResult(null); setQuestions(null); setQStep("basic"); setPicked({}); setCustom({}); setFeedback(""); }}
             data-testid="ai-again">
             Создать ещё одну
           </button>
