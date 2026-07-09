@@ -563,7 +563,7 @@ export default function AiImport() {
               <div className="ai-photo-step-arrow" aria-hidden="true">→</div>
               <div className="ai-photo-step">
                 <span className="ai-photo-step-num">3</span>
-                <b>Собирает тренировочный план</b>
+                <b>ИИ собирает тренировочный план</b>
                 <small>Шаблон в «Моих программах»</small>
               </div>
             </div>
