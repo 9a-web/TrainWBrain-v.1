@@ -74,3 +74,9 @@
 - Email: `statsdemo1782072251@example.com`  Password: `password123`
 - telegram_id: 950482709876; active plan: pl-autumn-3m (maxes 200/130/230, days [1,3,5]); 9 finished workouts across 3 microcycles.
 - Use for /stats and (after linking a coach) /coach/{coach}/clients/950482709876/stats.
+
+## Streak demo account (июль 2026, редизайн «Тренировочной серии»)
+- Email: `streakdemo@twb.dev`  Password: `password123`  (tg 992689326272)
+- 13 завершённых тренировок: серии 5 дн (~4 нед назад), 3 дн (~2 нед назад), текущая 2 дн (вчера+сегодня) + 3 одиночных дня.
+- Использовать для проверки GET /api/stats/{tg}/streak (поля streaks, this_month, avg_per_week, streak_len/streak_start/streak_end в calendar) и экрана /streak.
+- Пересоздать: `python /app/scripts/setup_streak_demo.py` (даты привязаны к «сегодня» контейнера).

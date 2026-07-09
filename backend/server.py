@@ -3432,16 +3432,49 @@ async def _athlete_streak_data(tg, weeks=12):
     while c in dates:
         cur += 1
         c -= timedelta(days=1)
-    # рекорд
-    best = 0
-    for d in dates:
+    # все серии (подряд идущие дни) + рекорд
+    runs = []
+    for d in sorted(dates):
         if (d - timedelta(days=1)) not in dates:
-            length = 1
-            n = d + timedelta(days=1)
-            while n in dates:
-                length += 1
-                n += timedelta(days=1)
-            best = max(best, length)
+            end = d
+            while (end + timedelta(days=1)) in dates:
+                end += timedelta(days=1)
+            runs.append({"start": d, "end": end, "length": (end - d).days + 1})
+    best = max((r["length"] for r in runs), default=0)
+
+    # карта: день -> его серия (для аннотации календарной сетки)
+    run_by_day = {}
+    for r in runs:
+        d = r["start"]
+        while d <= r["end"]:
+            run_by_day[d] = r
+            d += timedelta(days=1)
+
+    # список серий (>= 2 дней) для UI: свежие первыми, рекорд помечен
+    streaks = []
+    for r in sorted(runs, key=lambda x: x["start"], reverse=True):
+        if r["length"] < 2:
+            continue
+        streaks.append({
+            "start": r["start"].isoformat(),
+            "end": r["end"].isoformat(),
+            "length": r["length"],
+            "is_current": cur > 0 and r["end"] >= today - timedelta(days=1),
+            "is_best": False,
+        })
+    streaks = streaks[:50]
+    if streaks:
+        longest = max(streaks, key=lambda x: x["length"])
+        longest["is_best"] = True
+
+    # доп. метрики: тренировок в этом месяце, среднее в неделю, первая тренировка
+    this_month = sum(n for d, n in day_counts.items()
+                     if d.year == today.year and d.month == today.month)
+    first_day = min(dates) if dates else None
+    avg_per_week = 0.0
+    if first_day:
+        weeks_elapsed = max(1, (today - first_day).days // 7 + 1)
+        avg_per_week = round(total_sessions / weeks_elapsed, 1)
 
     plan = await db.plans.find_one(
         {"athlete_telegram_id": tg, "status": "active"}, {"_id": 0, "training_days": 1}
@@ -3458,6 +3491,7 @@ async def _athlete_streak_data(tg, weeks=12):
         days = []
         for i in range(7):
             dd = cur_m + timedelta(days=i)
+            r = run_by_day.get(dd)
             days.append({
                 "date": dd.isoformat(),
                 "weekday": i + 1,            # 1=Пн .. 7=Вс
@@ -3465,6 +3499,9 @@ async def _athlete_streak_data(tg, weeks=12):
                 "count": day_counts.get(dd, 0),
                 "is_today": dd == today,
                 "is_future": dd > today,
+                "streak_len": (r or {}).get("length", 0),
+                "streak_start": bool(r and dd == r["start"]),
+                "streak_end": bool(r and dd == r["end"]),
             })
         grid.append({"week_start": cur_m.isoformat(), "days": days})
         cur_m += timedelta(weeks=1)
@@ -3479,6 +3516,10 @@ async def _athlete_streak_data(tg, weeks=12):
         "trained_this_week": trained_this_week,
         "week": grid[-1] if grid else {"days": []},
         "calendar": grid,
+        "streaks": streaks,
+        "this_month": this_month,
+        "avg_per_week": avg_per_week,
+        "first_workout_date": first_day.isoformat() if first_day else None,
     }
 
 
