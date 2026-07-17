@@ -263,14 +263,22 @@ class WorkoutSession(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str = Field(default_factory=_uuid)
-    plan_id: str
+    plan_id: Optional[str] = None        # null для дневниковых тренировок (mode="diary")
     athlete_telegram_id: int
     coach_telegram_id: Optional[int] = None
-    week_index: int = 1
-    day_index: int = 1
+    mode: str = "plan"                   # plan | diary
+    week_index: Optional[int] = 1
+    day_index: Optional[int] = 1
     date: Optional[str] = None
     title: str = ""
     status: str = "in_progress"      # in_progress | finished | aborted
+    # --- Дневник (ИИ-агент) ---
+    rpe: Optional[float] = None          # субъективная сложность 1..10
+    difficulty_score: Optional[float] = None  # объективный балл 0..100
+    ai_feedback: Optional[dict] = None   # снимок последнего разбора агента
+    raw_input: Optional[str] = None      # исходная запись пользователя
+    source_input: Optional[str] = None   # quick | text | photo
+    notes: Optional[str] = None
     paused: bool = False
     started_at: Optional[datetime] = Field(default_factory=_now)
     finished_at: Optional[datetime] = None
@@ -336,3 +344,61 @@ class UserSettingsReq(BaseModel):
     streak_mode: Optional[str] = None      # strict | lenient
     units: Optional[str] = None            # kg | lb
     default_rest_sec: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# Дневник (Diary) — свободная запись тренировок + ИИ-агент
+# ---------------------------------------------------------------------------
+class DiaryExerciseIn(BaseModel):
+    """Одно упражнение в дневниковой записи (что реально сделал пользователь)."""
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    exercise_slug: Optional[str] = None
+    exercise_id: Optional[str] = None
+    muscle_group: Optional[str] = None
+    lift_group: Optional[str] = None
+    is_accessory: bool = False
+    rest_seconds: Optional[int] = None
+    sets_scheme: List[SetScheme] = Field(default_factory=list)  # weight × sets × reps
+
+
+class DiarySessionCreate(BaseModel):
+    date: Optional[str] = None          # ISO YYYY-MM-DD (по умолчанию сегодня)
+    title: Optional[str] = None
+    rpe: Optional[float] = None         # субъективная сложность 1..10
+    notes: Optional[str] = None
+    raw_input: Optional[str] = None     # исходный текст (если разбирали ИИ)
+    source_input: Optional[str] = "quick"  # quick | text | photo
+    exercises: List[DiaryExerciseIn] = Field(default_factory=list)
+
+
+class DiarySessionUpdate(BaseModel):
+    date: Optional[str] = None
+    title: Optional[str] = None
+    rpe: Optional[float] = None
+    notes: Optional[str] = None
+    exercises: Optional[List[DiaryExerciseIn]] = None
+
+
+class DiaryProfileUpdate(BaseModel):
+    goal: Optional[str] = None          # strength | hypertrophy | powerlifting | general
+    experience: Optional[str] = None    # beginner | intermediate | advanced
+    equipment: Optional[str] = None     # gym | barbell_home | dumbbells | bodyweight
+    injuries: Optional[List[str]] = None
+    likes: Optional[List[str]] = None
+    dislikes: Optional[List[str]] = None
+    weekly_target_days: Optional[int] = None
+    maxes: Optional[dict] = None        # {squat,bench,deadlift}
+
+
+class DiaryParseReq(BaseModel):
+    text: str
+
+
+class DiaryChatReq(BaseModel):
+    thread_id: Optional[str] = None
+    message: str
+
+
+class DiaryNextReq(BaseModel):
+    hint: Optional[str] = None

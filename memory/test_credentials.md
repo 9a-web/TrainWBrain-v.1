@@ -98,3 +98,19 @@
 - test IDs: `ai-tab-photo`, `ai-photo-input`, `ai-photo-pick-btn`, `ai-photo-add-more`,
   `ai-photo-thumb-{i}`, `ai-photo-remove-{i}`, `ai-photos-grid`, `ai-photos-clear`, `ai-parse-photo-btn`,
   `ai-vision-disabled`.
+
+## Diary Test Accounts (created 2026-07-17T08:57:58.590957)
+- User1: diarytest1_4439866453@example.com / password123 (telegram_id=940106816105)
+- User2: diarytest2_4439866453@example.com / password123 (telegram_id=932320348665)
+
+## Diary Test Accounts (created 2026-07-17T08:58:32.762412)
+- User1: diarytest1_5725097977@example.com / password123 (telegram_id=964061407257)
+- User2: diarytest2_5725097977@example.com / password123 (telegram_id=948083179997)
+
+## Diary Test Accounts (created 2026-07-17T08:59:50.071602)
+- User1: diarytest1_9007716683@example.com / password123 (telegram_id=948226801050)
+- User2: diarytest2_9007716683@example.com / password123 (telegram_id=950384182754)
+
+## Diary Test Accounts (created 2026-07-17T09:01:09.117780)
+- User1: diarytest1_8766816358@example.com / password123 (telegram_id=910261795567)
+- User2: diarytest2_8766816358@example.com / password123 (telegram_id=902045044155)

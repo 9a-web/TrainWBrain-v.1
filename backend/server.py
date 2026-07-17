@@ -26,6 +26,8 @@ from models import (
     WorkoutSession, SessionStartReq,
     CoachLink,
     PlanDayMark, DaySkipReq, DayRescheduleReq, DayMarkReq, UserSettingsReq,
+    DiaryExerciseIn, DiarySessionCreate, DiarySessionUpdate, DiaryProfileUpdate,
+    DiaryParseReq, DiaryChatReq, DiaryNextReq,
 )
 from seed import (
     seed_builtins, ensure_indexes,
@@ -3588,7 +3590,7 @@ async def ai_status():
     }
 
 
-async def _ai_chat(messages, temperature=0.3):
+async def _ai_chat(messages, temperature=0.3, json_mode=True):
     cfg = _ai_config()
     if not (cfg["base_url"] and cfg["api_key"]):
         raise HTTPException(status_code=503,
@@ -3597,8 +3599,9 @@ async def _ai_chat(messages, temperature=0.3):
     body = {
         "model": cfg["model"], "messages": messages, "temperature": temperature,
         "max_tokens": 32000, "stream": False,
-        "response_format": {"type": "json_object"},
     }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
     url = f"{cfg['base_url']}/chat/completions"
     try:
         async with httpx.AsyncClient(timeout=180) as c:
@@ -4346,6 +4349,673 @@ async def update_user_settings(telegram_id: int, payload: UserSettingsReq):
         {"telegram_id": telegram_id}, {"_id": 0, "password_hash": 0}
     )
     return updated
+
+
+# ===========================================================================
+# ДНЕВНИК (Diary) — свободная запись тренировок + персональный ИИ-агент
+# Дневниковые тренировки = WorkoutSession(mode="diary", plan_id=None) в той же
+# коллекции workout_sessions → streak/статистика учитывают их автоматически.
+# ===========================================================================
+
+# --- Каталог упражнений и резолвинг названий -------------------------------
+async def _diary_catalog(tgid):
+    catalog = await db.exercises.find(
+        {"$or": [{"is_builtin": True}, {"owner_telegram_id": tgid}]}, {"_id": 0}
+    ).to_list(1000)
+    by_name = {(ex.get("name") or "").strip().lower(): ex for ex in catalog if ex.get("name")}
+    by_slug = {ex.get("slug"): ex for ex in catalog if ex.get("slug")}
+    return (by_name, by_slug, list(by_name.keys()))
+
+
+def _resolve_catalog_ex(name, slug, cat):
+    by_name, by_slug, names = cat
+    if slug and slug in by_slug:
+        return by_slug[slug]
+    nm = (name or "").strip().lower()
+    if not nm:
+        return None
+    if nm in by_name:
+        return by_name[nm]
+    close = difflib.get_close_matches(nm, names, n=1, cutoff=0.82)
+    return by_name[close[0]] if close else None
+
+
+def _norm_scheme(sets_in):
+    scheme = []
+    for s in (sets_in or [])[:20]:
+        try:
+            n = max(1, min(30, int(s.get("sets") or 1)))
+            r = max(0, min(100, int(s.get("reps") or 0)))
+        except (TypeError, ValueError):
+            continue
+        w = s.get("weight")
+        try:
+            w = round(float(w), 2) if w is not None else None
+        except (TypeError, ValueError):
+            w = None
+        scheme.append({"weight": w, "sets": n, "reps": r})
+    return scheme
+
+
+def _diary_exercise_card(item, order, cat):
+    """Строит карточку выполненного упражнения (status=done) для дневника."""
+    name = (item.get("name") or "").strip()
+    slug = item.get("exercise_slug")
+    match = _resolve_catalog_ex(name, slug, cat)
+    scheme = _norm_scheme(item.get("sets_scheme"))
+    lg = item.get("lift_group")
+    if lg not in ("squat", "bench", "deadlift"):
+        lg = None
+    mg = item.get("muscle_group")
+    if match and (match.get("muscle_groups") or []):
+        mg = match["muscle_groups"][0]
+    has_weight = any(s.get("weight") for s in scheme)
+    is_acc = bool(item.get("is_accessory")) and not has_weight
+    pe = {
+        "exercise_id": (match or {}).get("id"),
+        "exercise_slug": (match or {}).get("slug") or slug,
+        "exercise_name": (match or {}).get("name") or name or "Упражнение",
+        "muscle_group": mg,
+        "lift_group": lg,
+        "is_accessory": is_acc,
+        "rest_seconds": item.get("rest_seconds"),
+        "sets_scheme": [] if is_acc else scheme,
+        "target_sets": (sum(s["sets"] for s in scheme) or (4 if is_acc else 3)),
+        "target_reps": str(scheme[0]["reps"]) if scheme else "10",
+    }
+    card = _view_exercise(pe, {}, order, status="done")
+    if not is_acc:
+        logs = _expand_set_logs(card.get("sets_scheme"))
+        for lgm in logs:
+            lgm["done"] = True
+        card["set_logs"] = logs
+    card["filled_by"] = "athlete"
+    return card
+
+
+# --- Оценка сложности (детерминированная) ----------------------------------
+def _reps_to_intensity(reps):
+    """Прокси интенсивности (% от 1ПМ) по числу повторов (когда 1ПМ неизвестен)."""
+    if not reps or reps <= 0:
+        return 0.6
+    if reps >= 20:
+        return 0.5
+    table = [(1, 1.0), (2, 0.96), (3, 0.93), (4, 0.90), (5, 0.87), (6, 0.85),
+             (8, 0.80), (10, 0.75), (12, 0.70), (15, 0.65), (20, 0.55)]
+    for i, (r, v) in enumerate(table):
+        if reps == r:
+            return v
+        if reps < r:
+            pr, pv = table[i - 1]
+            return round(pv + (v - pv) * (reps - pr) / (r - pr), 3)
+    return 0.5
+
+
+def _exercise_intensity(ex, maxes):
+    scheme = ex.get("sets_scheme") or []
+    if not scheme:
+        return 0.5
+    lg = ex.get("lift_group")
+    top = _top_set(scheme)
+    if lg in ("squat", "bench", "deadlift") and (maxes or {}).get(lg) and top and top.get("weight"):
+        try:
+            return min(1.05, float(top["weight"]) / float(maxes[lg]))
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    pcts = [s.get("percent_1rm") for s in scheme if s.get("percent_1rm")]
+    if pcts:
+        try:
+            return min(1.05, max(pcts) / 100.0)
+        except (TypeError, ValueError):
+            pass
+    reps_vals = [(s.get("reps") or 0) for s in scheme if (s.get("reps") or 0) > 0]
+    return _reps_to_intensity(min(reps_vals)) if reps_vals else 0.6
+
+
+def _diary_difficulty(session, profile):
+    """Объективный балл сложности 0..100 + категория (+ подмешивание субъективного RPE)."""
+    exs = [e for e in session.get("exercises", []) if e.get("status") == "done"]
+    maxes = (profile or {}).get("maxes") or {}
+    load = 0.0
+    total_sets = 0
+    total_reps = 0
+    wint = 0.0
+    for e in exs:
+        i = _exercise_intensity(e, maxes)
+        scheme = e.get("sets_scheme") or []
+        if not scheme:
+            # подсобка/bodyweight без схемы: оценим как 3×12, невысокая интенсивность
+            load += 3 * 12 * (0.4 + 0.6 * 0.5)
+            total_sets += 3
+            total_reps += 36
+            wint += 3 * 0.5
+            continue
+        for s in scheme:
+            n = int(s.get("sets") or 0)
+            r = int(s.get("reps") or 0)
+            load += n * (r * (0.4 + 0.6 * i))
+            total_sets += n
+            total_reps += n * r
+            wint += n * i
+    score = max(0, min(100, round(load * 0.7)))
+    rpe = session.get("rpe")
+    if rpe:
+        try:
+            score = int(round(0.6 * score + 0.4 * min(100.0, float(rpe) * 10)))
+        except (TypeError, ValueError):
+            pass
+    if score < 36:
+        cat = "Легко"
+    elif score < 61:
+        cat = "Средне"
+    elif score < 81:
+        cat = "Тяжело"
+    else:
+        cat = "Очень тяжело"
+    avg28 = (profile or {}).get("avg_difficulty_28d")
+    delta = round(score - avg28) if isinstance(avg28, (int, float)) else None
+    avg_int = round(wint / total_sets, 3) if total_sets else 0
+    return {"score": score, "category": cat, "sets": total_sets, "reps": total_reps,
+            "avg_intensity": avg_int, "vs_avg_28d": delta}
+
+
+# --- Профиль агента и вспомогательные сводки --------------------------------
+async def _diary_profile_get(tgid):
+    doc = await db.diary_profile.find_one({"telegram_id": tgid}, {"_id": 0})
+    if not doc:
+        now = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "telegram_id": tgid, "goal": "general", "experience": "intermediate",
+            "equipment": "gym", "injuries": [],
+            "preferences": {"likes": [], "dislikes": []},
+            "weekly_target_days": 3, "maxes": {}, "agent_notes": "",
+            "avg_difficulty_28d": None, "onboarded": False,
+            "created_at": now, "updated_at": now,
+        }
+        await db.diary_profile.insert_one(dict(doc))
+        doc.pop("_id", None)
+    return doc
+
+
+async def _update_avg_difficulty(tgid):
+    since = (datetime.now(timezone.utc).date() - timedelta(days=28)).isoformat()
+    docs = await db.workout_sessions.find(
+        {"athlete_telegram_id": tgid, "status": "finished", "difficulty_score": {"$ne": None}},
+        {"_id": 0, "difficulty_score": 1, "date": 1, "finished_at": 1},
+    ).to_list(500)
+    scores = []
+    for s in docs:
+        d = _session_day(s)
+        if d and d.isoformat() >= since:
+            scores.append(s.get("difficulty_score"))
+    avg = round(sum(scores) / len(scores), 1) if scores else None
+    await db.diary_profile.update_one(
+        {"telegram_id": tgid}, {"$set": {"avg_difficulty_28d": avg}}, upsert=True)
+    return avg
+
+
+async def _recent_sessions_summary(tgid, n=7):
+    docs = await db.workout_sessions.find(
+        {"athlete_telegram_id": tgid, "status": "finished"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(n)
+    lines = []
+    for s in docs:
+        st = _get_session_stats(s)
+        d = _session_day(s)
+        lines.append(f"- {d.isoformat() if d else '—'}: {s.get('title') or 'Тренировка'}; "
+                     f"группы {st.get('group') or '—'}; тоннаж {st.get('tonnage')}кг; "
+                     f"подходов {st.get('sets_done')}; сложность {s.get('difficulty_score') or '—'}")
+    return "\n".join(lines) if lines else "(история пуста)"
+
+
+async def _weekly_muscle_volume(tgid, days=7):
+    since = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
+    docs = await db.workout_sessions.find(
+        {"athlete_telegram_id": tgid, "status": "finished"}, {"_id": 0}
+    ).to_list(500)
+    agg = {}
+    count = 0
+    for s in docs:
+        d = _session_day(s)
+        if not d or d < since:
+            continue
+        count += 1
+        for ltr, c in _muscle_sets(s.get("exercises") or []).items():
+            agg[ltr] = agg.get(ltr, 0) + c
+    groups = [{"group": ltr, "label": _LETTER_NAMES.get(ltr, ltr), "sets": agg[ltr]}
+              for ltr in _LETTER_ORDER if ltr in agg]
+    return {"days": days, "workouts": count, "groups": groups}
+
+
+def _profile_context(profile):
+    p = profile or {}
+    prefs = p.get("preferences") or {}
+    return ("Профиль пользователя: "
+            f"цель={p.get('goal')}, опыт={p.get('experience')}, оборудование={p.get('equipment')}, "
+            f"дней/нед={p.get('weekly_target_days')}, "
+            f"травмы/ограничения={', '.join(p.get('injuries') or []) or 'нет'}, "
+            f"любит={', '.join(prefs.get('likes') or []) or '—'}, "
+            f"не любит={', '.join(prefs.get('dislikes') or []) or '—'}, "
+            f"средняя сложность за 28д={p.get('avg_difficulty_28d') if p.get('avg_difficulty_28d') is not None else '—'}. "
+            f"Заметки агента: {p.get('agent_notes') or 'нет'}.")
+
+
+# --- CRUD дневниковых записей -----------------------------------------------
+@api_router.get("/diary/profile")
+async def diary_get_profile(current: dict = Depends(get_current_user)):
+    return await _diary_profile_get(current["telegram_id"])
+
+
+@api_router.put("/diary/profile")
+async def diary_put_profile(payload: DiaryProfileUpdate, current: dict = Depends(get_current_user)):
+    tgid = current["telegram_id"]
+    await _diary_profile_get(tgid)
+    upd = {"updated_at": datetime.now(timezone.utc).isoformat(), "onboarded": True}
+    if payload.goal in ("strength", "hypertrophy", "powerlifting", "general"):
+        upd["goal"] = payload.goal
+    if payload.experience in ("beginner", "intermediate", "advanced"):
+        upd["experience"] = payload.experience
+    if payload.equipment in ("gym", "barbell_home", "dumbbells", "bodyweight"):
+        upd["equipment"] = payload.equipment
+    if payload.injuries is not None:
+        upd["injuries"] = [str(x)[:60] for x in payload.injuries][:10]
+    if payload.weekly_target_days is not None:
+        upd["weekly_target_days"] = max(1, min(7, int(payload.weekly_target_days)))
+    if payload.maxes is not None:
+        upd["maxes"] = {k: float(v) for k, v in payload.maxes.items()
+                        if k in ("squat", "bench", "deadlift") and v}
+    prefs = {}
+    if payload.likes is not None:
+        prefs["likes"] = [str(x)[:40] for x in payload.likes][:15]
+    if payload.dislikes is not None:
+        prefs["dislikes"] = [str(x)[:40] for x in payload.dislikes][:15]
+    if prefs:
+        cur_prefs = ((await db.diary_profile.find_one({"telegram_id": tgid}, {"_id": 0, "preferences": 1}))
+                     or {}).get("preferences") or {}
+        cur_prefs.update(prefs)
+        upd["preferences"] = cur_prefs
+    await db.diary_profile.update_one({"telegram_id": tgid}, {"$set": upd})
+    return await _diary_profile_get(tgid)
+
+
+@api_router.post("/diary/sessions")
+async def diary_create_session(payload: DiarySessionCreate, current: dict = Depends(get_current_user)):
+    tgid = current["telegram_id"]
+    profile = await _diary_profile_get(tgid)
+    cat = await _diary_catalog(tgid)
+    items = [i.model_dump() for i in (payload.exercises or [])]
+    exs = [_diary_exercise_card(it, idx, cat) for idx, it in enumerate(items)]
+    exs = [e for e in exs if e.get("exercise_name")]
+    if not exs:
+        raise HTTPException(status_code=400, detail="Добавьте хотя бы одно упражнение")
+    now = datetime.now(timezone.utc).isoformat()
+    the_date = payload.date or datetime.now(timezone.utc).date().isoformat()
+    group, _diff_lbl = _day_group_difficulty(exs)
+    default_title = f"Тренировка · {group}" if group else "Тренировка"
+    session = {
+        "id": str(uuid.uuid4()),
+        "plan_id": None, "athlete_telegram_id": tgid, "coach_telegram_id": None,
+        "mode": "diary", "week_index": None, "day_index": None,
+        "date": the_date, "title": (payload.title or default_title)[:80],
+        "status": "finished", "paused": False,
+        "started_by": "athlete", "started_at": now, "finished_at": now,
+        "rpe": payload.rpe, "notes": payload.notes,
+        "raw_input": payload.raw_input, "source_input": payload.source_input or "quick",
+        "exercises": exs, "ai_feedback": None,
+        "last_event_at": now, "created_at": now, "updated_at": now,
+    }
+    diff = _diary_difficulty(session, profile)
+    session["difficulty_score"] = diff["score"]
+    session["stats"] = _session_stats(session)
+    await db.workout_sessions.insert_one(dict(session))
+    await _update_avg_difficulty(tgid)
+    logger.info(f"Diary session created: {session['id']} (tg={tgid}) score={diff['score']}")
+    out = _serialize_session(session)
+    out["difficulty"] = diff
+    return out
+
+
+@api_router.get("/diary/sessions")
+async def diary_list_sessions(from_: Optional[str] = Query(default=None, alias="from"),
+                              to: Optional[str] = None, limit: int = 50,
+                              current: dict = Depends(get_current_user)):
+    tgid = current["telegram_id"]
+    docs = await db.workout_sessions.find(
+        {"athlete_telegram_id": tgid, "mode": "diary"}, {"_id": 0}
+    ).sort("date", -1).to_list(min(200, max(1, limit)))
+    fr = _parse_date(from_) if from_ else None
+    tt = _parse_date(to) if to else None
+    out = []
+    for s in docs:
+        d = _session_day(s)
+        if fr and d and d < fr:
+            continue
+        if tt and d and d > tt:
+            continue
+        item = _serialize_session(s)
+        if s.get("difficulty_score") is not None:
+            item["difficulty"] = {"score": s.get("difficulty_score")}
+        out.append(item)
+    return out
+
+
+@api_router.get("/diary/sessions/{session_id}")
+async def diary_get_session(session_id: str, current: dict = Depends(get_current_user)):
+    s = await db.workout_sessions.find_one({"id": session_id, "mode": "diary"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    if s.get("athlete_telegram_id") != current["telegram_id"]:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой записи")
+    return _serialize_session(s)
+
+
+@api_router.patch("/diary/sessions/{session_id}")
+async def diary_update_session(session_id: str, payload: DiarySessionUpdate,
+                               current: dict = Depends(get_current_user)):
+    s = await db.workout_sessions.find_one({"id": session_id, "mode": "diary"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    tgid = current["telegram_id"]
+    if s.get("athlete_telegram_id") != tgid:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой записи")
+    profile = await _diary_profile_get(tgid)
+    upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.date is not None:
+        upd["date"] = payload.date
+    if payload.title is not None:
+        upd["title"] = payload.title[:80]
+    if payload.rpe is not None:
+        upd["rpe"] = payload.rpe
+    if payload.notes is not None:
+        upd["notes"] = payload.notes
+    if payload.exercises is not None:
+        cat = await _diary_catalog(tgid)
+        items = [i.model_dump() for i in payload.exercises]
+        exs = [_diary_exercise_card(it, idx, cat) for idx, it in enumerate(items)]
+        upd["exercises"] = [e for e in exs if e.get("exercise_name")]
+    merged = dict(s)
+    merged.update(upd)
+    diff = _diary_difficulty(merged, profile)
+    upd["difficulty_score"] = diff["score"]
+    upd["stats"] = _session_stats(merged)
+    await db.workout_sessions.update_one({"id": session_id}, {"$set": upd})
+    await _update_avg_difficulty(tgid)
+    s2 = await db.workout_sessions.find_one({"id": session_id}, {"_id": 0})
+    out = _serialize_session(s2)
+    out["difficulty"] = diff
+    return out
+
+
+@api_router.delete("/diary/sessions/{session_id}")
+async def diary_delete_session(session_id: str, current: dict = Depends(get_current_user)):
+    s = await db.workout_sessions.find_one({"id": session_id, "mode": "diary"}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    if s.get("athlete_telegram_id") != current["telegram_id"]:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой записи")
+    await db.workout_sessions.delete_one({"id": session_id})
+    await _update_avg_difficulty(current["telegram_id"])
+    return {"ok": True}
+
+
+# --- ИИ-агент: разбор записи, анализ, недельные советы, чат, генерация -------
+_DIARY_PARSE_SCHEMA = ('{"title":"краткое название тренировки","exercises":[{"name":"название по-русски",'
+                       '"muscle_group":"legs|chest|back|shoulders|biceps|triceps|core",'
+                       '"lift_group":"squat|bench|deadlift или null","is_accessory":false,'
+                       '"sets":[{"weight":100.0,"reps":5,"sets":3}]}]}')
+
+_DIARY_PARSE_SYSTEM = (
+    "Ты — парсер дневника силовых тренировок. Пользователь описывает, ЧТО он уже сделал "
+    "(свободный текст, сокращения, сленг). Извлеки выполненные упражнения и подходы. "
+    "Отвечай ТОЛЬКО валидным JSON без markdown, по схеме:\n" + _DIARY_PARSE_SCHEMA +
+    "\nПравила:\n"
+    "- Понимай форматы гибко: '100х5х3' и '100 5 3' обычно = вес 100кг, 5 повторов, 3 подхода; "
+    "'3х8' без веса = 3 подхода по 8 повторов; '80кг 8 8 8' = 3 подхода по 8 с весом 80.\n"
+    "- Каждый элемент 'sets' — группа: sets (кол-во подходов) × reps (повторы), weight в кг или null.\n"
+    "- lift_group: 'squat' присед, 'bench' жим лёжа, 'deadlift' становая; иначе null.\n"
+    "- is_accessory=true только для явно bodyweight-упражнений без внешнего веса.\n"
+    "- Не выдумывай упражнения, которых нет в тексте. Названия — общепринятые русские. Компактный JSON.")
+
+_DIARY_COACH_SYSTEM = (
+    "Ты — персональный тренер по силовым. Разбери ОДНУ проведённую тренировку кратко и по делу, "
+    "как живой тренер (на 'ты', по-русски, без канцелярита). Отвечай ТОЛЬКО валидным JSON по схеме:\n"
+    '{"summary":"1-2 предложения общий вердикт","difficulty_comment":"комментарий про нагрузку/сложность",'
+    '"good":["что было хорошо (1-3)"],"improve":["что улучшить (1-3)"],'
+    '"progression":"конкретный совет по прогрессии на следующий раз для ключевого упражнения",'
+    '"next_focus":"на чём сфокусироваться в ближайшие тренировки"}\n'
+    "Опирайся на метрики и профиль. Не выдумывай упражнения, которых не было. Компактный JSON.")
+
+_DIARY_WEEKLY_SYSTEM = (
+    "Ты — персональный тренер. По недельному объёму нагрузки и профилю дай рекомендации. "
+    "Отвечай ТОЛЬКО валидным JSON:\n"
+    '{"assessment":"оценка недели 1-2 предложения",'
+    '"balance":[{"group":"Ноги|Грудь|Спина|Плечи|Руки|Кор","status":"low|ok|high","note":"кратко"}],'
+    '"recommend_exercises":[{"name":"упражнение по-русски",'
+    '"muscle_group":"legs|chest|back|shoulders|biceps|triceps|core","reason":"зачем"}],'
+    '"advice":"общий совет (отдых/прогрессия/баланс)"}\n'
+    "Наука: 10-20 рабочих подходов на группу в неделю, частота 2×/нед. "
+    "Рекомендуй 2-4 упражнения под пробелы и цель. Компактный JSON.")
+
+_DIARY_CHAT_SYSTEM = (
+    "Ты — персональный тренер по силовым тренировкам в приложении TrainWithBrain. Общайся на 'ты', "
+    "по-русски, кратко, дружелюбно и по делу, как опытный тренер. Даёшь практичные советы по тренировкам, "
+    "технике, прогрессии, восстановлению. Не ставишь медицинских диагнозов. Учитывай профиль и историю. "
+    "Отвечай обычным текстом (не JSON), максимум 1-4 коротких абзаца.")
+
+_DIARY_NEXT_SYSTEM = (
+    "Ты — персональный тренер. На основе истории, недельного баланса и целей составь СЛЕДУЮЩУЮ тренировку "
+    "(ОДИН день, 5-8 упражнений). Отвечай ТОЛЬКО валидным JSON по схеме:\n"
+    '{"title":"название дня","focus":"на что нацелена",'
+    '"exercises":[{"name":"по-русски","muscle_group":"legs|chest|back|shoulders|biceps|triceps|core",'
+    '"lift_group":"squat|bench|deadlift или null","is_accessory":false,"rest_seconds":120,'
+    '"sets":[{"weight":null,"reps":8,"sets":3}]}]}\n'
+    "Правила: закрывай пробелы недельного объёма, база в начале, изоляция после; учитывай оборудование "
+    "и травмы; вес предлагай в кг или null (пользователь подставит). Компактный JSON.")
+
+
+def _diary_map_exercises(data_exercises, cat):
+    """Маппит массив упражнений из ответа ИИ в формат DiaryExerciseIn (+ каталог)."""
+    out = []
+    for e in (data_exercises or [])[:30]:
+        nm = str(e.get("name") or "").strip()
+        if not nm:
+            continue
+        match = _resolve_catalog_ex(nm, None, cat)
+        scheme = _norm_scheme([{"weight": s.get("weight"), "sets": s.get("sets"), "reps": s.get("reps")}
+                               for s in (e.get("sets") or [])])
+        lg = e.get("lift_group")
+        if lg not in ("squat", "bench", "deadlift"):
+            lg = None
+        has_w = any(s.get("weight") for s in scheme)
+        mg = e.get("muscle_group")
+        if match and (match.get("muscle_groups") or []):
+            mg = match["muscle_groups"][0]
+        out.append({
+            "name": (match or {}).get("name") or nm,
+            "exercise_slug": (match or {}).get("slug"),
+            "muscle_group": mg,
+            "lift_group": lg,
+            "is_accessory": bool(e.get("is_accessory")) and not has_w,
+            "rest_seconds": e.get("rest_seconds"),
+            "sets_scheme": scheme,
+        })
+    return out
+
+
+@api_router.post("/diary/parse")
+async def diary_parse(payload: DiaryParseReq, current: dict = Depends(get_current_user)):
+    text = (payload.text or "").strip()
+    if len(text) < 3:
+        raise HTTPException(status_code=400, detail="Опишите тренировку подробнее")
+    _ai_require_enabled()
+
+    async def _factory():
+        content = await _ai_chat([
+            {"role": "system", "content": _DIARY_PARSE_SYSTEM},
+            {"role": "user", "content": f"Запись пользователя (что он сделал на тренировке):\n{text[:4000]}"},
+        ], temperature=0.2)
+        data = _extract_json(content)
+        cat = await _diary_catalog(current["telegram_id"])
+        exs = _diary_map_exercises(data.get("exercises"), cat)
+        if not exs:
+            raise HTTPException(status_code=422, detail="Не удалось распознать упражнения — опишите иначе")
+        return {"title": str(data.get("title") or "Тренировка")[:80], "exercises": exs}
+
+    return await _ai_start_job(current, "diary_parse", _factory)
+
+
+@api_router.post("/diary/analyze")
+async def diary_analyze(payload: dict = Body(...), current: dict = Depends(get_current_user)):
+    sid = payload.get("session_id")
+    s = await db.workout_sessions.find_one({"id": sid}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Тренировка не найдена")
+    if s.get("athlete_telegram_id") != current["telegram_id"]:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    _ai_require_enabled()
+    profile = await _diary_profile_get(current["telegram_id"])
+
+    async def _factory():
+        st = _get_session_stats(s)
+        diff = _diary_difficulty(s, profile)
+        exlines = []
+        for e in s.get("exercises", []):
+            sc = e.get("sets_scheme") or []
+            sets_txt = ", ".join(
+                f"{x.get('sets')}×{x.get('reps')}" + (f"@{x.get('weight')}кг" if x.get('weight') else "")
+                for x in sc) or "—"
+            exlines.append(f"- {e.get('exercise_name')} ({e.get('muscle_group') or '—'}): {sets_txt}")
+        rel = ""
+        if diff.get("vs_avg_28d") is not None:
+            sign = "+" if diff["vs_avg_28d"] >= 0 else ""
+            rel = f" Относительно среднего за 28д: {sign}{diff['vs_avg_28d']}."
+        metrics = (f"Сложность {diff['score']}/100 ({diff['category']}); подходов {st.get('sets_done')}; "
+                   f"тоннаж {st.get('tonnage')}кг; группы {st.get('group') or '—'}; RPE {s.get('rpe') or '—'}.{rel}")
+        hist = await _recent_sessions_summary(s.get("athlete_telegram_id"), 5)
+        content = await _ai_chat([
+            {"role": "system", "content": _DIARY_COACH_SYSTEM},
+            {"role": "user", "content": f"{_profile_context(profile)}\n\nСЕГОДНЯШНЯЯ ТРЕНИРОВКА:\n"
+                                        + "\n".join(exlines)
+                                        + f"\n\nМЕТРИКИ: {metrics}\n\nПОСЛЕДНИЕ ТРЕНИРОВКИ:\n{hist}"},
+        ], temperature=0.5)
+        data = _extract_json(content)
+        fb = {
+            "summary": str(data.get("summary") or "")[:500],
+            "difficulty_comment": str(data.get("difficulty_comment") or "")[:400],
+            "good": [str(x)[:200] for x in (data.get("good") or [])[:4]],
+            "improve": [str(x)[:200] for x in (data.get("improve") or [])[:4]],
+            "progression": str(data.get("progression") or "")[:400],
+            "next_focus": str(data.get("next_focus") or "")[:300],
+            "difficulty": diff,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.workout_sessions.update_one({"id": s["id"]}, {"$set": {"ai_feedback": fb}})
+        return fb
+
+    return await _ai_start_job(current, "diary_analyze", _factory)
+
+
+@api_router.get("/diary/agent/weekly")
+async def diary_agent_weekly(current: dict = Depends(get_current_user)):
+    tgid = current["telegram_id"]
+    _ai_require_enabled()
+    profile = await _diary_profile_get(tgid)
+    vol = await _weekly_muscle_volume(tgid, 7)
+    vol_txt = ", ".join(f"{g['label']}: {g['sets']} подходов" for g in vol["groups"]) or "нет данных за неделю"
+    content = await _ai_chat([
+        {"role": "system", "content": _DIARY_WEEKLY_SYSTEM},
+        {"role": "user", "content": f"{_profile_context(profile)}\n\n"
+                                    f"ОБЪЁМ ЗА 7 ДНЕЙ ({vol['workouts']} тренировок): {vol_txt}."},
+    ], temperature=0.5)
+    data = _extract_json(content)
+    cat = await _diary_catalog(tgid)
+    recs = []
+    for r in (data.get("recommend_exercises") or [])[:6]:
+        nm = str(r.get("name") or "").strip()
+        if not nm:
+            continue
+        match = _resolve_catalog_ex(nm, None, cat)
+        recs.append({"name": (match or {}).get("name") or nm, "exercise_slug": (match or {}).get("slug"),
+                     "muscle_group": r.get("muscle_group"), "reason": str(r.get("reason") or "")[:200]})
+    return {
+        "volume": vol,
+        "assessment": str(data.get("assessment") or "")[:500],
+        "balance": [{"group": str(b.get("group") or ""), "status": b.get("status"),
+                     "note": str(b.get("note") or "")[:200]} for b in (data.get("balance") or [])[:8]],
+        "recommend_exercises": recs,
+        "advice": str(data.get("advice") or "")[:400],
+    }
+
+
+@api_router.get("/diary/agent/chat/{thread_id}")
+async def diary_get_chat(thread_id: str, current: dict = Depends(get_current_user)):
+    chat = await db.diary_chats.find_one(
+        {"thread_id": thread_id, "telegram_id": current["telegram_id"]}, {"_id": 0})
+    if not chat:
+        return {"thread_id": thread_id, "messages": []}
+    return {"thread_id": thread_id, "messages": chat.get("messages") or []}
+
+
+@api_router.post("/diary/agent/chat")
+async def diary_agent_chat(payload: DiaryChatReq, current: dict = Depends(get_current_user)):
+    tgid = current["telegram_id"]
+    msg = (payload.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Пустое сообщение")
+    _ai_require_enabled()
+    profile = await _diary_profile_get(tgid)
+    thread_id = payload.thread_id or str(uuid.uuid4())
+    chat = await db.diary_chats.find_one({"thread_id": thread_id, "telegram_id": tgid}, {"_id": 0})
+    history = (chat or {}).get("messages") or []
+    hist_summary = await _recent_sessions_summary(tgid, 5)
+    llm_msgs = [{"role": "system", "content": _DIARY_CHAT_SYSTEM + "\n\n" + _profile_context(profile)
+                 + f"\n\nПоследние тренировки:\n{hist_summary}"}]
+    for m in history[-10:]:
+        if m.get("role") in ("user", "assistant") and m.get("content"):
+            llm_msgs.append({"role": m["role"], "content": m["content"]})
+    llm_msgs.append({"role": "user", "content": msg[:2000]})
+    reply = await _ai_chat(llm_msgs, temperature=0.6, json_mode=False)
+    reply = (reply or "").strip() or "Не смог сформулировать ответ, попробуй переформулировать вопрос."
+    now = datetime.now(timezone.utc).isoformat()
+    new_msgs = history + [
+        {"role": "user", "content": msg[:2000], "at": now},
+        {"role": "assistant", "content": reply[:4000], "at": now},
+    ]
+    await db.diary_chats.update_one(
+        {"thread_id": thread_id, "telegram_id": tgid},
+        {"$set": {"messages": new_msgs[-40:], "updated_at": now},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "thread_id": thread_id,
+                          "telegram_id": tgid, "created_at": now}},
+        upsert=True)
+    return {"thread_id": thread_id, "reply": reply}
+
+
+@api_router.post("/diary/agent/next")
+async def diary_agent_next(payload: DiaryNextReq, current: dict = Depends(get_current_user)):
+    _ai_require_enabled()
+    tgid = current["telegram_id"]
+
+    async def _factory():
+        profile = await _diary_profile_get(tgid)
+        vol = await _weekly_muscle_volume(tgid, 7)
+        vol_txt = ", ".join(f"{g['label']}: {g['sets']}" for g in vol["groups"]) or "нет данных"
+        hist = await _recent_sessions_summary(tgid, 5)
+        content = await _ai_chat([
+            {"role": "system", "content": _DIARY_NEXT_SYSTEM},
+            {"role": "user", "content": f"{_profile_context(profile)}\n\n"
+                                        f"Объём за неделю (подходы по группам): {vol_txt}.\n"
+                                        f"Последние тренировки:\n{hist}\n\n"
+                                        f"Пожелание на сегодня: {(payload.hint or '').strip() or 'на усмотрение тренера'}"},
+        ], temperature=0.6)
+        data = _extract_json(content)
+        cat = await _diary_catalog(tgid)
+        exs = _diary_map_exercises(data.get("exercises"), cat)
+        if not exs:
+            raise HTTPException(status_code=422, detail="Не удалось составить тренировку — попробуйте ещё раз")
+        return {"title": str(data.get("title") or "Рекомендованная тренировка")[:80],
+                "focus": str(data.get("focus") or "")[:200], "exercises": exs}
+
+    return await _ai_start_job(current, "diary_next", _factory)
 
 
 # Include the router in the main app
