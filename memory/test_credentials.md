@@ -21,6 +21,15 @@
 - **username**: `testtg`
 
 ## URLs
+- ⚠️ ВАЖНО (июль 2025): актуальный внешний URL контейнера = `https://71abc944-116e-42bd-b095-cd66d156f438.preview.emergentagent.com` (из env `preview_endpoint`). `frontend/.env` REACT_APP_BACKEND_URL обновлён на него (был устаревший `avatar-loader-1...` из клона — он отдавал 404 на всех `/api`). Менять не нужно.
+- Backend локально: `http://localhost:8001` (health: `/api/`).
+
+## Diary (Дневник) — UI demo account (июль 2025)
+- Email: `diaryui@twb.dev`  Password: `password123` (name Иван) — имеет 1 дневниковую запись на сегодня.
+- ИИ: RouterAI DeepSeek V4 Flash АКТИВЕН (AI_BASE_URL/AI_API_KEY/AI_MODEL в backend/.env), `/api/ai/status` enabled=true. Vision (Gemini) НЕ настроен (фото-разбор — future).
+- Дневник = отдельный режим (тумблер «План/Дневник» на главном экране). Эндпоинты /api/diary/* протестированы (11/11 сценариев зелёные).
+
+## (устар.) URLs — прошлые сессии
 - Внешний URL приложения (frontend + `/api` + WebSocket `/api/ws`): `https://7fa95d68-09f5-4c1c-a975-7595ef3af056.preview.emergentagent.com`
 - Backend локально: `http://localhost:8001` (health: `/api/`).
 - `frontend/.env` → `REACT_APP_BACKEND_URL=https://7fa95d68-09f5-4c1c-a975-7595ef3af056.preview.emergentagent.com` (обновлён под текущий контейнер из env `preview_endpoint`). Менять не нужно.

@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { UserProvider, useUser } from "@/context/UserContext";
 import { getStats } from "@/api";
 import DateSelector from "@/components/DateSelector";
+import DiaryHome from "@/components/DiaryHome";
 import Programs from "@/pages/Programs";
 import ProgramBuilder from "@/pages/ProgramBuilder";
 import AiImport from "@/pages/AiImport";
@@ -42,6 +43,17 @@ const Home = () => {
   const { user, avatarUrl } = useUser();
   const navigate = useNavigate();
   const [streak, setStreak] = useState(0);
+  const [homeMode, setHomeMode] = useState(
+    () => (typeof window !== "undefined" && window.localStorage.getItem("twb_home_mode")) || "plan"
+  );
+  const switchHomeMode = (m) => {
+    setHomeMode(m);
+    try {
+      window.localStorage.setItem("twb_home_mode", m);
+    } catch (e) {
+      /* no-op */
+    }
+  };
 
   useEffect(() => {
     if (!user?.telegram_id) return undefined;
@@ -156,8 +168,26 @@ const Home = () => {
             <ChevronRight size={18} className="streak-chevron" aria-hidden="true" />
           </button>
           
-          {/* Date Selector */}
-          <DateSelector />
+          {/* Toggle: План / Дневник (тумблер режима на главном экране) */}
+          <div className="home-mode-toggle" data-testid="home-mode-toggle">
+            <button
+              className={homeMode === "plan" ? "active" : ""}
+              onClick={() => switchHomeMode("plan")}
+              data-testid="home-mode-plan"
+            >
+              План
+            </button>
+            <button
+              className={homeMode === "diary" ? "active" : ""}
+              onClick={() => switchHomeMode("diary")}
+              data-testid="home-mode-diary"
+            >
+              Дневник
+            </button>
+          </div>
+
+          {/* Контент режима */}
+          {homeMode === "diary" ? <DiaryHome /> : <DateSelector />}
         </main>
       </div>
     </div>

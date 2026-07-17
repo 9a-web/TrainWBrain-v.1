@@ -235,3 +235,43 @@ export const deletePlanWeek = (planId, week) =>
   client.delete(`/plans/${planId}/week`, { params: { week } }).then((r) => r.data);
 
 export default client;
+
+// --- Дневник (Diary) + ИИ-агент ---
+export const getDiaryProfile = () =>
+  client.get(`/diary/profile`).then((r) => r.data);
+export const putDiaryProfile = (body) =>
+  client.put(`/diary/profile`, body).then((r) => r.data);
+export const createDiarySession = (body) =>
+  client.post(`/diary/sessions`, body).then((r) => r.data);
+export const listDiarySessions = (params) =>
+  client.get(`/diary/sessions`, { params }).then((r) => r.data);
+export const getDiarySession = (id) =>
+  client.get(`/diary/sessions/${id}`).then((r) => r.data);
+export const patchDiarySession = (id, body) =>
+  client.patch(`/diary/sessions/${id}`, body).then((r) => r.data);
+export const deleteDiarySession = (id) =>
+  client.delete(`/diary/sessions/${id}`).then((r) => r.data);
+export const diaryParse = (text) =>
+  client.post(`/diary/parse`, { text }).then((r) => r.data);
+export const diaryAnalyze = (session_id) =>
+  client.post(`/diary/analyze`, { session_id }).then((r) => r.data);
+export const diaryWeekly = () =>
+  client.get(`/diary/agent/weekly`).then((r) => r.data);
+export const diaryChat = (message, thread_id) =>
+  client.post(`/diary/agent/chat`, { message, ...(thread_id ? { thread_id } : {}) }).then((r) => r.data);
+export const getDiaryChat = (threadId) =>
+  client.get(`/diary/agent/chat/${threadId}`).then((r) => r.data);
+export const diaryNext = (hint) =>
+  client.post(`/diary/agent/next`, { hint }).then((r) => r.data);
+
+// Опрос фоновой ИИ-задачи дневника (переиспользует /ai/program/jobs/{id})
+export const pollDiaryJob = async (jobId, { interval = 2500, timeout = 180000 } = {}) => {
+  const t0 = Date.now();
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const j = await getAiJob(jobId);
+    if (j.status && j.status !== "pending") return j;
+    if (Date.now() - t0 > timeout) throw new Error("Превышено время ожидания ИИ");
+    await new Promise((res) => setTimeout(res, interval));
+  }
+};

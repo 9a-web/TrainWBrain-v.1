@@ -18,7 +18,18 @@ React 19 (CRACO) + FastAPI + MongoDB (Motor). Backend — монолит `server
 - **P7** Подробная статистика с графиками (recharts), coach-gated эндпоинты.
 - **CP** Кроссплатформенность: website + Telegram + PWA.
 
-## Сделано в этой сессии (Июнь 2026)
+## Сделано в этой сессии (Июль 2025) — Функция «Дневник» + ИИ-агент
+- **Дизайн-документ:** `/app/plan_diary.md` (полное ТЗ + фазовый план D0–D6).
+- **Дневник (Diary)** — отдельный режим тренировок рядом с планом (тумблер «План/Дневник» на главном экране, `home-mode-toggle`). Пользователь записывает, ЧТО реально сделал; ИИ-агент разбирает и советует.
+- **Данные:** дневниковая тренировка = `WorkoutSession(mode="diary", plan_id=null)` в той же коллекции `workout_sessions` → **streak/статистика учитывают её автоматически** (аудит подтверждён тестами). Новые поля: `mode`, `rpe`, `difficulty_score`, `ai_feedback`, `raw_input`, `source_input`. Новые коллекции: `diary_profile` (память агента), `diary_chats` (чат).
+- **ИИ:** RouterAI **DeepSeek V4 Flash** (AI_BASE_URL/AI_API_KEY/AI_MODEL в `backend/.env`, `/api/ai/status` enabled=true). Слой `_ai_chat` (+ `json_mode`), фоновые `ai_jobs`.
+- **Оценка сложности** `_diary_difficulty` — детерминированная (интенсивность×объём, %1ПМ/reps-прокси) + подмешивание субъективного RPE → балл 0..100 + категория (Легко/Средне/Тяжело/Очень тяжело), персонализация относительно `avg_difficulty_28d`.
+- **Эндпоинты** (`/api/diary/*`, все под auth + IDOR): profile GET/PUT; sessions POST/GET/GET{id}/PATCH/DELETE; ИИ — `POST /diary/parse` (job, текст→структура), `POST /diary/analyze` (job, разбор+совет), `GET /diary/agent/weekly` (баланс+рекомендации), `POST /diary/agent/chat` (многоходовой, thread_id), `GET /diary/agent/chat/{thread_id}`, `POST /diary/agent/next` (job, генерация след. тренировки).
+- **Frontend:** тумблер в `App.js` Home; `components/DiaryHome.js` (лента + запись + агент-панель + онбординг + недельный разбор), `DiaryComposer.js` (быстрый ввод + распознавание текста ИИ), `DiaryChat.js` (чат), `Diary.css`. API — `api.js` (диари-функции + `pollDiaryJob`).
+- **Тесты:** backend — `deep_testing_backend_v2` 11/11 сценариев зелёные (включая интеграцию со streak/stats, IDOR, все ИИ-навыки, регресс планового режима). Frontend — визуально проверен (вход + тумблер + запись + бейдж сложности + агент-панель рендерятся). Автотест фронта НЕ запускался (ждём разрешения пользователя).
+- **Инфра-фикс:** `frontend/.env` REACT_APP_BACKEND_URL был устаревший (`avatar-loader-1`, 404 на `/api`) → обновлён на актуальный `71abc944-...preview.emergentagent.com` (из env `preview_endpoint`).
+
+## Сделано в прошлой сессии (Июнь 2026)
 - Переписан `AI_CONTEXT.md` v4.0 под актуальный код; синхронизирован `twb_plan.md` (P4/auth/IDOR/по-подходный лог → ✅).
 - Прогнан фронтенд E2E Phases 2–4 (Coach Live: подтверждение + старт тренером + co-scribe) — 100% зелёное (`test_reports/iteration_1.json`).
 - 3 UX-правки (по замечаниям юзабилити) + верификация (`iteration_2.json`, PASS):

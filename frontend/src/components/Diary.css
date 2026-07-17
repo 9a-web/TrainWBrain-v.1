@@ -1,0 +1,162 @@
+/* --- Diary (Дневник) styles --- */
+.diary-wrap { margin-top: 8px; }
+
+/* Toggle План/Дневник */
+.home-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  padding: 4px;
+  margin: 0 0 18px 0;
+  width: fit-content;
+}
+.home-mode-toggle button {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.home-mode-toggle button.active {
+  background: #FF6B00;
+  color: #fff;
+}
+
+/* Date strip */
+.diary-week { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px; }
+.diary-day {
+  flex: 0 0 auto;
+  width: 54px;
+  padding: 8px 0;
+  border-radius: 14px;
+  background: #333;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s ease;
+}
+.diary-day .dd-dow { font-size: 12px; opacity: 0.7; display: block; }
+.diary-day .dd-num { font-size: 18px; font-weight: 700; }
+.diary-day.selected { background: linear-gradient(-34deg, #FF8A24, #FFDA24); color: #1C1C1C; }
+.diary-day .dd-dot { width: 6px; height: 6px; border-radius: 50%; background: #FF6B00; margin: 3px auto 0; }
+.diary-day.selected .dd-dot { background: #1C1C1C; }
+
+/* Entry card */
+.diary-entry {
+  background: #333;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.diary-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.diary-entry-title { font-size: 17px; font-weight: 700; color: #fff; }
+.diary-entry-meta { color: rgba(255, 255, 255, 0.55); font-size: 13px; margin-top: 2px; }
+.diary-ex-list { margin: 12px 0 0; padding: 0; list-style: none; }
+.diary-ex-list li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.07); font-size: 14px; color: rgba(255,255,255,0.85); }
+.diary-ex-list li .ex-sets { color: rgba(255,255,255,0.55); }
+
+/* Difficulty badge */
+.diff-badge { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+.diff-легко { background: rgba(59,178,115,0.18); color: #4dd08a; }
+.diff-средне { background: rgba(255,176,32,0.18); color: #ffc24d; }
+.diff-тяжело { background: rgba(255,107,0,0.2); color: #ff8a3d; }
+.diff-очень.тяжело, .diff-очень-тяжело { background: rgba(229,72,77,0.2); color: #ff6b6f; }
+
+/* Buttons */
+.diary-btn {
+  border: none; border-radius: 12px; cursor: pointer; font-weight: 600;
+  transition: all 0.16s ease; font-size: 15px;
+}
+.diary-btn-primary { background: #FF6B00; color: #fff; padding: 15px; width: 100%; }
+.diary-btn-primary:active { transform: scale(0.99); }
+.diary-btn-ghost { background: #333; color: #fff; padding: 12px 14px; }
+.diary-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.diary-btn-sm { font-size: 13px; padding: 9px 14px; border-radius: 10px; background: #2a2a2a; color: rgba(255,255,255,0.85); border: none; cursor: pointer; }
+.diary-btn-danger { color: #ff6b6f; }
+
+/* Empty state */
+.diary-empty { text-align: center; padding: 28px 10px; color: rgba(255,255,255,0.55); }
+.diary-empty p { margin: 0 0 16px; }
+
+/* Agent panel */
+.diary-agent { background: linear-gradient(135deg, rgba(255,107,0,0.12), rgba(255,218,36,0.06)); border: 1px solid rgba(255,107,0,0.25); border-radius: 16px; padding: 16px; margin-top: 18px; }
+.diary-agent h3 { margin: 0 0 4px; font-size: 16px; color: #fff; }
+.diary-agent p.hint { margin: 0 0 12px; color: rgba(255,255,255,0.6); font-size: 13px; }
+.agent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.agent-actions button { background: rgba(255,255,255,0.08); color: #fff; border: none; border-radius: 12px; padding: 12px 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.agent-actions button:active { transform: scale(0.98); }
+
+/* AI feedback block */
+.ai-feedback { margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; }
+.ai-feedback .fb-summary { font-size: 14px; color: #fff; }
+.ai-feedback .fb-section { margin-top: 10px; }
+.ai-feedback .fb-section h5 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.5); }
+.ai-feedback ul { margin: 0; padding-left: 18px; }
+.ai-feedback li { font-size: 13px; color: rgba(255,255,255,0.85); margin: 2px 0; }
+.ai-feedback .fb-prog { font-size: 13px; color: #ffc24d; margin-top: 8px; }
+
+/* Modal */
+.diary-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+.diary-modal { background: #222; width: 100%; max-width: 720px; max-height: 92vh; overflow-y: auto; border-radius: 20px 20px 0 0; padding: 20px; }
+.diary-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.diary-modal-head h3 { margin: 0; font-size: 18px; color: #fff; }
+.diary-modal-close { background: #333; border: none; color: #fff; width: 34px; height: 34px; border-radius: 50%; font-size: 18px; cursor: pointer; }
+
+/* Tabs */
+.diary-tabs { display: flex; gap: 6px; background: #2a2a2a; border-radius: 12px; padding: 4px; margin-bottom: 16px; }
+.diary-tabs button { flex: 1; border: none; background: transparent; color: rgba(255,255,255,0.6); padding: 9px; border-radius: 9px; font-weight: 600; cursor: pointer; }
+.diary-tabs button.active { background: #FF6B00; color: #fff; }
+
+/* Quick editor rows */
+.qx-row { background: #2c2c2c; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.qx-row .qx-name { width: 100%; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 9px; padding: 10px; font-size: 15px; margin-bottom: 8px; }
+.qx-nums { display: flex; gap: 8px; align-items: center; }
+.qx-nums label { font-size: 11px; color: rgba(255,255,255,0.5); display: block; margin-bottom: 3px; }
+.qx-nums input { width: 100%; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 9px; padding: 9px; font-size: 15px; text-align: center; }
+.qx-num { flex: 1; }
+.qx-acc { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px; }
+.qx-remove { background: transparent; border: none; color: #ff6b6f; font-size: 13px; cursor: pointer; padding: 4px 0; }
+
+/* textarea */
+.diary-textarea { width: 100%; min-height: 120px; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 12px; padding: 12px; font-size: 15px; resize: vertical; }
+.diary-hint-txt { color: rgba(255,255,255,0.45); font-size: 12px; margin: 6px 0 14px; }
+
+/* RPE */
+.rpe-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 16px; }
+.rpe-row button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid #3a3a3a; background: #2a2a2a; color: rgba(255,255,255,0.7); font-weight: 700; cursor: pointer; }
+.rpe-row button.sel { background: #FF6B00; color: #fff; border-color: #FF6B00; }
+
+/* chips (onboarding / chat) */
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip { padding: 9px 14px; border-radius: 999px; background: #2a2a2a; color: rgba(255,255,255,0.7); border: 1px solid #3a3a3a; cursor: pointer; font-size: 13px; }
+.chip.sel { background: #FF6B00; color: #fff; border-color: #FF6B00; }
+.ob-label { font-size: 13px; color: rgba(255,255,255,0.55); margin: 6px 0; font-weight: 600; }
+
+/* chat */
+.chat-msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; min-height: 120px; }
+.chat-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+.chat-msg.user { align-self: flex-end; background: #FF6B00; color: #fff; border-bottom-right-radius: 4px; }
+.chat-msg.assistant { align-self: flex-start; background: #333; color: #fff; border-bottom-left-radius: 4px; }
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input-row input { flex: 1; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 12px; padding: 12px; font-size: 15px; }
+
+/* recommend list */
+.rec-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.rec-list li { background: #2a2a2a; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; font-size: 13px; }
+.rec-list li .rec-name { color: #fff; font-weight: 600; }
+.rec-list li .rec-reason { color: rgba(255,255,255,0.55); }
+.balance-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
+.balance-dot { width: 9px; height: 9px; border-radius: 50%; }
+.bd-low { background: #ff6b6f; }
+.bd-ok { background: #4dd08a; }
+.bd-high { background: #ffc24d; }
+
+.diary-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: dspin 0.8s linear infinite; vertical-align: middle; }
+@keyframes dspin { to { transform: rotate(360deg); } }
+.busy-note { text-align: center; color: rgba(255,255,255,0.6); font-size: 13px; padding: 12px; }
