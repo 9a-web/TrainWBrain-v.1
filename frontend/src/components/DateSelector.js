@@ -81,7 +81,7 @@ const ProgressRing = ({ progress, size = 50, strokeWidth = 4, isSelected = false
 };
 
 // Компонент карточки дня
-const DayCard = ({ date, dayName, dayNumber, progress, isSelected, isWorkout = false, onClick, index = 0, animClass = '' }) => {
+export const DayCard = ({ date, dayName, dayNumber, progress, isSelected, isWorkout = false, onClick, index = 0, animClass = '' }) => {
   return (
     <button 
       className={`day-card ${isSelected ? 'day-card-selected' : ''} ${isWorkout ? 'day-card-workout' : ''} ${animClass}`}

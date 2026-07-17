@@ -28,7 +28,7 @@ import CoachPlanEditor from "@/pages/CoachPlanEditor";
 import CoachLiveSession from "@/pages/CoachLiveSession";
 import { StatsPage, CoachClientStatsPage } from "@/pages/Stats";
 import StreakPage from "@/pages/Streak";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, NotebookPen, NotebookText } from "lucide-react";
 
 const pluralize = (n, forms) => {
   const a = Math.abs(n) % 100;
@@ -111,8 +111,22 @@ const Home = () => {
             <img src="/TWBlogo.png" alt="TrainWithBrain" />
           </div>
           
-          {/* Right side: Menu + Avatar */}
+          {/* Right side: Mode toggle + Menu + Avatar */}
           <div className="header-right" data-testid="header-right">
+            <button
+              type="button"
+              className="mode-toggle-btn"
+              data-testid="home-mode-toggle"
+              onClick={() => switchHomeMode(homeMode === "diary" ? "plan" : "diary")}
+              aria-label={homeMode === "diary" ? "Режим: Дневник (переключить на План)" : "Режим: План (переключить на Дневник)"}
+              title={homeMode === "diary" ? "Дневник" : "План"}
+            >
+              {homeMode === "diary" ? (
+                <NotebookText size={26} strokeWidth={2} />
+              ) : (
+                <NotebookPen size={26} strokeWidth={2} />
+              )}
+            </button>
             <Link
               to="/programs"
               className="menu-button"
@@ -168,25 +182,7 @@ const Home = () => {
             <ChevronRight size={18} className="streak-chevron" aria-hidden="true" />
           </button>
           
-          {/* Toggle: План / Дневник (тумблер режима на главном экране) */}
-          <div className="home-mode-toggle" data-testid="home-mode-toggle">
-            <button
-              className={homeMode === "plan" ? "active" : ""}
-              onClick={() => switchHomeMode("plan")}
-              data-testid="home-mode-plan"
-            >
-              План
-            </button>
-            <button
-              className={homeMode === "diary" ? "active" : ""}
-              onClick={() => switchHomeMode("diary")}
-              data-testid="home-mode-diary"
-            >
-              Дневник
-            </button>
-          </div>
-
-          {/* Контент режима */}
+          {/* Контент режима (переключается кнопкой-тумблером в хедере) */}
           {homeMode === "diary" ? <DiaryHome /> : <DateSelector />}
         </main>
       </div>

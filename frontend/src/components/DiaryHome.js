@@ -13,6 +13,8 @@ import {
 } from "@/api";
 import DiaryComposer from "@/components/DiaryComposer";
 import DiaryChat from "@/components/DiaryChat";
+import { DayCard } from "@/components/DateSelector";
+import "@/components/DateSelector.css";
 import "@/components/Diary.css";
 
 const DOW = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -195,23 +197,27 @@ const DiaryHome = () => {
 
   return (
     <div className="diary-wrap" data-testid="diary-home">
-      {/* Week strip */}
-      <div className="diary-week" data-testid="diary-week">
-        {days.map((d) => {
-          const iso = toISO(d);
-          return (
-            <button
-              key={iso}
-              className={`diary-day ${iso === selected ? "selected" : ""}`}
-              onClick={() => setSelected(iso)}
-              data-testid={`diary-day-${iso}`}
-            >
-              <span className="dd-dow">{DOW[(d.getDay() + 6) % 7]}</span>
-              <span className="dd-num">{d.getDate()}</span>
-              {datesWithEntry.has(iso) && <span className="dd-dot" />}
-            </button>
-          );
-        })}
+      {/* Week strip — тот же стиль, что в режиме «План» */}
+      <div className="diary-week-wrap" data-testid="diary-week">
+        <div className="date-selector-scroll">
+          {days.map((d, i) => {
+            const iso = toISO(d);
+            const has = datesWithEntry.has(iso);
+            return (
+              <DayCard
+                key={iso}
+                date={d}
+                dayName={DOW[(d.getDay() + 6) % 7]}
+                dayNumber={d.getDate()}
+                progress={has ? 100 : 0}
+                isSelected={iso === selected}
+                isWorkout={has}
+                onClick={() => setSelected(iso)}
+                index={i}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {/* Onboarding hint */}

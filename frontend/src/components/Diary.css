@@ -27,25 +27,8 @@
   color: #fff;
 }
 
-/* Date strip */
-.diary-week { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px; }
-.diary-day {
-  flex: 0 0 auto;
-  width: 54px;
-  padding: 8px 0;
-  border-radius: 14px;
-  background: #333;
-  color: rgba(255, 255, 255, 0.7);
-  text-align: center;
-  cursor: pointer;
-  border: none;
-  transition: all 0.18s ease;
-}
-.diary-day .dd-dow { font-size: 12px; opacity: 0.7; display: block; }
-.diary-day .dd-num { font-size: 18px; font-weight: 700; }
-.diary-day.selected { background: linear-gradient(-34deg, #FF8A24, #FFDA24); color: #1C1C1C; }
-.diary-day .dd-dot { width: 6px; height: 6px; border-radius: 50%; background: #FF6B00; margin: 3px auto 0; }
-.diary-day.selected .dd-dot { background: #1C1C1C; }
+/* Date strip (переиспользует .day-card из DateSelector.css) */
+.diary-week-wrap { margin: 10px 0 6px; }
 
 /* Entry card */
 .diary-entry {
@@ -115,11 +98,19 @@
 
 /* Quick editor rows */
 .qx-row { background: #2c2c2c; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-.qx-row .qx-name { width: 100%; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 9px; padding: 10px; font-size: 15px; margin-bottom: 8px; }
-.qx-nums { display: flex; gap: 8px; align-items: center; }
+.qx-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.qx-row .qx-name { flex: 1; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 9px; padding: 10px; font-size: 15px; }
+.qx-row-remove { background: transparent; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 4px; display: flex; }
+.qx-row-remove:hover { color: #ff6b6f; }
+.qx-group { margin-bottom: 8px; }
+.qx-nums { display: flex; gap: 8px; align-items: flex-end; }
 .qx-nums label { font-size: 11px; color: rgba(255,255,255,0.5); display: block; margin-bottom: 3px; }
 .qx-nums input { width: 100%; background: #1f1f1f; border: 1px solid #3a3a3a; color: #fff; border-radius: 9px; padding: 9px; font-size: 15px; text-align: center; }
 .qx-num { flex: 1; }
+.qx-group-remove { background: transparent; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 9px 2px; display: flex; align-items: center; }
+.qx-group-remove:hover { color: #ff6b6f; }
+.qx-add-group { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px dashed #4a4a4a; color: rgba(255,255,255,0.65); border-radius: 9px; padding: 7px 12px; font-size: 12px; cursor: pointer; margin: 2px 0 4px; }
+.qx-add-group:hover { border-color: #FF6B00; color: #FF6B00; }
 .qx-acc { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px; }
 .qx-remove { background: transparent; border: none; color: #ff6b6f; font-size: 13px; cursor: pointer; padding: 4px 0; }
 
