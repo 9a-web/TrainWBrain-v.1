@@ -29,6 +29,8 @@
 
 /* Date strip (переиспользует .day-card из DateSelector.css) */
 .diary-week-wrap { margin: 10px 0 6px; }
+.diary-entry-block { margin-bottom: 18px; }
+.diary-entry-block .diary-btn-row { margin-top: 8px; }
 
 /* Entry card */
 .diary-entry {

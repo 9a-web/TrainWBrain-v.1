@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import {
   listDiarySessions,
@@ -13,55 +14,32 @@ import {
 } from "@/api";
 import DiaryComposer from "@/components/DiaryComposer";
 import DiaryChat from "@/components/DiaryChat";
+import WorkoutView from "@/components/WorkoutView";
 import { DayCard } from "@/components/DateSelector";
 import "@/components/DateSelector.css";
 import "@/components/Diary.css";
 
 const DOW = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-const toISO = (d) => d.toISOString().slice(0, 10);
-
-const weekDays = () => {
-  const now = new Date();
-  const dow = (now.getDay() + 6) % 7; // Mon=0
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - dow);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
-  });
+const MONTHS_GEN = [
+  "Января", "Февраля", "Марта", "Апреля", "Мая", "Июня",
+  "Июля", "Августа", "Сентября", "Октября", "Ноября", "Декабря",
+];
+const WEEK_OFFSETS = [-1, 0, 1];
+const noop = () => {};
+const toISO = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 };
+const isSameISO = (d, iso) => toISO(d) === iso;
 
 const diffCat = (score) =>
   score == null ? null : score < 36 ? "Легко" : score < 61 ? "Средне" : score < 81 ? "Тяжело" : "Очень тяжело";
-const diffClass = (cat) => (cat ? `diff-${cat.toLowerCase().replace(/\s+/g, "-")}` : "");
 
-const fmtSets = (ex) => {
-  if (ex.is_accessory) return "подсобное";
-  const sc = ex.sets_scheme || [];
-  if (!sc.length) return "—";
-  return sc
-    .map((s) => `${s.sets}×${s.reps}` + (s.weight != null ? ` · ${s.weight}кг` : ""))
-    .join(", ");
-};
-
-const GOALS = [
-  ["hypertrophy", "Масса"],
-  ["strength", "Сила"],
-  ["powerlifting", "Пауэрлифтинг"],
-  ["general", "ОФП"],
-];
-const EXP = [
-  ["beginner", "Новичок"],
-  ["intermediate", "Средний"],
-  ["advanced", "Продвинутый"],
-];
-const EQUIP = [
-  ["gym", "Зал"],
-  ["barbell_home", "Штанга дома"],
-  ["dumbbells", "Гантели"],
-  ["bodyweight", "Свой вес"],
-];
+const GOALS = [["hypertrophy", "Масса"], ["strength", "Сила"], ["powerlifting", "Пауэрлифтинг"], ["general", "ОФП"]];
+const EXP = [["beginner", "Новичок"], ["intermediate", "Средний"], ["advanced", "Продвинутый"]];
+const EQUIP = [["gym", "Зал"], ["barbell_home", "Штанга дома"], ["dumbbells", "Гантели"], ["bodyweight", "Свой вес"]];
 
 const AiFeedback = ({ fb }) => {
   if (!fb) return null;
@@ -94,6 +72,7 @@ const AiFeedback = ({ fb }) => {
 const DiaryHome = () => {
   const { user } = useUser();
   const tg = user?.telegram_id;
+  const [weekOffset, setWeekOffset] = useState(0);
   const [selected, setSelected] = useState(toISO(new Date()));
   const [sessions, setSessions] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -106,12 +85,21 @@ const DiaryHome = () => {
   const [weeklyOpen, setWeeklyOpen] = useState(false);
   const [busyAgent, setBusyAgent] = useState("");
 
-  const days = weekDays();
+  const days = useMemo(() => {
+    const base = new Date();
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - ((base.getDay() + 6) % 7) + weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d;
+    });
+  }, [weekOffset]);
 
   const load = useCallback(async () => {
     if (!tg) return;
     try {
-      const list = await listDiarySessions({ limit: 100 });
+      const list = await listDiarySessions({ limit: 200 });
       setSessions(list || []);
     } catch (e) {
       /* no-op */
@@ -126,8 +114,24 @@ const DiaryHome = () => {
     return () => window.removeEventListener("twb:progress", onProg);
   }, [load]);
 
+  const datesWithEntry = useMemo(
+    () => new Set(sessions.map((s) => (s.date || "").slice(0, 10))),
+    [sessions]
+  );
   const dayEntries = sessions.filter((s) => (s.date || "").slice(0, 10) === selected);
-  const datesWithEntry = new Set(sessions.map((s) => (s.date || "").slice(0, 10)));
+
+  const selDate = new Date(`${selected}T00:00:00`);
+  const formattedDate = `${selDate.getDate()} ${MONTHS_GEN[selDate.getMonth()]}`;
+
+  // Собираем view для WorkoutView (тот же элемент, что в режиме «План»).
+  const makeView = (s) => {
+    const score = s.difficulty_score != null ? s.difficulty_score : s.difficulty?.score;
+    const cat = diffCat(score);
+    return {
+      ...s,
+      stats: { ...(s.stats || {}), difficulty: cat || (s.stats && s.stats.difficulty) || "—" },
+    };
+  };
 
   const handleAnalyze = async (session) => {
     setAnalyzing(session.id);
@@ -196,10 +200,23 @@ const DiaryHome = () => {
   };
 
   return (
-    <div className="diary-wrap" data-testid="diary-home">
-      {/* Week strip — тот же стиль, что в режиме «План» */}
-      <div className="diary-week-wrap" data-testid="diary-week">
-        <div className="date-selector-scroll">
+    <div className="date-selector" data-testid="diary-home">
+      {/* Та же строка выбора недели/дней, что и в режиме «План» */}
+      <div className="date-selector-row">
+        <div className="week-dots" role="tablist" aria-label="Выбор недели" data-testid="diary-week-dots">
+          {WEEK_OFFSETS.map((offset) => (
+            <button
+              key={offset}
+              type="button"
+              className={`week-dot ${weekOffset === offset ? "week-dot-active" : ""}`}
+              onClick={() => setWeekOffset(offset)}
+              role="tab"
+              aria-selected={weekOffset === offset}
+              aria-label={offset === 0 ? "Текущая неделя" : offset > 0 ? "Следующая неделя" : "Прошлая неделя"}
+            />
+          ))}
+        </div>
+        <div className="date-selector-scroll" data-testid="diary-week">
           {days.map((d, i) => {
             const iso = toISO(d);
             const has = datesWithEntry.has(iso);
@@ -210,8 +227,8 @@ const DiaryHome = () => {
                 dayName={DOW[(d.getDay() + 6) % 7]}
                 dayNumber={d.getDate()}
                 progress={has ? 100 : 0}
-                isSelected={iso === selected}
                 isWorkout={has}
+                isSelected={isSameISO(d, selected)}
                 onClick={() => setSelected(iso)}
                 index={i}
               />
@@ -220,7 +237,22 @@ const DiaryHome = () => {
         </div>
       </div>
 
-      {/* Onboarding hint */}
+      {/* Заголовок даты + действие — тот же блок, что в «Плане» */}
+      <div className="date-title-row">
+        <h2 className="selected-date-title">{formattedDate}</h2>
+        <div className="date-actions" data-testid="date-actions">
+          <button
+            className="launch-button"
+            type="button"
+            onClick={openRecord}
+            data-testid="diary-record-btn"
+          >
+            <Plus className="launch-button-icon" size={16} strokeWidth={2.5} />
+            <span>Записать</span>
+          </button>
+        </div>
+      </div>
+
       {profile && !profile.onboarded && (
         <button
           className="diary-btn diary-btn-ghost"
@@ -232,96 +264,66 @@ const DiaryHome = () => {
         </button>
       )}
 
-      {/* Entries */}
+      {/* Содержимое дня — тот же WorkoutView, что и в плане */}
       {dayEntries.length === 0 ? (
-        <div className="diary-empty" data-testid="diary-empty">
-          <p>На этот день записей нет.<br />Запиши, что ты сделал — ИИ разберёт и подскажет.</p>
-          <button className="diary-btn diary-btn-primary" onClick={openRecord} data-testid="diary-record-btn">
-            + Записать тренировку
+        <div className="no-plan-card" data-testid="diary-empty">
+          <p className="no-plan-text">
+            На этот день записей нет. Запиши, что сделал — ИИ разберёт и подскажет.
+          </p>
+          <button className="no-plan-button" onClick={openRecord} data-testid="diary-empty-record">
+            Записать тренировку
           </button>
         </div>
       ) : (
-        <>
-          {dayEntries.map((s) => {
-            const score = s.difficulty_score != null ? s.difficulty_score : s.difficulty?.score;
-            const cat = diffCat(score);
-            const st = s.stats || {};
-            return (
-              <div className="diary-entry" key={s.id} data-testid={`diary-entry-${s.id}`}>
-                <div className="diary-entry-head">
-                  <div>
-                    <div className="diary-entry-title">{s.title || "Тренировка"}</div>
-                    <div className="diary-entry-meta">
-                      {st.tonnage ? `${st.tonnage} кг · ` : ""}
-                      {st.sets_done || 0} подходов{st.group ? ` · ${st.group}` : ""}
-                    </div>
-                  </div>
-                  {cat && (
-                    <span className={`diff-badge ${diffClass(cat)}`} data-testid="diary-difficulty-badge">
-                      {cat} · {score}
-                    </span>
-                  )}
-                </div>
-
-                <ul className="diary-ex-list">
-                  {(s.exercises || []).map((ex, i) => (
-                    <li key={i}>
-                      <span>{ex.exercise_name}</span>
-                      <span className="ex-sets">{fmtSets(ex)}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {s.ai_feedback ? (
-                  <AiFeedback fb={s.ai_feedback} />
-                ) : (
-                  <div className="diary-btn-row">
-                    <button
-                      className="diary-btn-sm"
-                      onClick={() => handleAnalyze(s)}
-                      disabled={analyzing === s.id}
-                      data-testid={`diary-analyze-${s.id}`}
-                    >
-                      {analyzing === s.id ? <span className="diary-spinner" /> : "🧠 Разбор ИИ"}
-                    </button>
-                  </div>
-                )}
-
-                <div className="diary-btn-row">
-                  <button
-                    className="diary-btn-sm diary-btn-danger"
-                    onClick={() => handleDelete(s.id)}
-                    data-testid={`diary-delete-${s.id}`}
-                  >
-                    Удалить
-                  </button>
-                </div>
+        dayEntries.map((s) => (
+          <div className="diary-entry-block" key={s.id} data-testid={`diary-entry-${s.id}`}>
+            <WorkoutView
+              view={makeView(s)}
+              isPreview={false}
+              onAction={noop}
+              onEditSave={noop}
+              onSetLog={noop}
+            />
+            {s.ai_feedback ? (
+              <AiFeedback fb={s.ai_feedback} />
+            ) : (
+              <div className="diary-btn-row">
+                <button
+                  className="diary-btn-sm"
+                  onClick={() => handleAnalyze(s)}
+                  disabled={analyzing === s.id}
+                  data-testid={`diary-analyze-${s.id}`}
+                >
+                  {analyzing === s.id ? <span className="diary-spinner" /> : "🧠 Разбор ИИ"}
+                </button>
               </div>
-            );
-          })}
-          <button className="diary-btn diary-btn-primary" onClick={openRecord} data-testid="diary-record-btn">
-            + Записать ещё
-          </button>
-        </>
+            )}
+            <div className="diary-btn-row">
+              <button
+                className="diary-btn-sm diary-btn-danger"
+                onClick={() => handleDelete(s.id)}
+                data-testid={`diary-delete-${s.id}`}
+              >
+                Удалить запись
+              </button>
+            </div>
+          </div>
+        ))
       )}
 
-      {/* Agent panel */}
+      {/* Панель ИИ-агента (дополнительно к общим элементам) */}
       <div className="diary-agent" data-testid="diary-agent">
         <h3>🤖 Личный ИИ-тренер</h3>
         <p className="hint">Спроси совет, разбери неделю или собери следующую тренировку.</p>
         <div className="agent-actions">
-          <button onClick={() => setChatOpen(true)} data-testid="diary-agent-chat">
-            💬 Спросить тренера
-          </button>
+          <button onClick={() => setChatOpen(true)} data-testid="diary-agent-chat">💬 Спросить тренера</button>
           <button onClick={handleWeekly} disabled={busyAgent === "weekly"} data-testid="diary-agent-weekly">
             {busyAgent === "weekly" ? <span className="diary-spinner" /> : "📊 Разбор недели"}
           </button>
           <button onClick={handleNext} disabled={busyAgent === "next"} data-testid="diary-agent-next">
             {busyAgent === "next" ? <span className="diary-spinner" /> : "✨ Собрать тренировку"}
           </button>
-          <button onClick={() => setObOpen(true)} data-testid="diary-agent-profile">
-            ⚙️ Мой профиль
-          </button>
+          <button onClick={() => setObOpen(true)} data-testid="diary-agent-profile">⚙️ Мой профиль</button>
         </div>
       </div>
 
@@ -346,9 +348,7 @@ const DiaryHome = () => {
           }}
         />
       )}
-      {weeklyOpen && weekly && (
-        <WeeklyModal data={weekly} onClose={() => setWeeklyOpen(false)} />
-      )}
+      {weeklyOpen && weekly && <WeeklyModal data={weekly} onClose={() => setWeeklyOpen(false)} />}
     </div>
   );
 };
@@ -368,13 +368,7 @@ const OnboardingModal = ({ profile, onClose, onSaved }) => {
       ["squat", "bench", "deadlift"].forEach((k) => {
         if (maxes[k]) clean[k] = parseFloat(maxes[k]);
       });
-      const p = await putDiaryProfile({
-        goal,
-        experience,
-        equipment,
-        weekly_target_days: days,
-        maxes: clean,
-      });
+      const p = await putDiaryProfile({ goal, experience, equipment, weekly_target_days: days, maxes: clean });
       toast.success("Профиль сохранён");
       onSaved(p);
     } catch (e) {
